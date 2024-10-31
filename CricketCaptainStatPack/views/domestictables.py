@@ -5,7 +5,7 @@ import plotly.express as px
 import io
 
 # Title
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables (Add new table)</h1>", unsafe_allow_html=True)
 
 # Add file upload widget (only once)
 st.markdown("### Upload Previous Tables (Optional) this is a tables.csv file that saves into Scorecard file")
