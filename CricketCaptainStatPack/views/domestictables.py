@@ -663,7 +663,7 @@ if not st.session_state.historical_data.empty:
         filtered_df = filtered_df[filtered_df['Competition'].isin(competition_choice)]
     
     # Display the filtered dataframe
-    st.dataframe(filtered_df, use_container_width=True)
+    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
     
     # Add styled header for the graph
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position History</h3>", unsafe_allow_html=True)
@@ -777,4 +777,4 @@ if not st.session_state.historical_data.empty:
 
     # Display summary statistics
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
-    st.dataframe(summary_df, use_container_width=True)
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
