@@ -8,7 +8,7 @@ import io
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
 
 # Add file upload widget (only once)
-st.markdown("### Upload Previous Tables (Optional)")
+st.markdown("### Upload Previous Tables (Optional) this is a tables.csv file that saves into Scorecard file")
 uploaded_file = st.file_uploader("Upload your tables CSV file", type=['csv'])
 
 # Initialize session states

@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import io
 
 # Add file upload option
-st.markdown("### Upload Previous Rankings (Optional)")
+st.markdown("### Upload Previous Rankings (Optional) this is the rankings.csv from the Scorecard folder")
 uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'])
 
 # Load data from uploaded file if it exists
