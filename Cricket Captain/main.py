@@ -1,6 +1,18 @@
 import streamlit as st
 import pandas as pd
 
+# Password Protection
+if "authenticated" not in st.session_state:
+    pwd = st.text_input("Enter password:", type="password")
+    if pwd == st.secrets["passwords"]["access_pwd"]:
+        st.session_state.authenticated = True
+        st.experimental_rerun()
+    elif pwd:  # Only show error if they've tried a password
+        st.error("Incorrect password")
+        st.stop()
+    else:
+        st.stop()
+        
 # --- PAGE CONFIG ---
 st.set_page_config(
     page_title="Welcome to The Cricket Captain Stats Dashboard",
