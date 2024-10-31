@@ -86,6 +86,9 @@ st.markdown(
 )
 
 # --- HOW TO USE THE DASHBOARD SECTION ---
+# --- HOW TO USE THE DASHBOARD SECTION ---
+# --- HOW TO USE THE DASHBOARD SECTION ---
+# --- HOW TO USE THE DASHBOARD SECTION ---
 st.markdown(
     """
     <div style="text-align: center; max-width: 800px; margin: auto; font-family: Arial, sans-serif;">
@@ -98,7 +101,8 @@ st.markdown(
                     <li><em>MAC:</em> <code>~/Library/Containers/com.childishthings.cricketcaptain2021mac/Data/Library/Application Support/Cricket Captain 2021/childish things/cricket captain 2021/saves</code></li>
                 </ul>
             </li>
-            <li><strong>Select all the .txt files</strong> you want to analyze and upload them below.</li>
+            <li><strong>Select the browse files button</strong> </li>
+            <li><strong>To select all files:</strong> Press <code>Ctrl + A</code> on Windows or <code>Command + A</code> on Mac, and then click open (you will need to select all everytime you load them.).</li>
             <li><strong>Click Process Scorecards</strong> to analyze your data.</li>
             <li><strong>Click on any of the tabs</strong> to see your saved data.</li>
         </ol>
@@ -106,6 +110,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 # File uploader
 uploaded_files = st.file_uploader("Upload your scorecard files", type=['txt'], accept_multiple_files=True)
