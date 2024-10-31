@@ -1,12 +1,31 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
 import plotly.express as px
+import io
 
+# Title
+st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
 
-# Define save path
-SAVE_PATH = r"C:\Users\rtayl\AppData\Roaming\Childish Things\Cricket Captain 2024\Saves\Scorecards\Tables.csv"
+# Add file upload widget (only once)
+st.markdown("### Upload Previous Tables (Optional)")
+uploaded_file = st.file_uploader("Upload your tables CSV file", type=['csv'])
+
+# Initialize session states
+if 'historical_data' not in st.session_state:
+    st.session_state.historical_data = pd.DataFrame()
+
+if 'manual_points' not in st.session_state:
+    st.session_state.manual_points = {}
+
+# Load data from uploaded file if it exists
+if uploaded_file is not None:
+    try:
+        uploaded_df = pd.read_csv(uploaded_file)
+        st.session_state.historical_data = uploaded_df
+        st.success("Tables loaded successfully!")
+    except Exception as e:
+        st.error(f"Error loading file: {str(e)}")
 
 # Dropdown options
 COUNTRIES = [
@@ -565,16 +584,25 @@ with col1:
             df = pd.DataFrame(table_data)
             if not st.session_state.historical_data.empty:
                 df = pd.concat([st.session_state.historical_data, df], ignore_index=True)
-            os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
-            df.to_csv(SAVE_PATH, index=False)
+            
+            # Update session state
             st.session_state.historical_data = df
+            
+            # Create download button
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download Tables CSV",
+                data=csv,
+                file_name=f"tables_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime='text/csv'
+            )
+            
             st.success("Table saved successfully!")
             
-            # Display the saved data
-            st.subheader("Current Saved Data")
-            st.dataframe(df)
         except Exception as e:
-            st.error(f"Error saving data: {str(e)}")
+            st.error(f"Error preparing data: {str(e)}")
+
+
 
 # Enter Another Year button
 with col2:
@@ -600,10 +628,6 @@ with col2:
 with col3:
     if st.button("Clear Historical Tables"):
         try:
-            # Clear the CSV file
-            if os.path.exists(SAVE_PATH):
-                os.remove(SAVE_PATH)
-            
             # Clear the session state
             st.session_state.historical_data = pd.DataFrame()
             st.session_state.manual_points = {}
@@ -611,7 +635,7 @@ with col3:
             st.success("Historical tables cleared successfully!")
             
             # Force a rerun to clear the interface
-            st.experimental_rerun()
+            st.rerun()
         except Exception as e:
             st.error(f"Error clearing data: {str(e)}")
 
@@ -639,13 +663,11 @@ if not st.session_state.historical_data.empty:
     if 'All' not in competition_choice:
         filtered_df = filtered_df[filtered_df['Competition'].isin(competition_choice)]
     
-# Display the filtered dataframe
+    # Display the filtered dataframe
     st.dataframe(filtered_df, use_container_width=True)
     
     # Add styled header for the graph
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position History</h3>", unsafe_allow_html=True)
-    
-
     
     # Prepare data for plotting
     if 'All' not in team_choice:
@@ -679,9 +701,9 @@ if not st.session_state.historical_data.empty:
             xaxis_title='Year',
             height=600,
             showlegend=True,
-            hovermode='closest',  # Show only closest point
+            hovermode='closest',
             hoverlabel=dict(
-                bgcolor="rgba(0,0,0,0)",  # Transparent background
+                bgcolor="rgba(0,0,0,0)",
                 font_size=14
             )
         )
@@ -691,71 +713,69 @@ if not st.session_state.historical_data.empty:
             hovertemplate="<b>%{customdata[1]}</b><br>" +
                          "Year: %{x}<br>" +
                          "Position: %{y}<br>" +
-                         "<extra></extra>"  # This removes the secondary box
+                         "<extra></extra>"
         )
         
         # Display the plot
         st.plotly_chart(fig, use_container_width=True)
         
-# Create summary statistics
-history_all_df = filtered_df.copy()
+    # Create summary statistics
+    history_all_df = filtered_df.copy()
 
-# Create helper columns for titles and runner-ups
-history_all_df['Titles'] = (history_all_df['Final Position'] == 'Winner').astype(int)
-history_all_df['Runner_Ups'] = (history_all_df['Final Position'] == 'Runner Up').astype(int)
+    # Create helper columns for titles and runner-ups
+    history_all_df['Titles'] = (history_all_df['Final Position'] == 'Winner').astype(int)
+    history_all_df['Runner_Ups'] = (history_all_df['Final Position'] == 'Runner Up').astype(int)
 
-# Create helper column for wooden spoons (last place)
-# Group by Year and Competition to find max position for each competition
-max_positions = history_all_df.groupby(['Year', 'Competition'])['Position'].transform('max')
-history_all_df['Wooden_Spoons'] = (history_all_df['Position'] == max_positions).astype(int)
+    # Create helper column for wooden spoons
+    max_positions = history_all_df.groupby(['Year', 'Competition'])['Position'].transform('max')
+    history_all_df['Wooden_Spoons'] = (history_all_df['Position'] == max_positions).astype(int)
 
-# Group by and aggregate
-summary_df = history_all_df.groupby(['Team', 'Competition']).agg({
-    'P': 'sum',
-    'W': 'sum',
-    'L': 'sum',
-    'D': 'sum',
-    'Bat BP': 'sum',
-    'Bowl BP': 'sum',
-    'Points': 'sum',
-    'Titles': 'sum',
-    'Runner_Ups': 'sum',
-    'Wooden_Spoons': 'sum'
-}).reset_index()
+    # Group by and aggregate
+    summary_df = history_all_df.groupby(['Team', 'Competition']).agg({
+        'P': 'sum',
+        'W': 'sum',
+        'L': 'sum',
+        'D': 'sum',
+        'Bat BP': 'sum',
+        'Bowl BP': 'sum',
+        'Points': 'sum',
+        'Titles': 'sum',
+        'Runner_Ups': 'sum',
+        'Wooden_Spoons': 'sum'
+    }).reset_index()
 
-# Calculate percentages
-summary_df['Win %'] = (summary_df['W'] / summary_df['P'] * 100).round(1)
-summary_df['Loss %'] = (summary_df['L'] / summary_df['P'] * 100).round(1)
-summary_df['Draw %'] = (summary_df['D'] / summary_df['P'] * 100).round(1)
+    # Calculate percentages
+    summary_df['Win %'] = (summary_df['W'] / summary_df['P'] * 100).round(1)
+    summary_df['Loss %'] = (summary_df['L'] / summary_df['P'] * 100).round(1)
+    summary_df['Draw %'] = (summary_df['D'] / summary_df['P'] * 100).round(1)
 
-# Round floating point numbers
-summary_df = summary_df.round(2)
+    # Round floating point numbers
+    summary_df = summary_df.round(2)
 
-# Rename columns for clarity
-summary_df = summary_df.rename(columns={
-    'P': 'Played',
-    'W': 'Wins',
-    'L': 'Losses',
-    'D': 'Draws',
-    'Bat BP': 'Batting Points',
-    'Bowl BP': 'Bowling Points',
-    'Points': 'Total Points',
-    'Runner_Ups': 'Runner Ups',
-    'Wooden_Spoons': 'Wooden Spoons'
-})
+    # Rename columns for clarity
+    summary_df = summary_df.rename(columns={
+        'P': 'Played',
+        'W': 'Wins',
+        'L': 'Losses',
+        'D': 'Draws',
+        'Bat BP': 'Batting Points',
+        'Bowl BP': 'Bowling Points',
+        'Points': 'Total Points',
+        'Runner_Ups': 'Runner Ups',
+        'Wooden_Spoons': 'Wooden Spoons'
+    })
 
-# Reorder columns to put percentages after W/L/D
-columns_order = [
-    'Team', 'Competition', 'Played', 
-    'Wins', 
-    'Losses', 
-    'Draws', 'Win %','Loss %', 'Draw %',
-    'Batting Points', 'Bowling Points', 'Total Points',
-    'Titles', 'Runner Ups', 'Wooden Spoons'
-]
+    # Reorder columns
+    columns_order = [
+        'Team', 'Competition', 'Played', 
+        'Wins', 'Losses', 'Draws', 
+        'Win %','Loss %', 'Draw %',
+        'Batting Points', 'Bowling Points', 'Total Points',
+        'Titles', 'Runner Ups', 'Wooden Spoons'
+    ]
 
-summary_df = summary_df[columns_order]
+    summary_df = summary_df[columns_order]
 
-# Display summary statistics with header
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
-st.dataframe(summary_df, use_container_width=True)
+    # Display summary statistics
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
+    st.dataframe(summary_df, use_container_width=True)
