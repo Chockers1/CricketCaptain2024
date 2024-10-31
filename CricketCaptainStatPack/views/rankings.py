@@ -1,14 +1,10 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
 import plotly.graph_objects as go
+import io
 
-
-# Define the path where the CSV will be saved
-SAVE_PATH = r"C:\Users\rtayl\AppData\Roaming\Childish Things\Cricket Captain 2024\Saves\Scorecards\rankings.csv"
-
-# Define teams and positions
+# Remove local save path and define teams and positions
 TEAMS = [
     "Australia", "Bangladesh", "England", "India", "Ireland", "New Zealand",
     "Pakistan", "South Africa", "Sri Lanka", "West Indies", "Zimbabwe", "Afghanistan"
@@ -16,38 +12,39 @@ TEAMS = [
 POSITIONS = list(range(1, 13))  # 1 to 12
 
 def save_data(df, append=True):
-    """Save the DataFrame to CSV"""
+    """Convert DataFrame to CSV and provide download link"""
     try:
-        os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
-        if append and os.path.exists(SAVE_PATH):
-            existing_df = pd.read_csv(SAVE_PATH)
-            df = pd.concat([existing_df, df], ignore_index=True)
-        df.to_csv(SAVE_PATH, index=False)
+        # Convert DataFrame to CSV
+        csv = df.to_csv(index=False)
+        
+        # Create download button
+        st.download_button(
+            label="Download Rankings CSV",
+            data=csv,
+            file_name=f"rankings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime='text/csv'
+        )
         return True
     except Exception as e:
-        st.error(f"Error saving data: {str(e)}")
+        st.error(f"Error preparing data: {str(e)}")
         return False
 
 def clear_rankings():
-    """Clear the rankings CSV file"""
+    """Clear the rankings from session state"""
     try:
-        if os.path.exists(SAVE_PATH):
-            os.remove(SAVE_PATH)
+        if 'rankings_data' in st.session_state:
+            st.session_state.rankings_data = pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
             return True
     except Exception as e:
         st.error(f"Error clearing rankings: {str(e)}")
         return False
 
 def load_existing_data():
-    """Load existing rankings data if it exists"""
+    """Load existing rankings data from session state"""
     try:
-        if os.path.exists(SAVE_PATH):
-            df = pd.read_csv(SAVE_PATH)
-            if 'Year' not in df.columns:
-                df['Year'] = datetime.now().year
-            return df
-        else:
-            return pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
+        if 'rankings_data' not in st.session_state:
+            st.session_state.rankings_data = pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
+        return st.session_state.rankings_data
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         return pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
