@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 
-# Password Protection
-if "authenticated" not in st.session_state:
+# Password Protection at the very top of your file
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
     pwd = st.text_input("Enter password:", type="password")
     if pwd == st.secrets["passwords"]["access_pwd"]:
         st.session_state.authenticated = True
-        st.experimental_rerun()
+        st.rerun()  # Changed from experimental_rerun
     elif pwd:  # Only show error if they've tried a password
         st.error("Incorrect password")
         st.stop()
