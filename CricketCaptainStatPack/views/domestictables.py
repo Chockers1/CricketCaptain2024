@@ -5,8 +5,7 @@ import plotly.express as px
 import io
 
 # Title
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables (Add new table)</h1>", unsafe_allow_html=True)
-
+st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
 # Add file upload widget (only once)
 st.markdown("### Upload Previous Tables (Optional) this is a tables.csv file that saves into Scorecard file")
 uploaded_file = st.file_uploader("Upload your tables CSV file", type=['csv'])
@@ -229,7 +228,7 @@ if 'manual_points' not in st.session_state:
     st.session_state.manual_points = {}
 
 # Title
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables  (Add new table) </h1>", unsafe_allow_html=True)
 
 # Year, Country, and Competition selection (filters first)
 col1, col2, col3 = st.columns(3)
