@@ -169,6 +169,12 @@ def display_bat_view():
 
 ######---------------------------------------CAREER STATS TAB-------------------------------
 
+        # Calculate milestone innings based on run ranges
+        filtered_df['50s'] = ((filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)).astype(int)
+        filtered_df['100s'] = ((filtered_df['Runs'] >= 100))
+        filtered_df['150s'] = ((filtered_df['Runs'] >= 150) & (filtered_df['Runs'] < 200)).astype(int)
+        filtered_df['200s'] = (filtered_df['Runs'] >= 200).astype(int)
+
         # Create the bat_career_df by grouping by 'Name' and summing the required statistics
         bat_career_df = filtered_df.groupby('Name').agg({
             'File Name': 'nunique',
@@ -179,9 +185,10 @@ def display_bat_view():
             'Runs': ['sum', 'max'],
             '4s': 'sum',
             '6s': 'sum',
-            '50s': 'sum',
-            '100s': 'sum',
-            '200s': 'sum',
+            '50s': 'sum',  # Now sums innings where 50 <= runs < 100
+            '100s': 'sum', # Now sums innings where 100 <= runs < 150
+            '150s': 'sum', # Now sums innings where 150 <= runs < 200
+            '200s': 'sum', # Now sums innings where runs >= 200
             '<25&Out': 'sum',
             'Caught': 'sum',
             'Bowled': 'sum',
@@ -196,7 +203,7 @@ def display_bat_view():
 
         # Flatten multi-level columns
         bat_career_df.columns = ['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-                                 'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
+                                 'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
                                  '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
                                  'Team Runs', 'Overs', 'Wickets', 'Team Balls']
 
@@ -217,8 +224,10 @@ def display_bat_view():
         bat_career_df['BPB'] = (bat_career_df['Balls'] / (bat_career_df['4s'] + bat_career_df['6s']).replace(0, 1)).round(2)
 
         # Calculate new statistics
-        bat_career_df['50+PI'] = (((bat_career_df['50s'] + bat_career_df['100s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
-        bat_career_df['100PI'] = ((bat_career_df['100s'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_career_df['50+PI'] = (((bat_career_df['50s'] + bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_career_df['100PI'] = (((bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_career_df['150PI'] = (((bat_career_df['150s'] + bat_career_df['200s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_career_df['200PI'] = ((bat_career_df['200s'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
         bat_career_df['<25&OutPI'] = ((bat_career_df['<25&Out'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
 
         # Calculate dismissal percentages
@@ -236,8 +245,8 @@ def display_bat_view():
 
         # Reorder columns and drop Team Avg and Team SR
         bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
-                                       'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', 
-                                       '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
+                                       'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', '150s', '200s',
+                                       '<25&OutPI', '50+PI', '100PI', '150PI', '200PI', 'P+ Avg', 'P+ SR', 
                                        'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%', 'POM']]
         # Sort the DataFrame by 'Runs' in descending order
         bat_career_df = bat_career_df.sort_values(by='Runs', ascending=False)   
@@ -245,7 +254,7 @@ def display_bat_view():
         # Display the filtered and aggregated career statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
         st.dataframe(bat_career_df, use_container_width=True, hide_index=True)
-
+        
 #################----------------SCATTER CHART----------------------------##########################
 
         # Create a new figure for the scatter plot
