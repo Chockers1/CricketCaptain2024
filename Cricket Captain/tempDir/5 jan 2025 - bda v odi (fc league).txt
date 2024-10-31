@@ -1,0 +1,141 @@
+************************************************************
+Baroda v Odisha
+FC League - 5 Jan 2025
+************************************************************
+
+Baroda - 1st Innings                      R    B    4s  6s
+------------------------------------------------------------
+J Singh         c Samantray b Pradhan     12   32   1   -
+S Seth          c Mohapatra b Samantray   22   53   2   -
+S Rawat         c Sarangi b Roul          10   22   1   -
+V Solanki       c Samantray b Roul        69   105  12  -
+H Pandya        b Mohapatra               66   89   8   1
+S Puri          c Mishra b Roul           62   85   8   -
+A Rajput        b Roul                    90   135  11  1
+N Rathva        not out                   103  121  18  -
+A Sheth         c Luha b Roul             24   38   2   -
+B Bhatt         c Mishra b Mohanty        25   35   2   -
+L Meriwala      c Pradhan b Mohanty       8    11   1   -
+------------------------------------------------------------
+Extras: (nb6,w3)                          9
+TOTAL: (all out, 120 overs)               500
+
+************************************************************
+
+                O      M     R      W     Econ
+------------------------------------------------------------
+R Mohanty       32     1     124    2     3.87
+S Roul          25     1     116    5     4.64
+D Pradhan       19     1     99     1     5.21
+B Samantray     2      0     11     1     5.50
+J Mohapatra     42     2     150    1     3.57
+------------------------------------------------------------
+Fall of Wickets:
+1-33  2-35  3-57  4-181  5-183  
+6-308  7-361  8-434  9-487  10-500
+
+************************************************************
+************************************************************
+
+Odisha - 1st Innings                      R    B    4s  6s
+------------------------------------------------------------
+S Pattnaik      c Rajput b Bhatt          127  229  17  1
+S Mishra        b Sheth                   5    11   1   -
+M Joshi         lbw b Bhatt               13   29   1   -
+S Senapati      b Rathva                  3    21   -   -
+A Sarangi       c Bhatt b Rathva          0    2    -   -
+P Luha          c Solanki b Rathva        6    7    1   -
+B Samantray     c Seth b Rathva           24   74   2   -
+D Pradhan       c Rajput b Bhatt          26   55   2   -
+J Mohapatra     b Rathva                  11   17   2   -
+R Mohanty       c Sheth b Bhatt           2    12   -   -
+S Roul          not out                   0    4    -   -
+------------------------------------------------------------
+Extras: (nb1)                             1
+TOTAL: (all out, 76.4 overs)              218
+
+************************************************************
+
+                O      M     R      W     Econ
+------------------------------------------------------------
+A Sheth         12     0     40     1     3.33
+L Meriwala      10     2     35     0     3.50
+A Rajput        1      0     1      0     1.00
+N Rathva        27     5     69     5     2.56
+B Bhatt         26.4   3     73     4     2.74
+------------------------------------------------------------
+Fall of Wickets:
+1-13  2-56  3-69  4-69  5-77  
+6-139  7-201  8-212  9-218  10-218
+
+************************************************************
+************************************************************
+
+Baroda - 2nd Innings                      R    B    4s  6s
+------------------------------------------------------------
+J Singh         lbw b Mohanty             11   16   1   -
+S Seth          c Senapati b Roul         4    8    -   -
+S Rawat         c Mohapatra b Mohanty     21   26   3   -
+V Solanki       c Luha b Pradhan          22   24   3   -
+H Pandya        c Pradhan b Roul          49   64   8   -
+S Puri          lbw b Pradhan             5    12   1   -
+A Rajput        not out                   37   81   3   -
+N Rathva        lbw b Roul                2    6    -   -
+A Sheth         b Roul                    0    1    -   -
+B Bhatt         lbw b Mohapatra           3    5    -   -
+L Meriwala      c Joshi b Pradhan         3    6    -   -
+------------------------------------------------------------
+Extras: (nb3,w1)                          4
+TOTAL: (all out, 41 overs)                161
+
+************************************************************
+
+                O      M     R      W     Econ
+------------------------------------------------------------
+R Mohanty       12     2     44     2     3.67
+S Roul          13     0     51     4     3.92
+D Pradhan       5      1     28     3     5.60
+B Samantray     1      0     3      0     3.00
+J Mohapatra     10     0     35     1     3.50
+------------------------------------------------------------
+Fall of Wickets:
+1-11  2-17  3-56  4-60  5-89  
+6-141  7-149  8-149  9-152  10-161
+
+************************************************************
+************************************************************
+
+Odisha - 2nd Innings                      R    B    4s  6s
+------------------------------------------------------------
+S Pattnaik      c Meriwala b Sheth        2    3    -   -
+S Mishra        c Rajput b Bhatt          17   48   -   -
+M Joshi         b Rathva                  16   53   2   -
+S Senapati      st Solanki b Bhatt        19   51   1   -
+A Sarangi       c Rawat b Bhatt           36   91   1   -
+P Luha          not out                   56   167  5   -
+B Samantray     c Bhatt b Rathva          1    5    -   -
+D Pradhan       lbw b Rathva              15   21   1   -
+J Mohapatra     b Rathva                  3    8    -   -
+R Mohanty       c Bhatt b Rathva          25   48   4   -
+S Roul          b Meriwala                6    7    1   -
+------------------------------------------------------------
+Extras: (nb2)                             2
+TOTAL: (all out, 83.2 overs)              198
+
+************************************************************
+
+                O      M     R      W     Econ
+------------------------------------------------------------
+A Sheth         14     3     38     1     2.71
+L Meriwala      11.2   2     17     1     1.50
+N Rathva        29     5     66     5     2.28
+B Bhatt         29     3     77     3     2.65
+------------------------------------------------------------
+Fall of Wickets:
+1-4  2-34  3-38  4-69  5-121  
+6-122  7-148  8-158  9-189  10-198
+
+************************************************************
+Baroda won by 245 runs
+Man of the match: N Rathva
+************************************************************

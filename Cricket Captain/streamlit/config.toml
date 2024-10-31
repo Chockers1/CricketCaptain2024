@@ -1,0 +1,6 @@
+[theme]
+primaryColor="#FF4B4B"  # Accent color used in widgets
+backgroundColor="#eaeef2"  # Main content background color
+secondaryBackgroundColor="#FFFFFF"  # Sidebar background color
+textColor="#31333F"  # Text color for the app
+font="sans serif"  # Font type
