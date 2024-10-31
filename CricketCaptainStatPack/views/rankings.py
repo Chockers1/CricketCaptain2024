@@ -4,6 +4,23 @@ from datetime import datetime
 import plotly.graph_objects as go
 import io
 
+# Add file upload option
+st.markdown("### Upload Previous Rankings (Optional)")
+uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'])
+
+# Load data from uploaded file if it exists
+if uploaded_file is not None:
+    try:
+        uploaded_df = pd.read_csv(uploaded_file)
+        st.session_state.rankings_data = uploaded_df
+        st.success("Rankings loaded successfully!")
+    except Exception as e:
+        st.error(f"Error loading file: {str(e)}")
+
+# Initialize rankings_data in session state if it doesn't exist
+if 'rankings_data' not in st.session_state:
+    st.session_state.rankings_data = pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
+
 # Remove local save path and define teams and positions
 TEAMS = [
     "Australia", "Bangladesh", "England", "India", "Ireland", "New Zealand",
@@ -153,10 +170,8 @@ def reset_form():
 # Create a row for the buttons - modify to have three equal columns
 col1, col2, col3 = st.columns(3)
 
-# Save button
 with col1:
     if st.button("Save Rankings"):
-        # Check for existing years first
         if not any(st.session_state.current_rankings[pos]['team'] for pos in POSITIONS):
             st.warning("No rankings to save. Please select teams and add ratings.")
         else:
@@ -183,8 +198,19 @@ with col1:
                         rankings_data['Last Updated'].append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                 
                 rankings_df = pd.DataFrame(rankings_data)
-                save_data(rankings_df, append=True)
+                
+                # Update session state with new data
+                if 'rankings_data' in st.session_state:
+                    st.session_state.rankings_data = pd.concat([st.session_state.rankings_data, rankings_df], ignore_index=True)
+                else:
+                    st.session_state.rankings_data = rankings_df
+                
+                # Save to CSV for download
+                save_data(st.session_state.rankings_data)
                 st.success("Rankings saved successfully!")
+                
+                # Force refresh to show new data
+                st.rerun()
 
 # Reset Form button
 with col2:
