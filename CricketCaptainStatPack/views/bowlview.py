@@ -1,4 +1,3 @@
-# Imports and Setup
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,30 +7,32 @@ import random
 
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
-        # Get the bowling dataframe from session state
-        bowl_df = st.session_state['bowl_df'].copy()
-        
-        # Convert Date to datetime if it isn't already
-        bowl_df['Date'] = pd.to_datetime(bowl_df['Date'])
-        # Extract year from datetime
-        bowl_df['Year'] = bowl_df['Date'].dt.year
+        # Get the bowling dataframe with safer date parsing
+        try:
+            bowl_df = st.session_state['bowl_df'].copy()
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+            bowl_df['Year'] = bowl_df['Date'].dt.year
+            
+        except Exception as e:
+            st.error(f"Error processing dates. Using original dates.")
+            bowl_df = st.session_state['bowl_df'].copy()
+            # Try alternate date format
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
+            bowl_df['Year'] = bowl_df['Date'].dt.year
 
-
- ###-------------------------------------HEADER AND FILTERS-------------------------------------###
-        # Display header
+        ###-------------------------------------HEADER AND FILTERS-------------------------------------###
         st.markdown("<h1 style='color:#f04f53; text-align: center;'>Bowling Statistics</h1>", unsafe_allow_html=True)
         
         # Create filter lists
         names = ['All'] + sorted(bowl_df['Name'].unique().tolist())
-        bowl_teams = ['All'] + sorted(bowl_df['Bowl_Team'].unique().tolist())  # Changed from Bowl_Team
-        bat_teams = ['All'] + sorted(bowl_df['Bat_Team'].unique().tolist())    # Changed from Bat_Team
+        bowl_teams = ['All'] + sorted(bowl_df['Bowl_Team'].unique().tolist())
+        bat_teams = ['All'] + sorted(bowl_df['Bat_Team'].unique().tolist())
         match_formats = ['All'] + sorted(bowl_df['Match_Format'].unique().tolist())
         years = sorted(bowl_df['Year'].unique().tolist())
 
         # Create four columns for filters
         col1, col2, col3, col4 = st.columns(4)
         
-        # Add multiselect filters
         with col1:
             name_choice = st.multiselect('Name:', names, default='All')
         with col2:
@@ -47,12 +48,9 @@ def display_bowl_view():
         # Create color dictionary for selected players
         player_colors = {}
         if individual_players:
-            # First selected player gets streamlit red
             player_colors[individual_players[0]] = '#f84e4e'
-            # Generate random colors for additional players
             for name in individual_players[1:]:
                 player_colors[name] = f'#{random.randint(0, 0xFFFFFF):06x}'
-        # Set 'All' color based on selection
         all_color = '#f84e4e' if not individual_players else 'black'
         player_colors['All'] = all_color
 
@@ -126,7 +124,7 @@ def display_bowl_view():
                                 value=(0.0, max_sr),
                                 label_visibility='collapsed')
 
-        ###-------------------------------------APPLY FILTERS-------------------------------------###
+###-------------------------------------APPLY FILTERS-------------------------------------###
         # Create filtered dataframe
         filtered_df = bowl_df.copy()
 
@@ -174,7 +172,6 @@ def display_bowl_view():
         bowlcareer_df['Economy Rate'] = (bowlcareer_df['Runs'] / bowlcareer_df['Overs']).round(2)
         bowlcareer_df['Avg'] = (bowlcareer_df['Runs'] / bowlcareer_df['Wickets']).round(2)
 
-
         # Add additional statistics
         five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby('Name').size().reset_index(name='5W')
         bowlcareer_df = bowlcareer_df.merge(five_wickets, on='Name', how='left')
@@ -191,16 +188,7 @@ def display_bowl_view():
 
         bowlcareer_df = bowlcareer_df.replace([np.inf, -np.inf], np.nan)
 
-       # Final column ordering
-        bowlcareer_df = bowlcareer_df[[
-            'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
-            'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-        ]]
-
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
-
-       # Final column ordering
+        # Final column ordering
         bowlcareer_df = bowlcareer_df[[
             'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
             'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
@@ -260,7 +248,7 @@ def display_bowl_view():
         # Show plot
         st.plotly_chart(scatter_fig)
 
-        ###-------------------------------------FORMAT STATS-------------------------------------###
+###-------------------------------------FORMAT STATS-------------------------------------###
         # Calculate format statistics
         match_wickets = filtered_df.groupby(['Name', 'Match_Format', 'File Name'])['Bowler_Wkts'].sum().reset_index()
         ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Match_Format']).size().reset_index(name='10W')
@@ -305,7 +293,7 @@ def display_bowl_view():
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
         st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
-        
+
 ###-------------------------------------SEASON STATS-------------------------------------###
         # Calculate season statistics
         match_wickets = filtered_df.groupby(['Name', 'Year', 'File Name'])['Bowler_Wkts'].sum().reset_index()
@@ -353,9 +341,6 @@ def display_bowl_view():
         st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
 
         ###-------------------------------------GRAPHS----------------------------------------###
- # Get list of individual players (excluding 'All')
-        individual_players = [name for name in name_choice if name != 'All']
-
         # Create subplots for Bowling Average and Strike Rate
         fig = make_subplots(rows=1, cols=2, subplot_titles=("Bowling Average", "Bowling Strike Rate"))
 
@@ -428,8 +413,6 @@ def display_bowl_view():
                 showlegend=False
             ), row=1, col=2)
 
-        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average & Strike Rate Per Season</h3>", unsafe_allow_html=True)
-
         # Update layout
         fig.update_layout(
             showlegend=True,
@@ -447,7 +430,7 @@ def display_bowl_view():
 
         st.plotly_chart(fig)
 
-        # Create wickets per year chart
+# Create wickets per year chart
         fig = go.Figure()
         
         # Add wickets per year for 'All' if selected
@@ -492,7 +475,6 @@ def display_bowl_view():
             barmode='group'
         )
 
-        # Add gridlines
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
@@ -518,7 +500,7 @@ def display_bowl_view():
             'Bowler_Wkts': 'Wickets'
         })
 
-# Process and sort dates
+        # Process and sort dates
         latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'])
         latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(15)
         latest_inns_df['Date'] = latest_inns_df['Date'].dt.strftime('%d/%m/%Y')
@@ -552,7 +534,7 @@ def display_bowl_view():
 
 ###-------------------------------------OPPONENT STATS-------------------------------------###
         # Calculate statistics dataframe for opponents
-        opponent_summary = bowl_df.groupby(['Name', 'Bat_Team']).agg({
+        opponent_summary = filtered_df.groupby(['Name', 'Bat_Team']).agg({
             'File Name': 'nunique',      # Matches
             'Bowler_Balls': 'sum',
             'Maidens': 'sum',
@@ -569,12 +551,12 @@ def display_bowl_view():
         opponent_summary['WPM'] = (opponent_summary['Wickets'] / opponent_summary['Matches']).round(2)
 
         # Count 5W innings
-        five_wickets = bowl_df[bowl_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Bat_Team']).size().reset_index(name='5W')
+        five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Bat_Team']).size().reset_index(name='5W')
         opponent_summary = opponent_summary.merge(five_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left')
         opponent_summary['5W'] = opponent_summary['5W'].fillna(0).astype(int)
 
         # Count 10W matches
-        match_wickets = bowl_df.groupby(['Name', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+        match_wickets = filtered_df.groupby(['Name', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
         ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Bat_Team']).size().reset_index(name='10W')
         opponent_summary = opponent_summary.merge(ten_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left')
         opponent_summary['10W'] = opponent_summary['10W'].fillna(0).astype(int)
@@ -590,25 +572,19 @@ def display_bowl_view():
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
         st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
+
         # Create opponent averages graph
-# Create opponent averages graph
         fig = go.Figure()
 
-        # Get list of individual players (excluding 'All')
-        individual_players = [name for name in name_choice if name != 'All']
-
-        # Always calculate and show 'All' stats if it's selected
+        # Calculate and show 'All' stats if it's selected
         if 'All' in name_choice:
-            # Calculate aggregate stats for all players
-            all_opponent_stats = bowl_df.groupby(['Bat_Team']).agg({
+            all_opponent_stats = filtered_df.groupby(['Bat_Team']).agg({
                 'Bowler_Runs': 'sum',
                 'Bowler_Wkts': 'sum'
             }).reset_index()
             
-            # Calculate bowling average
             all_opponent_stats['Average'] = (all_opponent_stats['Bowler_Runs'] / all_opponent_stats['Bowler_Wkts']).round(2)
             
-            # Use streamlit red if only 'All' selected, black if names also selected
             all_color = '#f84e4e' if not individual_players else 'black'
             
             fig.add_trace(
@@ -622,20 +598,15 @@ def display_bowl_view():
                 )
             )
 
-        # Calculate individual player stats
-        opponent_stats = bowl_df.groupby(['Name', 'Bat_Team']).agg({
-            'Bowler_Runs': 'sum',
-            'Bowler_Wkts': 'sum'
-        }).reset_index()
-
-        # Calculate bowling average against each opponent
-        opponent_stats['Average'] = (opponent_stats['Bowler_Runs'] / opponent_stats['Bowler_Wkts']).round(2)
-
-        # Add traces for individually selected players
+        # Add individual player traces
         for i, name in enumerate(individual_players):
-            player_data = opponent_stats[opponent_stats['Name'] == name]
+            player_data = filtered_df[filtered_df['Name'] == name].groupby('Bat_Team').agg({
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
             
-            # First player gets streamlit red, others get random colors
+            player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
+            
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
             
             fig.add_trace(
@@ -664,15 +635,14 @@ def display_bowl_view():
             barmode='group'
         )
 
-        # Update axes to show gridlines
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
         st.plotly_chart(fig)
 
-        ###-------------------------------------LOCATION STATS-------------------------------------###
+ ###-------------------------------------LOCATION STATS-------------------------------------###
         # Calculate statistics dataframe for locations
-        location_summary = bowl_df.groupby(['Name', 'Home_Team']).agg({
+        location_summary = filtered_df.groupby(['Name', 'Home_Team']).agg({
             'File Name': 'nunique',      # Matches
             'Bowler_Balls': 'sum',
             'Maidens': 'sum',
@@ -689,12 +659,12 @@ def display_bowl_view():
         location_summary['WPM'] = (location_summary['Wickets'] / location_summary['Matches']).round(2)
 
         # Count 5W innings
-        five_wickets = bowl_df[bowl_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Home_Team']).size().reset_index(name='5W')
+        five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Home_Team']).size().reset_index(name='5W')
         location_summary = location_summary.merge(five_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left')
         location_summary['5W'] = location_summary['5W'].fillna(0).astype(int)
 
         # Count 10W matches
-        match_wickets = bowl_df.groupby(['Name', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+        match_wickets = filtered_df.groupby(['Name', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
         ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Home_Team']).size().reset_index(name='10W')
         location_summary = location_summary.merge(ten_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left')
         location_summary['10W'] = location_summary['10W'].fillna(0).astype(int)
@@ -710,31 +680,19 @@ def display_bowl_view():
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
         st.dataframe(location_summary, use_container_width=True, hide_index=True)
-# Create graph
+
+        # Create location averages graph
         fig = go.Figure()
-
-        # Calculate individual player stats
-        location_stats = bowl_df.groupby(['Name', 'Home_Team']).agg({
-            'Bowler_Runs': 'sum',
-            'Bowler_Wkts': 'sum'
-        }).reset_index()
-
-        # Calculate bowling average at each location
-        location_stats['Average'] = (location_stats['Bowler_Runs'] / location_stats['Bowler_Wkts']).round(2)
-
-        # Get list of individual players (excluding 'All')
-        individual_players = [name for name in name_choice if name != 'All']
 
         # Add 'All' trace first if selected
         if 'All' in name_choice:
-            all_location_stats = bowl_df.groupby(['Home_Team']).agg({
+            all_location_stats = filtered_df.groupby(['Home_Team']).agg({
                 'Bowler_Runs': 'sum',
                 'Bowler_Wkts': 'sum'
             }).reset_index()
             
             all_location_stats['Average'] = (all_location_stats['Bowler_Runs'] / all_location_stats['Bowler_Wkts']).round(2)
             
-            # Use streamlit red if only 'All' selected, black if names also selected
             all_color = '#f84e4e' if not individual_players else 'black'
             
             fig.add_trace(
@@ -750,9 +708,13 @@ def display_bowl_view():
 
         # Add individual player traces
         for i, name in enumerate(individual_players):
-            player_data = location_stats[location_stats['Name'] == name]
+            player_data = filtered_df[filtered_df['Name'] == name].groupby('Home_Team').agg({
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
             
-            # First player gets streamlit red, others get random colors
+            player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
+            
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
             
             fig.add_trace(
@@ -791,7 +753,7 @@ def display_bowl_view():
 
 ###-------------------------------------INNINGS STATS-------------------------------------###
         # Calculate statistics dataframe for innings
-        innings_summary = bowl_df.groupby(['Name', 'Innings']).agg({
+        innings_summary = filtered_df.groupby(['Name', 'Innings']).agg({
             'File Name': 'nunique',      # Matches
             'Bowler_Balls': 'sum',
             'Maidens': 'sum',
@@ -808,12 +770,12 @@ def display_bowl_view():
         innings_summary['WPM'] = (innings_summary['Wickets'] / innings_summary['Matches']).round(2)
 
         # Count 5W innings
-        five_wickets = bowl_df[bowl_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
+        five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
         innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left')
         innings_summary['5W'] = innings_summary['5W'].fillna(0).astype(int)
 
         # Count 10W matches
-        match_wickets = bowl_df.groupby(['Name', 'Innings', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+        match_wickets = filtered_df.groupby(['Name', 'Innings', 'File Name'])['Bowler_Wkts'].sum().reset_index()
         ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Innings']).size().reset_index(name='10W')
         innings_summary = innings_summary.merge(ten_wickets, on=['Name', 'Innings'], how='left')
         innings_summary['10W'] = innings_summary['10W'].fillna(0).astype(int)
@@ -830,31 +792,18 @@ def display_bowl_view():
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
         st.dataframe(innings_summary, use_container_width=True, hide_index=True)
 
-        # Create graph
+        # Create innings averages graph
         fig = go.Figure()
-
-        # Calculate individual player stats for graph
-        innings_stats = bowl_df.groupby(['Name', 'Innings']).agg({
-            'Bowler_Runs': 'sum',
-            'Bowler_Wkts': 'sum'
-        }).reset_index()
-
-        # Calculate bowling average for each innings
-        innings_stats['Average'] = (innings_stats['Bowler_Runs'] / innings_stats['Bowler_Wkts']).round(2)
-
-        # Get list of individual players (excluding 'All')
-        individual_players = [name for name in name_choice if name != 'All']
 
         # Add 'All' trace first if selected
         if 'All' in name_choice:
-            all_innings_stats = bowl_df.groupby(['Innings']).agg({
+            all_innings_stats = filtered_df.groupby(['Innings']).agg({
                 'Bowler_Runs': 'sum',
                 'Bowler_Wkts': 'sum'
             }).reset_index()
             
             all_innings_stats['Average'] = (all_innings_stats['Bowler_Runs'] / all_innings_stats['Bowler_Wkts']).round(2)
             
-            # Use streamlit red if only 'All' selected, black if names also selected
             all_color = '#f84e4e' if not individual_players else 'black'
             
             fig.add_trace(
@@ -870,9 +819,13 @@ def display_bowl_view():
 
         # Add individual player traces
         for i, name in enumerate(individual_players):
-            player_data = innings_stats[innings_stats['Name'] == name]
+            player_data = filtered_df[filtered_df['Name'] == name].groupby('Innings').agg({
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
             
-            # First player gets streamlit red, others get random colors
+            player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
+            
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
             
             fig.add_trace(
@@ -898,7 +851,7 @@ def display_bowl_view():
             font=dict(size=12),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            xaxis={'categoryorder':'array', 'categoryarray':[1,2,3,4]},  # Force innings order
+            xaxis={'categoryorder':'array', 'categoryarray':[1,2,3,4]},
             barmode='group'
         )
 
@@ -911,7 +864,7 @@ def display_bowl_view():
 
 ###-------------------------------------POSITION STATS-------------------------------------###
         # Calculate statistics dataframe for position
-        position_summary = bowl_df.groupby(['Name', 'Position']).agg({
+        position_summary = filtered_df.groupby(['Name', 'Position']).agg({
             'File Name': 'nunique',      # Matches
             'Bowler_Balls': 'sum',
             'Maidens': 'sum',
@@ -928,12 +881,12 @@ def display_bowl_view():
         position_summary['WPM'] = (position_summary['Wickets'] / position_summary['Matches']).round(2)
 
         # Count 5W innings
-        five_wickets = bowl_df[bowl_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Position']).size().reset_index(name='5W')
+        five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Position']).size().reset_index(name='5W')
         position_summary = position_summary.merge(five_wickets, on=['Name', 'Position'], how='left')
         position_summary['5W'] = position_summary['5W'].fillna(0).astype(int)
 
         # Count 10W matches
-        match_wickets = bowl_df.groupby(['Name', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+        match_wickets = filtered_df.groupby(['Name', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
         ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Position']).size().reset_index(name='10W')
         position_summary = position_summary.merge(ten_wickets, on=['Name', 'Position'], how='left')
         position_summary['10W'] = position_summary['10W'].fillna(0).astype(int)
@@ -950,31 +903,18 @@ def display_bowl_view():
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
         st.dataframe(position_summary, use_container_width=True, hide_index=True)
 
-        # Create graph
+        # Create position averages graph
         fig = go.Figure()
-
-        # Calculate individual player stats for graph
-        position_stats = bowl_df.groupby(['Name', 'Position']).agg({
-            'Bowler_Runs': 'sum',
-            'Bowler_Wkts': 'sum'
-        }).reset_index()
-
-        # Calculate bowling average for each position
-        position_stats['Average'] = (position_stats['Bowler_Runs'] / position_stats['Bowler_Wkts']).round(2)
-
-        # Get list of individual players (excluding 'All')
-        individual_players = [name for name in name_choice if name != 'All']
 
         # Add 'All' trace first if selected
         if 'All' in name_choice:
-            all_position_stats = bowl_df.groupby(['Position']).agg({
+            all_position_stats = filtered_df.groupby(['Position']).agg({
                 'Bowler_Runs': 'sum',
                 'Bowler_Wkts': 'sum'
             }).reset_index()
             
             all_position_stats['Average'] = (all_position_stats['Bowler_Runs'] / all_position_stats['Bowler_Wkts']).round(2)
             
-            # Use streamlit red if only 'All' selected, black if names also selected
             all_color = '#f84e4e' if not individual_players else 'black'
             
             fig.add_trace(
@@ -990,9 +930,13 @@ def display_bowl_view():
 
         # Add individual player traces
         for i, name in enumerate(individual_players):
-            player_data = position_stats[position_stats['Name'] == name]
+            player_data = filtered_df[filtered_df['Name'] == name].groupby('Position').agg({
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
             
-            # First player gets streamlit red, others get random colors
+            player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
+            
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
             
             fig.add_trace(
@@ -1018,7 +962,7 @@ def display_bowl_view():
             font=dict(size=12),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            xaxis={'categoryorder':'array', 'categoryarray':[1,2,3,4,5,6,7,8,9,10,11]},  # Force position order
+            xaxis={'categoryorder':'array', 'categoryarray':[1,2,3,4,5,6,7,8,9,10,11]},
             barmode='group'
         )
 
@@ -1030,15 +974,13 @@ def display_bowl_view():
         st.plotly_chart(fig)
 
 ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
-
-
         # Create initial df_bowl from filtered bowl_df
         df_bowl = filtered_df.copy()
 
         # Convert the 'Date' column to datetime format for proper chronological sorting
         df_bowl['Date'] = pd.to_datetime(df_bowl['Date'], format='%d %b %Y').dt.date
 
-        # Sort the DataFrame by 'Name', 'Match_Format', and the 'Date' column (now in datetime format)
+        # Sort the DataFrame by 'Name', 'Match_Format', and the 'Date' column
         df_bowl = df_bowl.sort_values(by=['Name', 'Match_Format', 'Date'])
 
         # Only process if there is data for the selected player
@@ -1105,7 +1047,6 @@ def display_bowl_view():
             st.warning("No bowling data available for the selected player.")
 
 ###----------------------GRAPHS--------------------------###
-
         # Create subplots for Cumulative Average, Strike Rate, and Economy
         fig = make_subplots(rows=1, cols=3, subplot_titles=("Cumulative Average", "Cumulative Strike Rate", "Cumulative Economy"))
 
@@ -1152,8 +1093,6 @@ def display_bowl_view():
                 showlegend=False
             ), row=1, col=3)
 
-        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Bowling Statistics Progression</h3>", unsafe_allow_html=True)
-
         # Update layout
         fig.update_layout(
             showlegend=True,
@@ -1177,157 +1116,138 @@ def display_bowl_view():
         # Display the figure
         st.plotly_chart(fig, use_container_width=True)
 
+###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
+        # Create DataFrame for block stats from filtered_df
+        df_blockbowl = filtered_df.copy()
+
+        # Only process if there is data for the selected player
+        if not df_blockbowl.empty:
+            # Sort by Name and Date to ensure chronological order
+            df_blockbowl = df_blockbowl.sort_values(by=['Name', 'Match_Format', 'Date'])
+
+            # Create innings number and innings range
+            df_blockbowl['Innings_Number'] = df_blockbowl.groupby(['Name', 'Match_Format']).cumcount() + 1
+            df_blockbowl['Innings_Range'] = (((df_blockbowl['Innings_Number'] - 1) // 20) * 20).astype(str) + '-' + \
+                                    ((((df_blockbowl['Innings_Number'] - 1) // 20) * 20 + 19)).astype(str)
+            df_blockbowl['Range_Start'] = ((df_blockbowl['Innings_Number'] - 1) // 20) * 20
+
+            # Group by blocks and calculate statistics
+            block_stats_df = df_blockbowl.groupby(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg({
+                'Innings_Number': 'count',
+                'Bowler_Balls': 'sum',
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum',
+                'Date': ['first', 'last']
+            }).reset_index()
+
+            # Flatten the column names
+            block_stats_df.columns = ['Name', 'Match_Format', 'Innings_Range', 'Range_Start',
+                                    'Innings', 'Balls', 'Runs', 'Wickets',
+                                    'First_Date', 'Last_Date']
+
+            # Calculate statistics for each block
+            block_stats_df['Overs'] = (block_stats_df['Balls'] // 6) + (block_stats_df['Balls'] % 6) / 10
+            block_stats_df['Average'] = (block_stats_df['Runs'] / block_stats_df['Wickets']).round(2)
+            block_stats_df['Strike_Rate'] = (block_stats_df['Balls'] / block_stats_df['Wickets']).round(2)
+            block_stats_df['Economy'] = (block_stats_df['Runs'] / block_stats_df['Overs']).round(2)
+
+            # Format dates properly before creating date range
+            block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
+            block_stats_df['Last_Date'] = pd.to_datetime(block_stats_df['Last_Date']).dt.strftime('%d/%m/%Y')
+            
+            # Create date range column
+            block_stats_df['Date_Range'] = block_stats_df['First_Date'] + ' to ' + block_stats_df['Last_Date']
+
+            # Sort the DataFrame
+            block_stats_df = block_stats_df.sort_values(['Name', 'Match_Format', 'Range_Start'])
+
+            # Select and order final columns
+            final_columns = [
+                'Name', 'Match_Format', 'Innings_Range', 'Date_Range',
+                'Innings', 'Overs', 'Runs', 'Wickets',
+                'Average', 'Strike_Rate', 'Economy'
+            ]
+            block_stats_df = block_stats_df[final_columns]
+
+            # Handle any infinities and NaN values
+            block_stats_df = block_stats_df.replace([np.inf, -np.inf], np.nan)
+
+            # Store the final DataFrame
+            df_blocks = block_stats_df.copy()
+
+            # Display the block statistics
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
+            st.dataframe(df_blocks, use_container_width=True, hide_index=True)
+
+            # Create the figure for bowling averages by innings range
+            fig = go.Figure()
+
+            # Handle 'All' selection
+            if 'All' in name_choice:
+                all_blocks = df_blocks.groupby('Innings_Range').agg({
+                    'Runs': 'sum',
+                    'Wickets': 'sum'
+                }).reset_index()
+                
+                all_blocks['Average'] = (all_blocks['Runs'] / all_blocks['Wickets']).round(2)
+                
+                all_blocks = all_blocks.sort_values('Innings_Range', 
+                    key=lambda x: [int(i.split('-')[0]) for i in x])
+                
+                all_color = '#f84e4e' if not individual_players else 'black'
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=all_blocks['Innings_Range'],
+                        y=all_blocks['Average'],
+                        name='All Players',
+                        marker_color=all_color
+                    )
+                )
+
+            # Add individual player traces
+            for i, name in enumerate(individual_players):
+                player_blocks = df_blocks[df_blocks['Name'] == name].sort_values('Innings_Range', 
+                    key=lambda x: [int(i.split('-')[0]) for i in x])
+                
+                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=player_blocks['Innings_Range'],
+                        y=player_blocks['Average'],
+                        name=name,
+                        marker_color=color
+                    )
+                )
+
+            # Update layout
+            fig.update_layout(
+                showlegend=True,
+                height=500,
+                xaxis_title='Innings Range',
+                yaxis_title='Bowling Average',
+                margin=dict(l=50, r=50, t=70, b=50),
+                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                barmode='group',
+                xaxis={'categoryorder': 'array', 
+                    'categoryarray': sorted(df_blocks['Innings_Range'].unique(), 
+                                         key=lambda x: int(x.split('-')[0]))}
+            )
+
+            # Add gridlines
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+            # Display title and graph
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
+            st.plotly_chart(fig, use_container_width=True)
+
     # Error handling for missing data
     else:
         st.error("Bowling statistics are not available. Please ensure you have processed the scorecards on the Home page.")
-
-###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
-
-    # Create DataFrame for block stats from filtered_df
-    df_blockbowl = filtered_df.copy()
-
-    # Only process if there is data for the selected player
-    if not df_blockbowl.empty:
-        # Sort by Name and Date to ensure chronological order
-        df_blockbowl = df_blockbowl.sort_values(by=['Name', 'Match_Format', 'Date'])
-
-        # Create innings number and innings range
-        df_blockbowl['Innings_Number'] = df_blockbowl.groupby(['Name', 'Match_Format']).cumcount() + 1
-        df_blockbowl['Innings_Range'] = (((df_blockbowl['Innings_Number'] - 1) // 20) * 20).astype(str) + '-' + \
-                                ((((df_blockbowl['Innings_Number'] - 1) // 20) * 20 + 19)).astype(str)
-        df_blockbowl['Range_Start'] = ((df_blockbowl['Innings_Number'] - 1) // 20) * 20
-
-        # Group by blocks and calculate statistics
-        block_stats_df = df_blockbowl.groupby(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg({
-            'Innings_Number': 'count',        # Number of innings in block
-            'Bowler_Balls': 'sum',           # Balls in block
-            'Bowler_Runs': 'sum',            # Runs in block
-            'Bowler_Wkts': 'sum',            # Wickets in block
-            'Date': ['first', 'last']        # Keep first and last dates
-        }).reset_index()
-
-        # Flatten the column names
-        block_stats_df.columns = ['Name', 'Match_Format', 'Innings_Range', 'Range_Start',
-                                'Innings', 'Balls', 'Runs', 'Wickets',
-                                'First_Date', 'Last_Date']
-
-        # Calculate statistics for each block
-        block_stats_df['Overs'] = (block_stats_df['Balls'] // 6) + (block_stats_df['Balls'] % 6) / 10
-        block_stats_df['Average'] = (block_stats_df['Runs'] / block_stats_df['Wickets']).round(2)
-        block_stats_df['Strike_Rate'] = (block_stats_df['Balls'] / block_stats_df['Wickets']).round(2)
-        block_stats_df['Economy'] = (block_stats_df['Runs'] / block_stats_df['Overs']).round(2)
-
-        # Format dates properly before creating date range
-        block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
-        block_stats_df['Last_Date'] = pd.to_datetime(block_stats_df['Last_Date']).dt.strftime('%d/%m/%Y')
-        
-        # Create date range column
-        block_stats_df['Date_Range'] = block_stats_df['First_Date'] + ' to ' + block_stats_df['Last_Date']
-
-        # Sort the DataFrame
-        block_stats_df = block_stats_df.sort_values(['Name', 'Match_Format', 'Range_Start'])
-
-        # Select and order final columns
-        final_columns = [
-            'Name', 'Match_Format', 'Innings_Range', 'Date_Range',
-            'Innings', 'Overs', 'Runs', 'Wickets',
-            'Average', 'Strike_Rate', 'Economy'
-        ]
-        block_stats_df = block_stats_df[final_columns]
-
-        # Handle any infinities and NaN values
-        block_stats_df = block_stats_df.replace([np.inf, -np.inf], np.nan)
-
-        # Store the final DataFrame
-        df_blocks = block_stats_df.copy()
-
-
-
-        # Display the block statistics
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
-        st.dataframe(df_blocks, use_container_width=True, hide_index=True)
-
-    # When selecting final columns in the previous code, include Range_Start:
-    final_columns = [
-        'Name', 'Match_Format', 'Innings_Range', 'Range_Start', 'Date_Range',
-        'Innings', 'Overs', 'Runs', 'Wickets',
-        'Average', 'Strike_Rate', 'Economy'
-    ]
-
-    # Then for the chart:
-    # Create the figure for bowling averages by innings range
-    fig = go.Figure()
-
-    # Get list of individual players (excluding 'All')
-    individual_players = [name for name in name_choice if name != 'All']
-
-    # Handle 'All' selection
-    if 'All' in name_choice:
-        # Group by Innings_Range and calculate stats
-        all_players_blocks = df_blocks.groupby('Innings_Range').agg({
-            'Runs': 'sum',
-            'Wickets': 'sum'
-        }).reset_index()
-        
-        # Calculate average
-        all_players_blocks['Average'] = (all_players_blocks['Runs'] / all_players_blocks['Wickets']).round(2)
-        
-        # Sort by the first number in the range
-        all_players_blocks = all_players_blocks.sort_values('Innings_Range', 
-            key=lambda x: [int(i.split('-')[0]) for i in x])
-        
-        # Use streamlit red if only 'All' selected, black if names also selected
-        all_color = '#f84e4e' if not individual_players else 'black'
-        
-        fig.add_trace(
-            go.Bar(
-                x=all_players_blocks['Innings_Range'],
-                y=all_players_blocks['Average'],
-                name='All Players',
-                marker_color=all_color
-            )
-        )
-
-    # Add individual player traces
-    for i, name in enumerate(individual_players):
-        player_blocks = df_blocks[df_blocks['Name'] == name].sort_values('Innings_Range', 
-            key=lambda x: [int(i.split('-')[0]) for i in x])
-        
-        # First player gets streamlit red, others get random colors
-        color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-        
-        fig.add_trace(
-            go.Bar(
-                x=player_blocks['Innings_Range'],
-                y=player_blocks['Average'],
-                name=name,
-                marker_color=color
-            )
-        )
-
-    # Update layout
-    fig.update_layout(
-        showlegend=True,
-        height=500,
-        xaxis_title='Innings Range',
-        yaxis_title='Bowling Average',
-        margin=dict(l=50, r=50, t=70, b=50),
-        font=dict(size=12),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        barmode='group',
-        xaxis={'categoryorder': 'array', 
-            'categoryarray': sorted(df_blocks['Innings_Range'].unique(), 
-                                    key=lambda x: int(x.split('-')[0]))}
-    )
-
-    # Add gridlines
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-    # Display title and graph
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
 
 # Display the bowling view
 display_bowl_view()
