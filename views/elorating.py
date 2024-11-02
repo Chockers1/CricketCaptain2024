@@ -497,7 +497,7 @@ if 'elo_df' in st.session_state:
                     'Team': team,
                     'Months at #1': count
                 })
-        
+          ###
         summary_df = pd.DataFrame(summary_rows)
         
         # Sort by Format and then by number of months (descending)
