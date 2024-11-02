@@ -378,13 +378,54 @@ if 'elo_df' in st.session_state:
     # Create a copy of the DataFrame
     elo_df = st.session_state['elo_df'].copy()
     
-    # More flexible date conversion
+    def safe_parse_date(date_str):
+        """Helper function to safely parse dates"""
+        if pd.isna(date_str):
+            return pd.NaT
+        
+        # If already datetime, return as is
+        if isinstance(date_str, (pd.Timestamp, np.datetime64)):
+            return date_str
+        
+        # Convert to string if not already
+        if not isinstance(date_str, str):
+            date_str = str(date_str)
+        
+        # Try different date formats
+        formats = [
+            '%d %b %Y',  # 8 Jun 2024
+            '%d %B %Y',  # 8 June 2024
+            '%Y-%m-%d',  # 2024-06-08
+            '%d/%m/%Y',  # 08/06/2024
+            '%m/%d/%Y'   # 06/08/2024
+        ]
+        
+        for fmt in formats:
+            try:
+                return pd.to_datetime(date_str, format=fmt)
+            except:
+                continue
+        
+        # If all specific formats fail, try pandas' flexible parser
+        try:
+            return pd.to_datetime(date_str)
+        except:
+            st.error(f"Could not parse date: {date_str}")
+            return pd.NaT
+    
     try:
-        if not pd.api.types.is_datetime64_any_dtype(elo_df['Date']):
-            # Convert to string first to ensure consistent handling
-            elo_df['Date'] = elo_df['Date'].astype(str)
-            # Use flexible parser with dayfirst=True since dates are in DD MMM YYYY format
-            elo_df['Date'] = pd.to_datetime(elo_df['Date'], format='mixed', dayfirst=True)
+        # Apply the safe parse function to the Date column
+        elo_df['Date'] = elo_df['Date'].apply(safe_parse_date)
+        
+        # Remove any invalid dates
+        invalid_dates = elo_df['Date'].isna().sum()
+        if invalid_dates > 0:
+            st.warning(f"Removed {invalid_dates} rows with invalid dates")
+            elo_df = elo_df.dropna(subset=['Date'])
+        
+        if len(elo_df) == 0:
+            st.error("No valid dates remain after parsing")
+            st.stop()
         
         # Create end of month date for each row
         elo_df['Month_End'] = elo_df['Date'].dt.to_period('M').dt.to_timestamp(how='end')
@@ -500,6 +541,6 @@ if 'elo_df' in st.session_state:
     except Exception as e:
         st.error(f"Error processing data: {str(e)}")
         # Add debugging information
-        st.write("Debug - Sample of dates:", elo_df['Date'].head())
+        st.write("Debug - First few dates before conversion:", elo_df['Date'].head().tolist())
         st.write("Debug - Date column type:", elo_df['Date'].dtype)
         st.stop()
