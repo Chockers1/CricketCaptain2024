@@ -378,10 +378,13 @@ if 'elo_df' in st.session_state:
     # Create a copy of the DataFrame
     elo_df = st.session_state['elo_df'].copy()
     
-    # Convert Date to datetime using the correct format for abbreviated month names
+    # More flexible date conversion
     try:
         if not pd.api.types.is_datetime64_any_dtype(elo_df['Date']):
-            elo_df['Date'] = pd.to_datetime(elo_df['Date'], format='%d %b %Y')
+            # Convert to string first to ensure consistent handling
+            elo_df['Date'] = elo_df['Date'].astype(str)
+            # Use flexible parser with dayfirst=True since dates are in DD MMM YYYY format
+            elo_df['Date'] = pd.to_datetime(elo_df['Date'], format='mixed', dayfirst=True)
         
         # Create end of month date for each row
         elo_df['Month_End'] = elo_df['Date'].dt.to_period('M').dt.to_timestamp(how='end')
@@ -496,4 +499,7 @@ if 'elo_df' in st.session_state:
             
     except Exception as e:
         st.error(f"Error processing data: {str(e)}")
+        # Add debugging information
+        st.write("Debug - Sample of dates:", elo_df['Date'].head())
+        st.write("Debug - Date column type:", elo_df['Date'].dtype)
         st.stop()
