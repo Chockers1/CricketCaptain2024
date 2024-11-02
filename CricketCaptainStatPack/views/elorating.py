@@ -9,11 +9,11 @@ def parse_date(date_str):
         # Try different date formats
         for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
             try:
-                return pd.to_datetime(date_str, format=fmt)  # Removed .date()
+                return pd.to_datetime(date_str, format=fmt).date()  # Added .date() to remove time
             except ValueError:
                 continue
         # If none of the specific formats work, let pandas try to infer the format
-        return pd.to_datetime(date_str)  # Removed .date()
+        return pd.to_datetime(date_str).date()  # Added .date() to remove time
     except Exception:
         return pd.NaT
 
@@ -100,7 +100,7 @@ if 'match_df' in st.session_state:
     match_df = st.session_state['match_df'].copy()
     
     # Convert to datetime for proper sorting
-    match_df['Date_Sort'] = pd.to_datetime(match_df['Date'])
+    match_df['Date_Sort'] = match_df['Date'].apply(parse_date)
     # Sort DataFrame by date
     match_df_sorted = match_df.sort_values('Date_Sort')
     
@@ -210,10 +210,12 @@ if 'match_df' in st.session_state:
     away_df['Location'] = 'Away'
     away_df['Elo_Change'] = away_df['Team_Elo_End'] - away_df['Team_Elo_Start']
 
-# Combine the dataframes
+    # When creating elo_combined_df, ensure dates are properly parsed
+    home_df['Date'] = home_df['Date'].apply(parse_date)
+    away_df['Date'] = away_df['Date'].apply(parse_date)
     elo_combined_df = pd.concat([home_df, away_df], ignore_index=True)
     
-    # Store the combined dataframe in session state for later use
+    # Store the combined dataframe in session state
     st.session_state['elo_df'] = elo_combined_df
     st.session_state['match_df_with_elo'] = match_df_sorted
     st.session_state['current_elo_ratings'] = elo_ratings
@@ -373,110 +375,156 @@ if current_ratings:  # Only create and display if we have ratings after filterin
     # Display the plot
     st.plotly_chart(fig, use_container_width=True)
 ############===================number 1 per format==============================###############
+############===================number 1 per format==============================###############
 if 'elo_df' in st.session_state:
-    # Convert Date to datetime if it isn't already
-    elo_df = st.session_state['elo_df'].copy()
-    elo_df['Date'] = pd.to_datetime(elo_df['Date'])
-    
-    # Create end of month date for each row
-    elo_df['Month_End'] = elo_df['Date'].dt.to_period('M').dt.to_timestamp(how='end')
-    
-    # Get min and max dates
-    min_date = elo_df['Date'].min()
-    max_date = elo_df['Date'].max()
-    
-    # Create date range for all months
-    date_range = pd.date_range(
-        start=min_date.replace(day=1),
-        end=max_date,
-        freq='M'
-    )
-    
-    # Initialize results dictionary
-    monthly_leaders = {date: {} for date in date_range}
-    
-    # For each format and month, find the team with highest Elo
-    for format_name in elo_df['Match_Format'].unique():
-        format_data = elo_df[elo_df['Match_Format'] == format_name]
+    try:
+        # Create a copy of the DataFrame
+        elo_df = st.session_state['elo_df'].copy()
         
-        for month_end in date_range:
-            # Get all matches up to this month end
-            matches_until_month = format_data[format_data['Date'] <= month_end]
+        def parse_date(date_str):
+            """Helper function to parse dates in multiple formats"""
+            try:
+                # Try different date formats
+                for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()  # Added .date() to remove time
+                    except ValueError:
+                        continue
+                # If none of the specific formats work, let pandas try to infer the format
+                return pd.to_datetime(date_str).date()  # Added .date() to remove time
+            except Exception:
+                return pd.NaT
+        
+        # Convert Date to datetime using our parse_date function
+        elo_df['Date'] = elo_df['Date'].apply(parse_date)
+        
+        # Remove any invalid dates
+        invalid_dates = elo_df['Date'].isna().sum()
+        if invalid_dates > 0:
+            elo_df = elo_df.dropna(subset=['Date'])
+        
+        if len(elo_df) == 0:
+            st.error("No valid dates found after parsing")
+            st.stop()
+        
+        # Convert dates to datetime for period calculations
+        elo_df['Month_End'] = pd.to_datetime(elo_df['Date']).dt.to_period('M').dt.to_timestamp(how='end')
+        
+        # Get min and max dates
+        min_date = elo_df['Date'].min()
+        max_date = elo_df['Date'].max()
+        
+        # Create date range for all months
+        date_range = pd.date_range(
+            start=pd.to_datetime(min_date).replace(day=1),
+            end=pd.to_datetime(max_date),
+            freq='M'
+        )
+        
+        # Initialize results dictionary
+        monthly_leaders = {date: {} for date in date_range}
+        
+        # Filter for selected format if specified
+        if 'All' not in format_choice:
+            elo_df = elo_df[elo_df['Match_Format'].isin(format_choice)]
+        
+        # For each format and month, find the team with highest Elo
+        for format_name in elo_df['Match_Format'].unique():
+            format_data = elo_df[elo_df['Match_Format'] == format_name]
             
-            if not matches_until_month.empty:
-                # Group by team and get the latest Elo rating for each
-                latest_ratings = matches_until_month.sort_values('Date').groupby('Team').last()
+            for month_end in date_range:
+                # Convert month_end to date for comparison
+                month_end_date = month_end.date()
                 
-                # Find the team with max rating
-                if not latest_ratings.empty:
-                    max_team = latest_ratings.loc[latest_ratings['Team_Elo_End'].idxmax()]
-                    monthly_leaders[month_end][format_name] = (
-                        max_team.name,  # Team name
-                        max_team['Team_Elo_End']  # Elo rating
-                    )
-    
-    # Create a formatted DataFrame
-    formatted_data = []
-    for month, format_data in monthly_leaders.items():
-        row_dict = {'Month': month.strftime('%m-%Y')}
-        # Add a sortable date column
-        row_dict['Sort_Date'] = month
-        for format_name in elo_df['Match_Format'].unique():
-            if format_name in format_data:
-                team, elo = format_data[format_name]
-                row_dict[format_name] = f"{team} - {elo:.1f}"
+                # Get all matches up to this month end
+                matches_until_month = format_data[format_data['Date'] <= month_end_date]
+                
+                if not matches_until_month.empty:
+                    # Group by team and get the latest Elo rating for each
+                    latest_ratings = matches_until_month.sort_values('Date').groupby('Team').last()
+                    
+                    # Find the team with max rating
+                    if not latest_ratings.empty:
+                        max_team = latest_ratings.loc[latest_ratings['Team_Elo_End'].idxmax()]
+                        monthly_leaders[month_end][format_name] = (
+                            max_team.name,  # Team name
+                            max_team['Team_Elo_End']  # Elo rating
+                        )
+        
+        # Create a formatted DataFrame
+        formatted_data = []
+        for month, format_data in monthly_leaders.items():
+            row_dict = {'Month': month.strftime('%m-%Y')}
+            row_dict['Sort_Date'] = month
+            for format_name in elo_df['Match_Format'].unique():
+                if format_name in format_data:
+                    team, elo = format_data[format_name]
+                    row_dict[format_name] = f"{team} - {elo:.1f}"
+                else:
+                    row_dict[format_name] = ""
+            formatted_data.append(row_dict)
+        
+        # Create DataFrame only if we have data
+        if formatted_data:
+            monthly_summary_df = pd.DataFrame(formatted_data)
+            
+            # Sort by date descending and drop the sort column
+            monthly_summary_df = monthly_summary_df.sort_values('Sort_Date', ascending=False).drop('Sort_Date', axis=1)
+            
+            # Display the monthly summary
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Monthly Elo Leaders by Format</h3>", 
+                        unsafe_allow_html=True)
+            st.dataframe(
+                monthly_summary_df,
+                hide_index=True,
+                use_container_width=True,
+                height=600
+            )
+            
+            # Calculate number of months as #1 for each team per format
+            leader_counts = {format_name: {} for format_name in elo_df['Match_Format'].unique()}
+            
+            # Process each row in monthly_summary_df
+            for _, row in monthly_summary_df.iterrows():
+                for format_name in elo_df['Match_Format'].unique():
+                    if format_name in row and row[format_name]:  # Check if there's data for this format
+                        team = row[format_name].split(' - ')[0]  # Extract team name before the hyphen
+                        if team not in leader_counts[format_name]:
+                            leader_counts[format_name][team] = 0
+                        leader_counts[format_name][team] += 1
+            
+            # Convert to DataFrame
+            summary_rows = []
+            for format_name, teams in leader_counts.items():
+                for team, count in teams.items():
+                    summary_rows.append({
+                        'Format': format_name,
+                        'Team': team,
+                        'Months at #1': count
+                    })
+            
+            if summary_rows:
+                summary_df = pd.DataFrame(summary_rows)
+                
+                # Sort by Format and then by number of months (descending)
+                summary_df = summary_df.sort_values(['Format', 'Months at #1'], ascending=[True, False])
+                
+                # Display the summary
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Months as #1 by Team and Format</h3>", 
+                            unsafe_allow_html=True)
+                st.dataframe(
+                    summary_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=600
+                )
             else:
-                row_dict[format_name] = ""
-        formatted_data.append(row_dict)
-    
-    monthly_summary_df = pd.DataFrame(formatted_data)
-    
-    # Sort by date descending and drop the sort column
-    monthly_summary_df = monthly_summary_df.sort_values('Sort_Date', ascending=False).drop('Sort_Date', axis=1)
-    
-    # Display the monthly summary
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Monthly Elo Leaders by Format</h3>", 
-                unsafe_allow_html=True)
-    st.dataframe(
-        monthly_summary_df,
-        hide_index=True,
-        use_container_width=True,
-        height=600
-    )
-    
-    # Calculate number of months as #1 for each team per format
-    leader_counts = {format_name: {} for format_name in elo_df['Match_Format'].unique()}
-    
-    # Process each row in monthly_summary_df
-    for _, row in monthly_summary_df.iterrows():
-        for format_name in elo_df['Match_Format'].unique():
-            if format_name in row and row[format_name]:  # Check if there's data for this format
-                team = row[format_name].split(' - ')[0]  # Extract team name before the hyphen
-                if team not in leader_counts[format_name]:
-                    leader_counts[format_name][team] = 0
-                leader_counts[format_name][team] += 1
-    
-    # Convert to DataFrame
-    summary_rows = []
-    for format_name, teams in leader_counts.items():
-        for team, count in teams.items():
-            summary_rows.append({
-                'Format': format_name,
-                'Team': team,
-                'Months at #1': count
-            })
-    
-    summary_df = pd.DataFrame(summary_rows)
-    
-    # Sort by Format and then by number of months (descending)
-    summary_df = summary_df.sort_values(['Format', 'Months at #1'], ascending=[True, False])
-    
-    # Display the summary
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Months as #1 by Team and Format</h3>", 
-                unsafe_allow_html=True)
-    st.dataframe(
-        summary_df,
-        hide_index=True,
-        use_container_width=True,
-        height=600
-    )
+                st.warning("No summary data available for the selected filters")
+        else:
+            st.warning("No data available for the selected filters")
+            
+    except Exception as e:
+        st.error(f"Error processing data: {str(e)}")
+        st.write("Debug - Sample of dates:", elo_df['Date'].head().tolist())
+        st.write("Debug - Date column type:", elo_df['Date'].dtype)
+        st.stop()
