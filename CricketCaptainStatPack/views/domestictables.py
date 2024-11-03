@@ -41,17 +41,31 @@ COUNTRIES = [
 
 # England Configurations
 ENGLAND_COMPETITIONS = [
-    "County Championship - Division 1",
-    "County Championship - Division 2",
+    "County Championship",
     "Royal London One Day Cup",
     "T20 Blast",
     "The Hundred"
 ]
 
 ENGLAND_TEAMS = [
-    "Derbyshire", "Durham", "Essex", "Gloucestershire", "Hampshire",
-    "Kent", "Lancashire", "Middlesex", "Nottinghamshire", "Surrey", "Glamorgan", "Leicestershire", "Northamptonshire", "Somerset",
-    "Sussex", "Warwickshire", "Worcestershire", "Yorkshire"
+    "Derbyshire",
+    "Durham", 
+    "Essex",
+    "Glamorgan",
+    "Gloucestershire",
+    "Hampshire",
+    "Kent",
+    "Lancashire",
+    "Leicestershire",
+    "Middlesex",
+    "Northamptonshire",
+    "Nottinghamshire",
+    "Somerset",
+    "Surrey",
+    "Sussex",
+    "Warwickshire",
+    "Worcestershire",
+    "Yorkshire"
 ]
 
 HUNDRED_TEAMS = [
@@ -237,20 +251,23 @@ with col1:
 with col2:
     selected_country = st.selectbox("Country", COUNTRIES)
 with col3:
+# When England is selected and County Championship is chosen
     if selected_country == "England":
         selected_competition = st.selectbox("Competition", ENGLAND_COMPETITIONS)
-        if selected_competition == "County Championship - Division 1":
+        if selected_competition == "County Championship":
             default_played = 14
-            division = "Division 1"
             teams = ENGLAND_TEAMS
-            num_positions = 10
-            final_position_options = ["Group Stage", "Relegated", "Runner Up", "Winner"]
-        elif selected_competition == "County Championship - Division 2":
-            default_played = 14
-            division = "Division 2"
-            teams = ENGLAND_TEAMS
-            num_positions = 8
-            final_position_options = ["Group Stage", "Wooden Spoon", "Runner Up", "Winner"]
+            num_positions = 18
+            final_position_options = [
+                "Group Stage",
+                "D1 Winner",
+                "D1 Runner Up",
+                "Relegated",
+                "D2 Winner",
+                "D2 Runner Up",
+                "Wooden Spoon"
+            ]
+            division_options = ["Division 1", "Division 2"]
         elif selected_competition == "Royal London One Day Cup":
             default_played = 8
             num_positions = 18
