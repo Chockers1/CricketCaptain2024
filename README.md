@@ -25,4 +25,4 @@ Add domestic tables from your save to see historical competition data and review
 Elo Rating System for Cricket
 Track your team’s progress with a custom Elo rating, specially designed for County Cricket. Can you lead your team to be #1?
 
-To voew the app go to:  https://cricketcaptainstatspack.streamlit.app/
+To view the app go to:  https://cricketcaptainstatspack.streamlit.app/
