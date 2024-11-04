@@ -1,4 +1,4 @@
-This code allows users of Cricket Captain game franchise to upload .txt files and utilise all the statistics within the game. 
+Transform your Cricket Captain 2024 experience with this powerful Streamlit Web App for comprehensive cricket stats analysis! This web-based tool lets you upload and analyze your scorecards directly from a browser, giving you deeper insights into your Cricket Captain 2024 gameplay. Perfect for cricket fans and managers, this app enhances your career and helps strategize your games with rich visual stats—no Excel or Power BI needed!
 
 🚀 Cricket Captain 2024 Stats Pack Features
 Easy Scorecard Uploads
@@ -24,3 +24,5 @@ Add domestic tables from your save to see historical competition data and review
 
 Elo Rating System for Cricket
 Track your team’s progress with a custom Elo rating, specially designed for County Cricket. Can you lead your team to be #1?
+
+To voew the app go to:  https://cricketcaptainstatspack.streamlit.app/
