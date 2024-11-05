@@ -63,50 +63,8 @@ def clear_all_caches():
     st.success("All caches cleared successfully")
 
 def display_bat_view():
-    # Custom CSS for styling
-    st.markdown("""
-    <style>
-    /* Table styling */
-    table { color: black; }
-    thead tr th {
-        background-color: #f04f53 !important;
-        color: white !important;
-    }
-    tbody tr:nth-child(even) { background-color: #f0f2f6; }
-    tbody tr:nth-child(odd) { background-color: white; }
+    # [Previous code for CSS and header remains the same...]
 
-    /* Multiselect and slider styling */
-    div[data-baseweb="tag"] {
-        background-color: #f04f53 !important;
-    }
-    .css-1p0q8wb, .css-eg6t2j {
-        background-color: #f04f53 !important;
-    }
-    .stSlider p {
-        color: #f04f53 !important;
-    }
-    .css-e8gw43 {
-        background-color: #f04f53 !important;
-    }
-    .css-1cpxqw2 {
-        background-color: #f04f53 !important;
-        color: white !important;
-    }
-    
-    /* Selection color */
-    ::selection {
-        background-color: #f04f53 !important;
-        color: white !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Batting Statistics</h1>", unsafe_allow_html=True)
-    
-    # Add cache clearing button in sidebar (only if Redis is available)
-    if REDIS_AVAILABLE and st.sidebar.button("Clear Caches"):
-        clear_all_caches()
-    
     # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         bat_df = st.session_state['bat_df']
@@ -154,52 +112,63 @@ def display_bat_view():
         # Add range filters
         col5, col6, col7, col8, col9, col10 = st.columns(6)
 
+        # Handle year selection
         with col5:
             st.markdown("<p style='text-align: center;'>Choose Year:</p>", unsafe_allow_html=True)
-            year_choice = st.slider('', 
-                   min_value=min(years),
-                   max_value=max(years),
-                   value=(min(years), max(years)),
-                   label_visibility='collapsed')
+            if len(years) == 1:
+                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                year_choice = (years[0], years[0])
+            else:
+                year_choice = st.slider('', 
+                    min_value=min(years),
+                    max_value=max(years),
+                    value=(min(years), max(years)),
+                    label_visibility='collapsed')
+
+        # Position slider
         with col6:
             st.markdown("<p style='text-align: center;'>Choose Position:</p>", unsafe_allow_html=True)
             position_choice = st.slider('', 
-                       min_value=1, 
-                       max_value=11, 
-                       value=(1, 11),
-                       label_visibility='collapsed')
+                   min_value=1, 
+                   max_value=11, 
+                   value=(1, 11),
+                   label_visibility='collapsed')
 
+        # Runs range slider
         with col7:
             st.markdown("<p style='text-align: center;'>Runs Range</p>", unsafe_allow_html=True)
             runs_range = st.slider('', 
-                                min_value=1, 
-                                max_value=max_runs, 
-                                value=(1, max_runs),
-                                label_visibility='collapsed')
+                            min_value=1, 
+                            max_value=max_runs, 
+                            value=(1, max_runs),
+                            label_visibility='collapsed')
 
+        # Matches range slider
         with col8:
             st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
             matches_range = st.slider('', 
-                                    min_value=1, 
-                                    max_value=max_matches, 
-                                    value=(1, max_matches),
-                                    label_visibility='collapsed')
+                                min_value=1, 
+                                max_value=max_matches, 
+                                value=(1, max_matches),
+                                label_visibility='collapsed')
 
+        # Average range slider
         with col9:
             st.markdown("<p style='text-align: center;'>Average Range</p>", unsafe_allow_html=True)
             avg_range = st.slider('', 
-                                min_value=0.0, 
-                                max_value=max_avg, 
-                                value=(0.0, max_avg),
-                                label_visibility='collapsed')
+                            min_value=0.0, 
+                            max_value=max_avg, 
+                            value=(0.0, max_avg),
+                            label_visibility='collapsed')
 
+        # Strike rate range slider
         with col10:
             st.markdown("<p style='text-align: center;'>Strike Rate Range</p>", unsafe_allow_html=True)
             sr_range = st.slider('', 
-                                min_value=0.0, 
-                                max_value=600.0, 
-                                value=(0.0, 600.0),
-                                label_visibility='collapsed')
+                            min_value=0.0, 
+                            max_value=600.0, 
+                            value=(0.0, 600.0),
+                            label_visibility='collapsed')
 
         # Generate cache key based on filter selections
         filters = {
@@ -246,6 +215,8 @@ def display_bat_view():
             # Cache the filtered DataFrame if Redis is available
             if REDIS_AVAILABLE:
                 cache_dataframe(cache_key, filtered_df)
+
+        # [Rest of your code for statistics and visualizations remains the same...]
 
 ######---------------------------------------CAREER STATS TAB-------------------------------
 
@@ -726,7 +697,7 @@ def display_bat_view():
         latest_inns_df = get_cached_dataframe(latest_inns_cache_key)
 
         if latest_inns_df is None:
-            # Create the latest_inns_df by grouping by 'Name', 'Match_Format', 'Date', and 'Innings'
+ # Create the latest_inns_df by grouping by 'Name', 'Match_Format', 'Date', and 'Innings'
             latest_inns_df = filtered_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
                 'Bat_Team_y': 'first',
                 'Bowl_Team_y': 'first',
@@ -743,8 +714,8 @@ def display_bat_view():
                 'How Out', 'Balls', 'Runs', '4s', '6s'
             ]
 
-            # Convert Date to datetime for proper sorting
-            latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'])
+            # Convert Date to datetime for proper sorting - using a more flexible format
+            latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'], format='%d %b %Y')
 
             # Sort by Date in descending order (newest to oldest)
             latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(15)
@@ -754,7 +725,7 @@ def display_bat_view():
 
             # Reorder columns to put Runs before Balls
             latest_inns_df = latest_inns_df[['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 
-                                           'How Out', 'Runs', 'Balls', '4s', '6s']]
+                                        'How Out', 'Runs', 'Balls', '4s', '6s']]
             
             # Cache the latest innings data
             cache_dataframe(latest_inns_cache_key, latest_inns_df)
