@@ -21,23 +21,36 @@ def display_ar_view():
         bat_df = st.session_state['bat_df'].copy()
         bowl_df = st.session_state['bowl_df'].copy()
 
-        # Create Year columns from Date if they don't exist
-        if 'Year' not in bat_df.columns:
-            bat_df['Year'] = pd.to_datetime(bat_df['Date']).dt.year
-        if 'Year' not in bowl_df.columns:
-            bowl_df['Year'] = pd.to_datetime(bowl_df['Date']).dt.year
+        # Create Year columns from Date with safer date parsing
+        try:
+            # Try to parse dates with the correct format
+            bat_df['Date'] = pd.to_datetime(bat_df['Date'], format='%d %b %Y', errors='coerce')
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+        except:
+            # If that fails, try with dayfirst=True
+            bat_df['Date'] = pd.to_datetime(bat_df['Date'], dayfirst=True, errors='coerce')
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], dayfirst=True, errors='coerce')
 
-        # Convert Year columns to integers
+        # Extract years from the parsed dates
+        bat_df['Year'] = bat_df['Date'].dt.year
+        bowl_df['Year'] = bowl_df['Date'].dt.year
+
+        # Convert Year columns to integers and handle any NaN values
         bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
         bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
 
-        # Get filter options
+        # Get filter options (exclude year 0 from the years list)
         names = ['All'] + sorted(bat_df['Name'].unique().tolist())
-        bat_teams = ['All'] + sorted(bat_df['Bat_Team_y'].unique().tolist())  # Changed from Bat_Team
-        bowl_teams = ['All'] + sorted(bat_df['Bowl_Team_y'].unique().tolist())  # Changed from Bowl_Team
+        bat_teams = ['All'] + sorted(bat_df['Bat_Team_y'].unique().tolist())
+        bowl_teams = ['All'] + sorted(bat_df['Bowl_Team_y'].unique().tolist())
         match_formats = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
         years = sorted(list(set(bat_df['Year'].unique()) | set(bowl_df['Year'].unique())))
-        years = [year for year in years if year != 0]
+        years = [year for year in years if year != 0]  # Remove year 0 if present
+
+        # Check if we have any valid years
+        if not years:
+            st.error("No valid dates found in the data.")
+            return
 
         # Create first row of filters
         col1, col2, col3, col4 = st.columns(4)
@@ -63,54 +76,35 @@ def display_ar_view():
             filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
             filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
         if 'All' not in bat_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]  # Changed from Bat_Team
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
         if 'All' not in bowl_team_choice:
             filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
 
-        # First apply basic filters to get initial stats
-        filtered_bat_df = bat_df.copy()
-        filtered_bowl_df = bowl_df.copy()
-        
-        # Apply name and format filters
-        if 'All' not in name_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Name'].isin(name_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Name'].isin(name_choice)]
-        if 'All' not in match_format_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
-        if 'All' not in bat_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team'].isin(bat_team_choice)]
-        if 'All' not in bowl_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team'].isin(bowl_team_choice)]
-
         # Calculate initial career stats for max values
-        initial_merged_df = pd.merge(
-            filtered_bat_df,
-            filtered_bowl_df,
-            on=['File Name', 'Name', 'Innings'],
-            how='outer',
-            suffixes=('_bat', '_bowl')
-        )
-
-        initial_stats = initial_merged_df.groupby('Name').agg({
-            'File Name': 'nunique',
-            'Batted': 'sum',
-            'Out': 'sum',
-            'Balls': 'sum',
-            'Runs': 'sum',
-            'Bowler_Balls': 'sum',
-            'Bowler_Runs': 'sum',
-            'Bowler_Wkts': 'sum'
-        }).reset_index()
+        initial_stats = pd.merge(
+            filtered_bat_df.groupby('Name').agg({
+                'File Name': 'nunique',
+                'Runs': 'sum',
+                'Out': 'sum',
+                'Balls': 'sum'
+            }).reset_index(),
+            filtered_bowl_df.groupby('Name').agg({
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum',
+                'Bowler_Balls': 'sum'
+            }).reset_index(),
+            on='Name',
+            how='outer'
+        ).fillna(0)
 
         # Calculate max values for filters
         max_matches = int(initial_stats['File Name'].max())
         max_runs = int(initial_stats['Runs'].max())
         max_wickets = int(initial_stats['Bowler_Wkts'].max())
-        
+
         # Calculate averages for max values
-        initial_stats['Bat Avg'] = (initial_stats['Runs'] / initial_stats['Out']).round(2)
-        initial_stats['Bat SR'] = ((initial_stats['Runs'] / initial_stats['Balls']) * 100).round(2)
+        initial_stats['Bat Avg'] = (initial_stats['Runs'] / initial_stats['Out'].replace(0, np.inf)).round(2)
+        initial_stats['Bat SR'] = ((initial_stats['Runs'] / initial_stats['Balls'].replace(0, np.inf)) * 100).round(2)
         initial_stats['Bowl Avg'] = np.where(
             initial_stats['Bowler_Wkts'] > 0,
             (initial_stats['Bowler_Runs'] / initial_stats['Bowler_Wkts']).round(2),
@@ -121,10 +115,10 @@ def display_ar_view():
             (initial_stats['Bowler_Balls'] / initial_stats['Bowler_Wkts']).round(2),
             np.inf
         )
-        
+
         # Replace infinities with NaN for max calculations
         initial_stats = initial_stats.replace([np.inf, -np.inf], np.nan)
-        
+
         max_bat_avg = float(initial_stats['Bat Avg'].max())
         max_bat_sr = float(initial_stats['Bat SR'].max())
         max_bowl_avg = float(initial_stats['Bowl Avg'].max())
@@ -135,11 +129,15 @@ def display_ar_view():
 
         with col5:
             st.markdown("<p style='text-align: center;'>Choose Year:</p>", unsafe_allow_html=True)
-            year_choice = st.slider('', 
-                                min_value=min(years),
-                                max_value=max(years),
-                                value=(min(years), max(years)),
-                                label_visibility='collapsed')
+            if len(years) == 1:
+                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                year_choice = (years[0], years[0])
+            else:
+                year_choice = st.slider('', 
+                    min_value=min(years),
+                    max_value=max(years),
+                    value=(min(years), max(years)),
+                    label_visibility='collapsed')
 
         with col6:
             st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
