@@ -65,6 +65,76 @@ def display_team_view():
         bat_teams = ['All'] + sorted(set(list(bat_df['Bat_Team_y'].unique()) + list(bowl_df['Bat_Team'].unique())))
         bowl_teams = ['All'] + sorted(set(list(bat_df['Bowl_Team_y'].unique()) + list(bowl_df['Bowl_Team'].unique())))
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import random
+
+
+def parse_date(date_str):
+    """Helper function to parse dates in multiple formats"""
+    try:
+        for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
+            try:
+                return pd.to_datetime(date_str, format=fmt)
+            except ValueError:
+                continue
+        return pd.to_datetime(date_str)
+    except Exception:
+        return pd.NaT
+
+def display_team_view():
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Statistics</h1>", unsafe_allow_html=True)
+
+    # Custom CSS for styling
+    st.markdown("""
+    <style>
+    table { color: black; width: 100%; }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    tbody tr:nth-child(even) { background-color: #f0f2f6; }
+    tbody tr:nth-child(odd) { background-color: white; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Check if required DataFrames exist in session state
+    if 'bat_df' in st.session_state and 'bowl_df' in st.session_state:
+        bat_df = st.session_state['bat_df'].copy()
+        bowl_df = st.session_state['bowl_df'].copy()
+
+        # Convert dates to datetime with safer parsing
+        try:
+            # Try to parse dates with the correct format
+            bat_df['Date'] = pd.to_datetime(bat_df['Date'], format='%d %b %Y', errors='coerce')
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+        except:
+            # If that fails, try with dayfirst=True
+            bat_df['Date'] = pd.to_datetime(bat_df['Date'], dayfirst=True, errors='coerce')
+            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], dayfirst=True, errors='coerce')
+
+        # Extract years from the parsed dates
+        bat_df['Year'] = bat_df['Date'].dt.year
+        bowl_df['Year'] = bowl_df['Date'].dt.year
+
+        # Convert Year columns to integers and handle any NaN values
+        bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
+        bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
+
+        # Get filter options (exclude year 0 from the years list)
+        match_formats = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
+        years = sorted(list(set(bat_df['Year'].unique()) | set(bowl_df['Year'].unique())))
+        years = [year for year in years if year != 0]  # Remove year 0 if present
+        
+        if not years:
+            years = [pd.Timestamp.now().year]
+
+        # Get unique teams
+        bat_teams = ['All'] + sorted(set(list(bat_df['Bat_Team_y'].unique()) + list(bowl_df['Bat_Team'].unique())))
+        bowl_teams = ['All'] + sorted(set(list(bat_df['Bowl_Team_y'].unique()) + list(bowl_df['Bowl_Team'].unique())))
+
         # Create the filters row
         col1, col2, col3, col4 = st.columns(4)
 
@@ -79,12 +149,37 @@ def display_team_view():
 
         with col4:
             st.markdown("<p style='margin-bottom: 5px;'>Year</p>", unsafe_allow_html=True)
-            year_choice = st.slider('',
-                                min_value=min(years),
-                                max_value=max(years),
-                                value=(min(years), max(years)),
-                                key='year_slider',
-                                label_visibility='collapsed')
+            if len(years) == 1:
+                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                year_choice = (years[0], years[0])
+            else:
+                year_choice = st.slider('',
+                                    min_value=min(years),
+                                    max_value=max(years),
+                                    value=(min(years), max(years)),
+                                    key='year_slider',
+                                    label_visibility='collapsed')
+
+        # Create filtered DataFrames based on selections
+        filtered_bat_df = bat_df.copy()
+        filtered_bowl_df = bowl_df.copy()
+
+        # Apply filters
+        if 'All' not in bat_team_choice:
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
+            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bat_Team'].isin(bat_team_choice)]
+
+        if 'All' not in bowl_team_choice:
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
+            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bowl_Team'].isin(bowl_team_choice)]
+
+        if 'All' not in match_format_choice:
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
+            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
+
+        filtered_bat_df = filtered_bat_df[filtered_bat_df['Year'].between(year_choice[0], year_choice[1])]
+        filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
+
 
         # Create filtered DataFrames based on selections
         filtered_bat_df = bat_df.copy()
