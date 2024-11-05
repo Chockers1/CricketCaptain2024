@@ -76,29 +76,35 @@ def display_bowl_view():
         # Add range filters
         col5, col6, col7, col8, col9, col10 = st.columns(6)
 
+        # Replace the year slider section with this:
         with col5:
             st.markdown("<p style='text-align: center;'>Choose Year:</p>", unsafe_allow_html=True)
-            year_choice = st.slider('', 
-                   min_value=min(years),
-                   max_value=max(years),
-                   value=(min(years), max(years)),
-                   label_visibility='collapsed')
+            if len(years) == 1:
+                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                year_choice = (years[0], years[0])  # Set the year range to the single year
+            else:
+                year_choice = st.slider('', 
+                        min_value=min(years),
+                        max_value=max(years),
+                        value=(min(years), max(years)),
+                        label_visibility='collapsed')
 
+        # The rest of the sliders remain the same
         with col6:
             st.markdown("<p style='text-align: center;'>Choose Position:</p>", unsafe_allow_html=True)
             position_choice = st.slider('', 
-                       min_value=1, 
-                       max_value=11, 
-                       value=(1, 11),
-                       label_visibility='collapsed')
+                        min_value=1, 
+                        max_value=11, 
+                        value=(1, 11),
+                        label_visibility='collapsed')
 
         with col7:
             st.markdown("<p style='text-align: center;'>Wickets Range</p>", unsafe_allow_html=True)
             wickets_range = st.slider('', 
-                                min_value=0, 
-                                max_value=max_wickets, 
-                                value=(0, max_wickets),
-                                label_visibility='collapsed')
+                                    min_value=0, 
+                                    max_value=max_wickets, 
+                                    value=(0, max_wickets),
+                                    label_visibility='collapsed')
 
         with col8:
             st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
