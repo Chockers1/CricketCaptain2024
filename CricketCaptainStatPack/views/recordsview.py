@@ -1,11 +1,12 @@
-# Section 1: Imports, Setup, and Cache Functions
+# Section 1: Imports and Setup
 ###############################################################################
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-@st.cache_data
+# Section 2: Helper Functions and Page Setup
+###############################################################################
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
     try:
@@ -18,9 +19,8 @@ def parse_date(date_str):
     except Exception:
         return pd.NaT
 
-@st.cache_data
 def process_dataframes():
-    """Process all dataframes once and cache the results"""
+    """Process all dataframes"""
     if 'bat_df' in st.session_state:
         bat_df = st.session_state['bat_df'].copy()
         bat_df['Date'] = pd.to_datetime(bat_df['Date'])
@@ -47,90 +47,66 @@ def process_dataframes():
 
     return bat_df, bowl_df, match_df, game_df
 
-@st.cache_data
 def filter_by_format(df, format_choice):
+    """Filter dataframe by format"""
     if df is not None and 'All' not in format_choice:
         return df[df['Match_Format'].isin(format_choice)]
     return df
 
-# Section 2: Page Header, Styling, and Format Selection
-###############################################################################
-def init_page():
-   # Title
-   st.markdown("<h1 style='color:#f04f53; text-align: center;'>Records</h1>", unsafe_allow_html=True)
-
-   # Custom CSS for styling
-   st.markdown("""
-   <style>
-   /* Table styling */
-   table { color: black; width: 100%; }
-   thead tr th {
-       background-color: #f04f53 !important;
-       color: white !important;
-   }
-   tbody tr:nth-child(even) { background-color: #f0f2f6; }
-   tbody tr:nth-child(odd) { background-color: white; }
-
-   /* Tab styling */
-   .stTabs [data-baseweb="tab-list"] {
-       width: 100%;
-   }
-   .stTabs [data-baseweb="tab"] {
-       flex-grow: 1;
-       text-align: center;
-   }
-   </style>
-   """, unsafe_allow_html=True)
-
-@st.cache_data
 def get_formats():
-   """Get unique formats from all dataframes"""
-   all_formats = set()
-   
-   for df_name in ['game_df', 'bat_df', 'bowl_df', 'match_df']:
-       if df_name in st.session_state:
-           df = st.session_state[df_name]
-           if 'Match_Format' in df.columns:
-               all_formats.update(df['Match_Format'].unique())
-   
-   return ['All'] + sorted(list(all_formats))
+    """Get unique formats from all dataframes"""
+    all_formats = set(['All'])
+    
+    for df_name in ['game_df', 'bat_df', 'bowl_df', 'match_df']:
+        if df_name in st.session_state:
+            df = st.session_state[df_name]
+            if 'Match_Format' in df.columns:
+                all_formats.update(df['Match_Format'].unique())
+    
+    return sorted(list(all_formats))
+
+def init_page():
+    """Initialize page styling"""
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Records</h1>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <style>
+    table { color: black; width: 100%; }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    tbody tr:nth-child(even) { background-color: #f0f2f6; }
+    tbody tr:nth-child(odd) { background-color: white; }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 def initialize_data():
-   """Initialize main data and format filter"""
-   # Process all dataframes
-   bat_df, bowl_df, match_df, game_df = process_dataframes()
-   
-   # Get formats and create filter
-   formats = get_formats()
-   format_choice = st.multiselect('Format:', formats, default='All', key='global_format_filter')
-   
-   # Apply format filter to all dataframes
-   filtered_bat_df = filter_by_format(bat_df, format_choice)
-   filtered_bowl_df = filter_by_format(bowl_df, format_choice)
-   filtered_match_df = filter_by_format(match_df, format_choice)
-   filtered_game_df = filter_by_format(game_df, format_choice)
-   
-   return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
+    """Initialize main data and format filter"""
+    bat_df, bowl_df, match_df, game_df = process_dataframes()
+    formats = get_formats()
+    format_choice = st.multiselect('Format:', formats, default=['All'])
+    
+    if not format_choice:
+        format_choice = ['All']
+    
+    filtered_bat_df = filter_by_format(bat_df, format_choice)
+    filtered_bowl_df = filter_by_format(bowl_df, format_choice)
+    filtered_match_df = filter_by_format(match_df, format_choice)
+    filtered_game_df = filter_by_format(game_df, format_choice)
+    
+    return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
 
-# Initialize page and data
-init_page()
-filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
-
-# Create tabs
-tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records"]
-tabs = st.tabs(tab_names)
+# Section 3: Batting Records Functions
 ###############################################################################
-# Section 3: Create Tabs
-###############################################################################
-#tab1, tab2, tab3, tab4 = st.tabs(["Batting Records", "Bowling Records", "Match Records", "Game Records"])
-
-###############################################################################
-# Section 3: Create Tabs and Cache Functions for Batting Records
-###############################################################################
-###############################################################################
-# Section 4: Batting Records Tab Functions
-###############################################################################
-@st.cache_data
 def process_highest_scores(filtered_bat_df):
     """Process highest scores data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -155,7 +131,6 @@ def process_highest_scores(filtered_bat_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-@st.cache_data
 def process_not_out_99s(filtered_bat_df):
     """Process 99 not out data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -180,7 +155,6 @@ def process_not_out_99s(filtered_bat_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-@st.cache_data
 def process_carrying_bat(filtered_bat_df):
     """Process carrying the bat data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -208,7 +182,6 @@ def process_carrying_bat(filtered_bat_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-@st.cache_data
 def process_hundreds_both_innings(filtered_bat_df):
     """Process hundreds in both innings data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -253,7 +226,6 @@ def process_hundreds_both_innings(filtered_bat_df):
     
     return hundreds_both_df
 
-@st.cache_data
 def process_position_scores(filtered_bat_df):
     """Process highest scores by position data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -273,7 +245,6 @@ def process_position_scores(filtered_bat_df):
             .sort_values('Position')
             [['Position', 'Name', 'Runs', 'Balls', 'How Out', '4s', '6s']])
 
-@st.cache_data
 def create_centuries_plot(filtered_bat_df):
     """Create centuries scatter plot"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -314,9 +285,15 @@ def create_centuries_plot(filtered_bat_df):
 
     return fig
 
-###############################################################################
-# Section 4: Batting Records Tab Display
-###############################################################################
+# Initialize the application
+init_page()
+filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
+
+# Create tabs
+tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records"]
+tabs = st.tabs(tab_names)
+
+# Batting Records Tab
 with tabs[0]:
     if filtered_bat_df is not None and not filtered_bat_df.empty:
         # Highest Scores
@@ -352,8 +329,7 @@ with tabs[0]:
                    unsafe_allow_html=True)
         position_scores_df = process_position_scores(filtered_bat_df)
         if not position_scores_df.empty:
-            st.dataframe(position_scores_df, use_container_width=True, 
-                        hide_index=True, height=430)
+            st.dataframe(position_scores_df, use_container_width=True, hide_index=True, height=430)
 
         # Centuries Analysis Plot
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Centuries Analysis (Runs vs Balls)</h3>",
@@ -364,10 +340,8 @@ with tabs[0]:
     else:
         st.info("No batting records available.")
 
+# Bowling Records Functions
 ###############################################################################
-# Section 5: Bowling Records Functions
-###############################################################################
-@st.cache_data
 def process_best_bowling(filtered_bowl_df):
     """Process best bowling figures data"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
@@ -393,7 +367,6 @@ def process_best_bowling(filtered_bowl_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-@st.cache_data
 def process_five_wickets_both(filtered_bowl_df):
     """Process 5+ wickets in both innings data"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
@@ -460,7 +433,6 @@ def process_five_wickets_both(filtered_bowl_df):
     five_wickets_both_df['Date'] = five_wickets_both_df['Date'].dt.strftime('%d/%m/%Y')
     return five_wickets_both_df
 
-@st.cache_data
 def process_match_bowling(filtered_bowl_df):
     """Process match bowling figures data"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
@@ -510,9 +482,7 @@ def process_match_bowling(filtered_bowl_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-###############################################################################
-# Section 5: Bowling Records Tab Display
-###############################################################################
+# Bowling Records Tab
 with tabs[1]:
     if filtered_bowl_df is not None and not filtered_bowl_df.empty:
         # Best Bowling Figures
@@ -538,10 +508,8 @@ with tabs[1]:
     else:
         st.info("No bowling records available.")
 
+# Match Records Functions
 ###############################################################################
-# Section 6: Match Records Functions and Tab
-###############################################################################
-@st.cache_data
 def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     """Process wins data by type and margin"""
     if filtered_match_df is None or filtered_match_df.empty:
@@ -567,7 +535,6 @@ def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     
     df = filtered_match_df[np.all(base_conditions, axis=0)].copy()
     
-    # Add win team and opponent columns
     df['Win Team'] = np.where(
         df['Home_Win'] == 1,
         df['Home_Team'],
@@ -580,7 +547,6 @@ def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
         df['Home_Team']
     )
     
-    # Sort based on margin type
     ascending = True if margin_type == 'narrow' else False
     
     df = (df
@@ -595,7 +561,6 @@ def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-@st.cache_data
 def process_innings_wins(filtered_match_df):
     """Process innings wins data"""
     if filtered_match_df is None or filtered_match_df.empty:
@@ -631,9 +596,7 @@ def process_innings_wins(filtered_match_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-###############################################################################
-# Section 6: Match Records Tab Display
-###############################################################################
+# Match Records Tab
 with tabs[2]:
     if filtered_match_df is not None and not filtered_match_df.empty:
         # Biggest Wins (Runs)
@@ -673,10 +636,8 @@ with tabs[2]:
     else:
         st.info("No match records available.")
 
+# Game Records Functions
 ###############################################################################
-# Section 7: Game Records Functions and Tab
-###############################################################################
-@st.cache_data
 def get_match_details(filtered_game_df, filtered_match_df):
     """Process match details and add Result and Margin columns"""
     if filtered_game_df is None or filtered_match_df is None:
@@ -749,7 +710,6 @@ def get_match_details(filtered_game_df, filtered_match_df):
     
     return result_df
 
-@st.cache_data
 def process_team_scores(filtered_game_df, score_type='highest'):
     """Process team scores data"""
     if filtered_game_df is None or filtered_game_df.empty:
@@ -771,18 +731,12 @@ def process_team_scores(filtered_game_df, score_type='highest'):
     
     return df
 
-###############################################################################
-# Section 7: Game Records Tab Display
-###############################################################################
+# Game Records Tab
 with tabs[3]:
     if filtered_game_df is not None and filtered_match_df is not None and not filtered_game_df.empty:
         try:
-            # Process match details first with caching
-            @st.cache_data
-            def get_processed_game_df(filtered_game_df, filtered_match_df):
-                return get_match_details(filtered_game_df, filtered_match_df)
-            
-            processed_game_df = get_processed_game_df(filtered_game_df, filtered_match_df)
+            # Process match details
+            processed_game_df = get_match_details(filtered_game_df, filtered_match_df)
             
             # Highest Team Scores
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Team Scores</h3>", 
@@ -798,13 +752,11 @@ with tabs[3]:
             if not lowest_scores_df.empty:
                 st.dataframe(lowest_scores_df, use_container_width=True, hide_index=True)
 
-            ##################====================HIGH CHASES===================##################
-            # Highest Successful Run Chases with caching
-            @st.cache_data
+            # Highest Successful Run Chases
             def get_highest_chases(processed_game_df):
                 chases_df = processed_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
-                                               'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
-                                               'Date', 'Innings', 'Result', 'Margin']].copy()
+                                             'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
+                                             'Date', 'Innings', 'Result', 'Margin']].copy()
 
                 successful_chases = (
                     ((chases_df['Match_Format'].isin(['First Class', 'Test Match'])) & 
@@ -819,6 +771,7 @@ with tabs[3]:
                 chases_df = chases_df[successful_chases]
                 chases_df['Date'] = chases_df['Date'].dt.date
 
+# Calculate margin and store directly as 'Margin'
                 def format_margin_wickets(row):
                     if pd.notna(row['Margin']) and 'wicket' in str(row['Margin']).lower():
                         return row['Margin']
@@ -827,37 +780,43 @@ with tabs[3]:
                         return f"by {wickets_left} wickets"
                     return "-"
                 
-                chases_df['Margin_Display'] = chases_df.apply(format_margin_wickets, axis=1)
+                chases_df['Margin'] = chases_df.apply(format_margin_wickets, axis=1)
                 chases_df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs', 
-                                     'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 'Result', 'Margin', 'Margin_Display']
+                                   'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 
+                                   'Result', 'Margin']
                 chases_df = chases_df.sort_values('Runs', ascending=False)
                 return chases_df[['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs', 
-                                  'Run Rate', 'Competition', 'Format', 'Date', 'Margin_Display']].rename(columns={'Margin_Display': 'Margin'})
+                                'Run Rate', 'Competition', 'Format', 'Date', 'Margin']]
             
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Successful Run Chases</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Successful Run Chases</h3>", 
+                       unsafe_allow_html=True)
             chases_df = get_highest_chases(processed_game_df)
-            st.dataframe(chases_df, use_container_width=True, hide_index=True)
+            if not chases_df.empty:
+                st.dataframe(chases_df, use_container_width=True, hide_index=True)
 
-            ##################====================LOW 1ST INNINGS===================##################
-            # Lowest First Innings Wins with caching
-            @st.cache_data
+            # Lowest First Innings Wins
             def get_lowest_first_innings_wins(processed_game_df):
                 low_wins_df = processed_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
-                                                 'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
-                                                 'Date', 'Innings', 'Result', 'Margin']].copy()
+                                               'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
+                                               'Date', 'Innings', 'Result', 'Margin']].copy()
 
                 first_innings_wins = (low_wins_df['Innings'] == 1) & (low_wins_df['Result'] == 'Win')
                 low_wins_df = low_wins_df[first_innings_wins]
                 low_wins_df['Date'] = low_wins_df['Date'].dt.date
 
                 low_wins_df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs', 
-                                       'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 'Result', 'Margin']
-                return low_wins_df.sort_values('Runs', ascending=True)[['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs', 
-                                                                       'Run Rate', 'Competition', 'Format', 'Date', 'Margin']]
+                                     'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 
+                                     'Result', 'Margin']
+                return low_wins_df.sort_values('Runs', ascending=True)[['Bat Team', 'Bowl Team', 
+                                                                      'Innings', 'Runs', 'Wickets', 
+                                                                      'Overs', 'Run Rate', 'Competition', 
+                                                                      'Format', 'Date', 'Margin']]
             
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Lowest First Innings Winning Scores</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Lowest First Innings Winning Scores</h3>", 
+                       unsafe_allow_html=True)
             low_wins_df = get_lowest_first_innings_wins(processed_game_df)
-            st.dataframe(low_wins_df, use_container_width=True, hide_index=True)
+            if not low_wins_df.empty:
+                st.dataframe(low_wins_df, use_container_width=True, hide_index=True)
 
         except Exception as e:
             st.error(f"Error processing records: {str(e)}")
