@@ -161,18 +161,25 @@ def display_team_view():
             'Bowler_Wkts': 'sum'
         }).reset_index()
 
-        # Calculate team batting statistics
-        bat_Team_df = filtered_bat_df.groupby('Bat_Team_y').agg({
+# Calculate milestone innings based on run ranges
+        filtered_bat_df['50s'] = ((filtered_bat_df['Runs'] >= 50) & (filtered_bat_df['Runs'] < 100)).astype(int)
+        filtered_bat_df['100s'] = ((filtered_bat_df['Runs'] >= 100) & (filtered_bat_df['Runs'] < 150)).astype(int)
+        filtered_bat_df['150s'] = ((filtered_bat_df['Runs'] >= 150) & (filtered_bat_df['Runs'] < 200)).astype(int)
+        filtered_bat_df['200s'] = (filtered_bat_df['Runs'] >= 200).astype(int)
+
+        # Create the bat_team_career_df by grouping by 'Bat_Team_y'
+        bat_team_career_df = filtered_bat_df.groupby('Bat_Team_y').agg({
             'File Name': 'nunique',
             'Batted': 'sum',
             'Out': 'sum',
-            'Not Out': 'sum',
+            'Not Out': 'sum',    
             'Balls': 'sum',
             'Runs': ['sum', 'max'],
             '4s': 'sum',
             '6s': 'sum',
             '50s': 'sum',
             '100s': 'sum',
+            '150s': 'sum',
             '200s': 'sum',
             '<25&Out': 'sum',
             'Caught': 'sum',
@@ -187,42 +194,67 @@ def display_team_view():
         }).reset_index()
 
         # Flatten multi-level columns
-        bat_Team_df.columns = ['Team', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls',
-                                'Runs', 'HS', '4s', '6s', '50s', '100s', '200s',
-                                '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped',
-                                'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+        bat_team_career_df.columns = ['Team', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                    'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
+                                    '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                                    'Team Runs', 'Overs', 'Wickets', 'Team Balls']
 
-        # Calculate metrics
-        bat_Team_df['Batting Average'] = (bat_Team_df['Runs'] / bat_Team_df['Out']).round(2).fillna(0)
-        bat_Team_df['Batting Strike Rate'] = ((bat_Team_df['Runs'] / bat_Team_df['Balls']) * 100).round(2).fillna(0)
-        bat_Team_df['Balls Per Out'] = (bat_Team_df['Balls'] / bat_Team_df['Out']).round(2).fillna(0)
-        bat_Team_df['Team Batting Average'] = (bat_Team_df['Team Runs'] / bat_Team_df['Wickets']).round(2).fillna(0)
-        bat_Team_df['Team Batting Strike Rate'] = (bat_Team_df['Team Runs'] / bat_Team_df['Team Balls'] * 100).round(2).fillna(0)
-        bat_Team_df['P+ Batting Average'] = (bat_Team_df['Batting Average'] / bat_Team_df['Team Batting Average'] * 100).round(2).fillna(0)
-        bat_Team_df['P+ Batting Strike Rate'] = (bat_Team_df['Batting Strike Rate'] / bat_Team_df['Team Batting Strike Rate'] * 100).round(2).fillna(0)
-        bat_Team_df['Balls Per Boundary'] = (bat_Team_df['Balls'] / (bat_Team_df['4s'] + bat_Team_df['6s']).replace(0, 1)).round(2)
-        bat_Team_df['50+ Scores %'] = (((bat_Team_df['50s'] + bat_Team_df['100s']) / bat_Team_df['Inns']) * 100).round(2).fillna(0)
-        bat_Team_df['100s %'] = ((bat_Team_df['100s'] / bat_Team_df['Inns']) * 100).round(2).fillna(0)
-        bat_Team_df['<25 & Out %'] = ((bat_Team_df['<25&Out'] / bat_Team_df['Inns']) * 100).round(2).fillna(0)
-        bat_Team_df['Caught %'] = ((bat_Team_df['Caught'] / bat_Team_df['Inns']) * 100).round(2).fillna(0)
-        bat_Team_df['Bowled %'] = ((bat_Team_df['Bowled'] / bat_Team_df['Inns']) * 100).round(2).fillna(0)
-        bat_Team_df['LBW %'] = ((bat_Team_df['LBW'] / bat_Team_df['Inns']) * 100).round(2).fillna(0)
+        # Calculate average runs per out, strike rate, and balls per out
+        bat_team_career_df['Avg'] = (bat_team_career_df['Runs'] / bat_team_career_df['Out']).round(2).fillna(0)
+        bat_team_career_df['SR'] = ((bat_team_career_df['Runs'] / bat_team_career_df['Balls']) * 100).round(2).fillna(0)
+        bat_team_career_df['BPO'] = (bat_team_career_df['Balls'] / bat_team_career_df['Out']).round(2).fillna(0)
 
-        # Display Career Stats
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_Team_df, use_container_width=True, hide_index=True)
+        # Calculate team statistics
+        bat_team_career_df['Team Avg'] = (bat_team_career_df['Team Runs'] / bat_team_career_df['Wickets']).round(2).fillna(0)
+        bat_team_career_df['Team SR'] = (bat_team_career_df['Team Runs'] / bat_team_career_df['Team Balls'] * 100).round(2).fillna(0)
+
+        # Calculate P+ Avg and P+ SR
+        bat_team_career_df['P+ Avg'] = (bat_team_career_df['Avg'] / bat_team_career_df['Team Avg'] * 100).round(2).fillna(0)
+        bat_team_career_df['P+ SR'] = (bat_team_career_df['SR'] / bat_team_career_df['Team SR'] * 100).round(2).fillna(0)
+
+        # Calculate BPB (Balls Per Boundary)
+        bat_team_career_df['BPB'] = (bat_team_career_df['Balls'] / (bat_team_career_df['4s'] + bat_team_career_df['6s']).replace(0, 1)).round(2)
+
+        # Calculate percentage statistics
+        bat_team_career_df['50+PI'] = (((bat_team_career_df['50s'] + bat_team_career_df['100s'] + bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['100PI'] = (((bat_team_career_df['100s'] + bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['150PI'] = (((bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['200PI'] = ((bat_team_career_df['200s'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['<25&OutPI'] = ((bat_team_career_df['<25&Out'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+
+        # Calculate dismissal percentages
+        bat_team_career_df['Caught%'] = ((bat_team_career_df['Caught'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['Bowled%'] = ((bat_team_career_df['Bowled'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['LBW%'] = ((bat_team_career_df['LBW'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['Run Out%'] = ((bat_team_career_df['Run Out'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['Stumped%'] = ((bat_team_career_df['Stumped'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+        bat_team_career_df['Not Out%'] = ((bat_team_career_df['Not Out'] / bat_team_career_df['Inns']) * 100).round(2).fillna(0)
+
+        # Reorder columns (removed Wins and Win% from the list)
+        bat_team_career_df = bat_team_career_df[['Team', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
+                                    'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', '150s', '200s',
+                                    '<25&OutPI', '50+PI', '100PI', '150PI', '200PI', 'P+ Avg', 'P+ SR', 
+                                    'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
+
+        # Sort the DataFrame by 'Runs' in descending order
+        bat_team_career_df = bat_team_career_df.sort_values(by='Runs', ascending=False)
+
+        # Display the filtered and aggregated team career statistics
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Career Statistics</h3>", unsafe_allow_html=True)
+        st.dataframe(bat_team_career_df, use_container_width=True, hide_index=True)
     ######################_--------------scatter-----------------#######################
+######################_--------------scatter-----------------#######################
 
         # Create a new figure for the scatter plot
         scatter_fig = go.Figure()
 
         # Plot data for each team
-        for team in bat_Team_df['Team'].unique():
-            team_stats = bat_Team_df[bat_Team_df['Team'] == team]
+        for team in bat_team_career_df['Team'].unique():
+            team_stats = bat_team_career_df[bat_team_career_df['Team'] == team]
             
             # Get team statistics
-            batting_avg = team_stats['Batting Average'].iloc[0]
-            strike_rate = team_stats['Batting Strike Rate'].iloc[0]
+            batting_avg = team_stats['Avg'].iloc[0]
+            strike_rate = team_stats['SR'].iloc[0]
             runs = team_stats['Runs'].iloc[0]
             
             # Add scatter point for the team
@@ -245,7 +277,6 @@ def display_team_view():
         # Display the title using Streamlit's markdown
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Batting Average v Strike Rate</h3>", unsafe_allow_html=True)
 
-
         # Update layout
         scatter_fig.update_layout(
             xaxis_title="Batting Average",
@@ -258,7 +289,7 @@ def display_team_view():
         )
 
         # Show plot
-        st.plotly_chart(scatter_fig)   
+        st.plotly_chart(scatter_fig)
 
 
     ######################_--------------SEASON STATS-----------------#######################
