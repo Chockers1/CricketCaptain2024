@@ -132,10 +132,11 @@ def process_bat_stats(directory_path, game_df, match_df):
 
         # Optionally, if you want to display without commas when printing
         bat_df['Year'] = bat_df['Year'].apply(lambda x: f"{x:d}")        
-        bat_df['Batted'] = 1
-        bat_df['Out'] = bat_df['How Out'].apply(lambda x: 1 if x != 'Did not bat' and x != 'Not Out' else 0)
+        bat_df['Batted'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' else 1)
+        bat_df['Out'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' or x == 'not out' else 1)
         bat_df['Not Out'] = bat_df['How Out'].apply(lambda x: 1 if x == 'not out' else 0)
-        bat_df['Runs'] = pd.to_numeric(bat_df['Runs'], errors='coerce').fillna(0)
+        bat_df['DNB'] = bat_df['How Out'].apply(lambda x: 1 if x == 'Did not bat' else 0)
+        
 
         bat_df['50s'] = bat_df['Runs'].apply(lambda x: 1 if 50 <= x < 100 else 0)
         bat_df['100s'] = bat_df['Runs'].apply(lambda x: 1 if 100 <= x < 200 else 0)
