@@ -271,9 +271,9 @@ def display_ar_view():
 
     # Then create your tabs
     tab1, tab2, tab3, tab4 = st.tabs(["#1 Ranking", "Batting Rankings", "Bowling Rankings", "All-Rounder Rankings"])
+    
     with tab1:
-
-# Create yearly summary of best performers
+        # Create yearly summary of best performers
         st.markdown("<h3 style='text-align: center; color:#f04f53;'>Yearly Best Performers</h3>", unsafe_allow_html=True)
         
         # First group by Year and Name to get totals per player per year
@@ -323,7 +323,7 @@ def display_ar_view():
         # Sort by Year in descending order
         yearly_summary = yearly_summary.sort_values('Year', ascending=False)
 
-# Display the summary with all rows visible
+        # Display the summary with all rows visible
         st.dataframe(
             yearly_summary,
             use_container_width=True,hide_index=True,
@@ -335,6 +335,55 @@ def display_ar_view():
                 "Best_AllRounder": "All-Rounder"
             }
         )
+
+ # Add Number 1 Rankings summary after the yearly summary
+        st.markdown("<h3 style='text-align: center; color:#f04f53;'>Number of Times Ranked #1</h3>", unsafe_allow_html=True)
+        
+        # Calculate batting #1s - group by year first to get #1 for each year
+        batting_tops = player_ranking_match.groupby(['Year', 'Name'])['Batting_Rating'].sum().reset_index()
+        batting_tops['Rank'] = batting_tops.groupby('Year')['Batting_Rating'].rank(method='min', ascending=False)
+        batting_no1 = batting_tops[batting_tops['Rank'] == 1].groupby('Name').size().reset_index(name='Batting_#1')
+
+        # Calculate bowling #1s
+        bowling_tops = player_ranking_match.groupby(['Year', 'Name'])['Bowling_Rating'].sum().reset_index()
+        bowling_tops['Rank'] = bowling_tops.groupby('Year')['Bowling_Rating'].rank(method='min', ascending=False)
+        bowling_no1 = bowling_tops[bowling_tops['Rank'] == 1].groupby('Name').size().reset_index(name='Bowling_#1')
+
+        # Calculate All-Rounder #1s
+        ar_tops = yearly_ar[qualified].groupby(['Year', 'Name'])['AR_Rating'].sum().reset_index()
+        ar_tops['Rank'] = ar_tops.groupby('Year')['AR_Rating'].rank(method='min', ascending=False)
+        ar_no1 = ar_tops[ar_tops['Rank'] == 1].groupby('Name').size().reset_index(name='AllRounder_#1')
+
+        # Merge all #1 rankings
+        all_no1 = pd.merge(batting_no1, bowling_no1, on='Name', how='outer')
+        all_no1 = pd.merge(all_no1, ar_no1, on='Name', how='outer')
+
+        # Fill NaN values with 0
+        all_no1 = all_no1.fillna(0)
+
+        # Convert to integers
+        all_no1[['Batting_#1', 'Bowling_#1', 'AllRounder_#1']] = all_no1[['Batting_#1', 'Bowling_#1', 'AllRounder_#1']].astype(int)
+
+        # Calculate total #1 rankings
+        all_no1['Total_#1'] = all_no1['Batting_#1'] + all_no1['Bowling_#1'] + all_no1['AllRounder_#1']
+
+        # Sort by total #1 rankings
+        all_no1 = all_no1.sort_values('Total_#1', ascending=False)
+
+        # Display the summary
+        st.dataframe(
+            all_no1,
+            use_container_width=True,
+            hide_index=True,
+            height=400,
+            column_config={
+                "Name": "Player",
+                "Batting_#1": "Batting #1",
+                "Bowling_#1": "Bowling #1",
+                "AllRounder_#1": "All-Rounder #1",
+                "Total_#1": "Total #1"
+            }
+        ) 
 
     with tab2:
             # Create batting rankings
