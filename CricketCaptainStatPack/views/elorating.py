@@ -374,7 +374,35 @@ if current_ratings:  # Only create and display if we have ratings after filterin
 
     # Display the plot
     st.plotly_chart(fig, use_container_width=True)
-############===================number 1 per format==============================###############
+
+
+#ELO DISTRIBUTION
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>ELO Rating Distribution</h3>", unsafe_allow_html=True)
+
+if 'elo_df' in st.session_state:
+    elo_df = st.session_state['elo_df']
+    
+    fig = go.Figure()
+    
+    for team in sorted(elo_df['Team'].unique()):
+        team_ratings = elo_df[elo_df['Team'] == team]['Team_Elo_End']
+        
+        fig.add_trace(go.Box(
+            y=team_ratings,
+            name=team,
+            boxpoints='outliers',
+            jitter=0.3,
+            pointpos=-1.8
+        ))
+    
+    fig.update_layout(
+        yaxis_title="ELO Rating",
+        height=500,
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
 ############===================number 1 per format==============================###############
 if 'elo_df' in st.session_state:
     try:
@@ -528,3 +556,36 @@ if 'elo_df' in st.session_state:
         st.write("Debug - Sample of dates:", elo_df['Date'].head().tolist())
         st.write("Debug - Date column type:", elo_df['Date'].dtype)
         st.stop()
+
+#################### UPDATES #####################
+
+
+
+# Add after the head-to-head analysis
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance Metrics</h3>", unsafe_allow_html=True)
+
+if 'elo_df' in st.session_state:
+    elo_df = st.session_state['elo_df']
+    
+    # Calculate performance metrics for each team
+    metrics = []
+    for team in sorted(elo_df['Team'].unique()):
+        team_matches = elo_df[elo_df['Team'] == team]
+        
+        metrics.append({
+            'Team': team,
+            'Matches': len(team_matches),
+            'Avg ELO': round(team_matches['Team_Elo_End'].mean(), 2),
+
+            'Biggest Win': round(team_matches['Elo_Change'].max(), 2),
+            'Biggest Loss': round(team_matches['Elo_Change'].min(), 2)
+        })
+    
+    metrics_df = pd.DataFrame(metrics)
+    st.dataframe(
+        metrics_df.sort_values('Avg ELO', ascending=False),
+        hide_index=True,
+        use_container_width=True
+    )
+
+
