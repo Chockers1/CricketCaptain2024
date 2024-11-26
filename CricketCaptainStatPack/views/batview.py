@@ -1666,5 +1666,266 @@ def display_bat_view():
         # Display the bar chart
         st.plotly_chart(fig)
 
+##########################
+
+        # Create a section for advanced visualizations
+        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Ranges</h3>", unsafe_allow_html=True)
+
+        # Cache key for advanced metrics
+        advanced_metrics_cache_key = f"{cache_key}_advanced_metrics"
+        advanced_metrics = get_cached_dataframe(advanced_metrics_cache_key)
+
+        if advanced_metrics is None:
+            # Create three columns for additional metrics
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                # Boundary Rate Analysis
+                boundary_fig = go.Figure()
+                boundary_fig.add_trace(go.Pie(
+                    labels=['4s', '6s', 'Other Runs'],
+                    values=[filtered_df['4s'].sum() * 4, 
+                            filtered_df['6s'].sum() * 6,
+                            filtered_df['Runs'].sum() - (filtered_df['4s'].sum() * 4 + filtered_df['6s'].sum() * 6)],
+                    hole=.3,
+                    marker_colors=['#f84e4e', '#4ef84e', '#4e4ef8']
+                ))
+                boundary_fig.update_layout(
+                    height=400,
+                    showlegend=True,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Run Distribution</h3>", unsafe_allow_html=True)
+                st.plotly_chart(boundary_fig, use_container_width=True)
+
+            with col2:
+                # Dismissal Analysis
+                dismissal_fig = go.Figure()
+                dismissal_types = ['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Not Out']
+                dismissal_values = [
+                    filtered_df['Caught'].sum(),
+                    filtered_df['Bowled'].sum(),
+                    filtered_df['LBW'].sum(),
+                    filtered_df['Run Out'].sum(),
+                    filtered_df['Stumped'].sum(),
+                    filtered_df['Not Out'].sum()
+                ]
+                dismissal_fig.add_trace(go.Pie(
+                    labels=dismissal_types,
+                    values=dismissal_values,
+                    hole=.3
+                ))
+                dismissal_fig.update_layout(
+                    height=400,
+                    showlegend=True,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Dismissal Distribution</h3>", unsafe_allow_html=True)
+                st.plotly_chart(dismissal_fig, use_container_width=True)
+
+            with col3:
+                # Score Range Distribution
+                score_ranges = ['0-24', '25-49', '50-99', '100+']
+                score_values = [
+                    filtered_df[filtered_df['Runs'] < 25]['File Name'].count(),
+                    filtered_df[(filtered_df['Runs'] >= 25) & (filtered_df['Runs'] < 50)]['File Name'].count(),
+                    filtered_df[(filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)]['File Name'].count(),
+                    filtered_df[filtered_df['Runs'] >= 100]['File Name'].count()
+                ]
+                score_fig = go.Figure()
+                score_fig.add_trace(go.Pie(
+                    labels=score_ranges,
+                    values=score_values,
+                    hole=.3,
+                    marker_colors=['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+                ))
+                score_fig.update_layout(
+                    height=400,
+                    showlegend=True,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Score Range Distribution</h3>", unsafe_allow_html=True)
+                st.plotly_chart(score_fig, use_container_width=True)
+
+            # Cache the advanced metrics
+            advanced_metrics = {
+                'boundary_fig': boundary_fig,
+                'dismissal_fig': dismissal_fig,
+                'score_fig': score_fig
+            }
+            cache_dataframe(advanced_metrics_cache_key, advanced_metrics)
+        else:
+            # Display cached figures
+            st.plotly_chart(advanced_metrics['boundary_fig'], use_container_width=True)
+            st.plotly_chart(advanced_metrics['dismissal_fig'], use_container_width=True)
+            st.plotly_chart(advanced_metrics['score_fig'], use_container_width=True)
+
+############
+
+# After all other visualizations and stats, at the bottom of the display_bat_view() function:
+
+        # Create a section for distribution analysis
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Distribution Analysis</h3>", unsafe_allow_html=True)
+
+        # Create three columns for the distribution charts
+        col1, col2, col3 = st.columns(3)
+
+        # Create a color map for players (excluding 'All')
+        player_colors = {
+            player: f'#{random.randint(0xFF4040, 0xFF9999):06x}'  # Different shades of red
+            for player in name_choice if player != 'All'
+        }
+
+        with col1:
+            # Run Distribution Analysis
+            boundary_fig = go.Figure()
+            
+            # Calculate overall statistics
+            overall_stats = {
+                '4s': (filtered_df['4s'].sum() * 4 / filtered_df['Runs'].sum() * 100),
+                '6s': (filtered_df['6s'].sum() * 6 / filtered_df['Runs'].sum() * 100),
+                'Other': (100 - ((filtered_df['4s'].sum() * 4 + filtered_df['6s'].sum() * 6) / filtered_df['Runs'].sum() * 100))
+            }
+
+            # Add overall bar
+            boundary_fig.add_trace(go.Bar(
+                name='Overall',
+                x=['4s', '6s', 'Other Runs'],
+                y=[overall_stats['4s'], overall_stats['6s'], overall_stats['Other']],
+                marker_color='#808080',
+                opacity=0.7
+            ))
+
+            # Add selected players with their unique colors
+            for player in name_choice:
+                if player != 'All':
+                    player_df = filtered_df[filtered_df['Name'] == player]
+                    if len(player_df) > 0:
+                        fours_pct = player_df['4s'].sum() * 4 / player_df['Runs'].sum() * 100
+                        sixes_pct = player_df['6s'].sum() * 6 / player_df['Runs'].sum() * 100
+                        other_pct = 100 - (fours_pct + sixes_pct)
+                        
+                        boundary_fig.add_trace(go.Bar(
+                            name=player,
+                            x=['4s', '6s', 'Other Runs'],
+                            y=[fours_pct, sixes_pct, other_pct],
+                            marker_color=player_colors[player]
+                        ))
+
+            boundary_fig.update_layout(
+                barmode='group',
+                title='Run Distribution (%)',
+                height=400,
+                showlegend=True,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title='Percentage',
+                yaxis=dict(range=[0, 100])
+            )
+            st.plotly_chart(boundary_fig, use_container_width=True)
+
+        with col2:
+            # Dismissal Analysis
+            dismissal_fig = go.Figure()
+            dismissal_types = ['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Not Out']
+            
+            # Calculate overall percentages
+            total_dismissals = sum([filtered_df[type].sum() for type in dismissal_types])
+            overall_percentages = [filtered_df[type].sum() / total_dismissals * 100 for type in dismissal_types]
+            
+            # Add overall bar
+            dismissal_fig.add_trace(go.Bar(
+                name='Overall',
+                x=dismissal_types,
+                y=overall_percentages,
+                marker_color='#808080',
+                opacity=0.7
+            ))
+
+            # Add selected players with their unique colors
+            for player in name_choice:
+                if player != 'All':
+                    player_df = filtered_df[filtered_df['Name'] == player]
+                    if len(player_df) > 0:
+                        player_total = sum([player_df[type].sum() for type in dismissal_types])
+                        player_percentages = [player_df[type].sum() / player_total * 100 for type in dismissal_types]
+                        
+                        dismissal_fig.add_trace(go.Bar(
+                            name=player,
+                            x=dismissal_types,
+                            y=player_percentages,
+                            marker_color=player_colors[player]
+                        ))
+
+            dismissal_fig.update_layout(
+                barmode='group',
+                title='Dismissal Distribution (%)',
+                height=400,
+                showlegend=True,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title='Percentage',
+                yaxis=dict(range=[0, 100])
+            )
+            st.plotly_chart(dismissal_fig, use_container_width=True)
+
+        with col3:
+            # Score Range Analysis
+            score_fig = go.Figure()
+            score_ranges = ['0-24', '25-49', '50-99', '100+']
+            
+            # Calculate overall percentages
+            total_innings = len(filtered_df)
+            overall_percentages = [
+                len(filtered_df[filtered_df['Runs'] < 25]) / total_innings * 100,
+                len(filtered_df[(filtered_df['Runs'] >= 25) & (filtered_df['Runs'] < 50)]) / total_innings * 100,
+                len(filtered_df[(filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)]) / total_innings * 100,
+                len(filtered_df[filtered_df['Runs'] >= 100]) / total_innings * 100
+            ]
+            
+            # Add overall bar
+            score_fig.add_trace(go.Bar(
+                name='Overall',
+                x=score_ranges,
+                y=overall_percentages,
+                marker_color='#808080',
+                opacity=0.7
+            ))
+
+            # Add selected players with their unique colors
+            for player in name_choice:
+                if player != 'All':
+                    player_df = filtered_df[filtered_df['Name'] == player]
+                    if len(player_df) > 0:
+                        player_percentages = [
+                            len(player_df[player_df['Runs'] < 25]) / len(player_df) * 100,
+                            len(player_df[(player_df['Runs'] >= 25) & (player_df['Runs'] < 50)]) / len(player_df) * 100,
+                            len(player_df[(player_df['Runs'] >= 50) & (player_df['Runs'] < 100)]) / len(player_df) * 100,
+                            len(player_df[player_df['Runs'] >= 100]) / len(player_df) * 100
+                        ]
+                        
+                        score_fig.add_trace(go.Bar(
+                            name=player,
+                            x=score_ranges,
+                            y=player_percentages,
+                            marker_color=player_colors[player]
+                        ))
+
+            score_fig.update_layout(
+                barmode='group',
+                title='Score Range Distribution (%)',
+                height=400,
+                showlegend=True,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title='Percentage',
+                yaxis=dict(range=[0, 100])
+            )
+            st.plotly_chart(score_fig, use_container_width=True)
+
+
 # Call the function to display the batting view
 display_bat_view()
