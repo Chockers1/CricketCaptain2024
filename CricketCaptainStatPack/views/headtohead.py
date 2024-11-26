@@ -380,117 +380,175 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
             (raw_matches['Away Team'] == team)
         ].sort_values('Date')  # Ensure matches are sorted by date
         
- # Initialize streak variables with default values
-current_win_streak = 0
-current_unbeaten_streak = 0
-current_loss_streak = 0
-current_winless_streak = 0
-longest_win_streak = 0
-longest_unbeaten_streak = 0
-longest_loss_streak = 0
-longest_winless_streak = 0
+        # Initialize streak tracking variables
+        current_win_streak = 0
+        current_unbeaten_streak = 0
+        current_loss_streak = 0
+        current_winless_streak = 0
+        
+        longest_win_streak = 0
+        longest_unbeaten_streak = 0
+        longest_loss_streak = 0
+        longest_winless_streak = 0
+        
+        # Initialize date tracking
+        win_streak_start_date = None
+        win_streak_end_date = None
+        unbeaten_streak_start_date = None
+        unbeaten_streak_end_date = None
+        loss_streak_start_date = None
+        loss_streak_end_date = None
+        winless_streak_start_date = None
+        winless_streak_end_date = None
+        
+        longest_win_streak_start_date = None
+        longest_win_streak_end_date = None
+        longest_unbeaten_streak_start_date = None
+        longest_unbeaten_streak_end_date = None
+        longest_loss_streak_start_date = None
+        longest_loss_streak_end_date = None
+        longest_winless_streak_start_date = None
+        longest_winless_streak_end_date = None
 
-# Initialize date variables with None
-win_streak_start_date = None
-win_streak_end_date = None
-unbeaten_streak_start_date = None
-unbeaten_streak_end_date = None
-loss_streak_start_date = None
-loss_streak_end_date = None
-winless_streak_start_date = None
-winless_streak_end_date = None
-longest_win_streak_start_date = None
-longest_win_streak_end_date = None
-longest_unbeaten_streak_start_date = None
-longest_unbeaten_streak_end_date = None
-longest_loss_streak_start_date = None
-longest_loss_streak_end_date = None
-longest_winless_streak_start_date = None
-longest_winless_streak_end_date = None
-
-# Only calculate streaks if we have match data and a team is selected
-if 'match_df' in st.session_state and 'All' not in team_choice and team_choice:
-    for team in team_choice:
-        try:
-            team_matches = raw_matches[
-                (raw_matches['Home Team'] == team) | 
-                (raw_matches['Away Team'] == team)
-            ].sort_values('Date')  # Ensure matches are sorted by date
+        # Calculate streaks
+        for _, match in team_matches.iterrows():
+            margin = match['Margin']
+            date = match['Date']
             
-            if not team_matches.empty:
-                # Reset streak tracking variables for each team
-                current_win_streak = 0
-                current_unbeaten_streak = 0
+            is_win = margin.startswith(team)
+            is_draw = 'drawn' in margin.lower()
+            is_loss = not (is_win or is_draw)
+            
+            # Win streak tracking
+            if is_win:
+                if current_win_streak == 0:
+                    win_streak_start_date = date
+                current_win_streak += 1
+                win_streak_end_date = date
+                
+                if current_win_streak > longest_win_streak:
+                    longest_win_streak = current_win_streak
+                    longest_win_streak_start_date = win_streak_start_date
+                    longest_win_streak_end_date = win_streak_end_date
+                
+                # Reset loss streak
                 current_loss_streak = 0
+                loss_streak_start_date = None
+                loss_streak_end_date = None
+            else:
+                current_win_streak = 0
+                win_streak_start_date = None
+                win_streak_end_date = None
+            
+            # Unbeaten streak tracking
+            if is_win or is_draw:
+                if current_unbeaten_streak == 0:
+                    unbeaten_streak_start_date = date
+                current_unbeaten_streak += 1
+                unbeaten_streak_end_date = date
+                
+                if current_unbeaten_streak > longest_unbeaten_streak:
+                    longest_unbeaten_streak = current_unbeaten_streak
+                    longest_unbeaten_streak_start_date = unbeaten_streak_start_date
+                    longest_unbeaten_streak_end_date = unbeaten_streak_end_date
+            else:
+                current_unbeaten_streak = 0
+                unbeaten_streak_start_date = None
+                unbeaten_streak_end_date = None
+            
+            # Loss streak tracking
+            if is_loss:
+                if current_loss_streak == 0:
+                    loss_streak_start_date = date
+                current_loss_streak += 1
+                loss_streak_end_date = date
+                
+                if current_loss_streak > longest_loss_streak:
+                    longest_loss_streak = current_loss_streak
+                    longest_loss_streak_start_date = loss_streak_start_date
+                    longest_loss_streak_end_date = loss_streak_end_date
+            else:
+                current_loss_streak = 0
+                loss_streak_start_date = None
+                loss_streak_end_date = None
+            
+            # Winless streak tracking
+            if is_loss or is_draw:
+                if current_winless_streak == 0:
+                    winless_streak_start_date = date
+                current_winless_streak += 1
+                winless_streak_end_date = date
+                
+                if current_winless_streak > longest_winless_streak:
+                    longest_winless_streak = current_winless_streak
+                    longest_winless_streak_start_date = winless_streak_start_date
+                    longest_winless_streak_end_date = winless_streak_end_date
+            else:
                 current_winless_streak = 0
-                
-                # [Rest of your existing streak calculation code]
-                
-        except Exception as e:
-            st.error(f"Error calculating streaks for {team}: {str(e)}")
-            continue
+                winless_streak_start_date = None
+                winless_streak_end_date = None
 
-# Display streaks in columns
-col1, col2 = st.columns(2)
+        # Display streaks in columns
+        col1, col2 = st.columns(2)
 
-# Current Streaks
-with col1:
-    st.markdown(
-        f"<h2 style='color:#f04f53; text-align: center;'>Current Streaks</h2>",
-        unsafe_allow_html=True,
-    )
-    current_streaks_data = {
-        "Metric": [
-            "Win Streak",
-            "Win Streak Dates",
-            "Unbeaten Run",
-            "Unbeaten Run Dates",
-            "Loss Streak",
-            "Loss Streak Dates",
-            "Winless Run",
-            "Winless Run Dates",
-        ],
-        "Value": [
-            current_win_streak,
-            f"{win_streak_start_date.strftime('%Y-%m-%d') if win_streak_start_date else 'N/A'} to {win_streak_end_date.strftime('%Y-%m-%d') if win_streak_end_date else 'N/A'}",
-            current_unbeaten_streak,
-            f"{unbeaten_streak_start_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date else 'N/A'} to {unbeaten_streak_end_date.strftime('%Y-%m-%d') if unbeaten_streak_end_date else 'N/A'}",
-            current_loss_streak,
-            f"{loss_streak_start_date.strftime('%Y-%m-%d') if loss_streak_start_date else 'N/A'} to {loss_streak_end_date.strftime('%Y-%m-%d') if loss_streak_end_date else 'N/A'}",
-            current_winless_streak,
-            f"{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else 'N/A'} to {winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_end_date else 'N/A'}",
-        ],
-    }
-    current_streaks_df = pd.DataFrame(current_streaks_data)
-    st.dataframe(current_streaks_df, hide_index=True, use_container_width=True)
+        # Current Streaks
+        with col1:
+            st.markdown(
+                f"<h2 style='color:#f04f53; text-align: center;'>Current Streaks</h2>",
+                unsafe_allow_html=True,
+            )
+            current_streaks_data = {
+                "Metric": [
+                    "Win Streak",
+                    "Win Streak Dates",
+                    "Unbeaten Run",
+                    "Unbeaten Run Dates",
+                    "Loss Streak",
+                    "Loss Streak Dates",
+                    "Winless Run",
+                    "Winless Run Dates",
+                ],
+                "Value": [
+                    current_win_streak,
+                    f"{win_streak_start_date.strftime('%Y-%m-%d') if win_streak_start_date else 'N/A'} to {win_streak_end_date.strftime('%Y-%m-%d') if win_streak_end_date else 'N/A'}",
+                    current_unbeaten_streak,
+                    f"{unbeaten_streak_start_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date else 'N/A'} to {unbeaten_streak_end_date.strftime('%Y-%m-%d') if unbeaten_streak_end_date else 'N/A'}",
+                    current_loss_streak,
+                    f"{loss_streak_start_date.strftime('%Y-%m-%d') if loss_streak_start_date else 'N/A'} to {loss_streak_end_date.strftime('%Y-%m-%d') if loss_streak_end_date else 'N/A'}",
+                    current_winless_streak,
+                    f"{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else 'N/A'} to {winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_end_date else 'N/A'}",
+                ],
+            }
+            current_streaks_df = pd.DataFrame(current_streaks_data)
+            st.dataframe(current_streaks_df, hide_index=True, use_container_width=True)
 
-# Longest Streaks
-with col2:
-    st.markdown(
-        f"<h2 style='color:#f04f53; text-align: center;'>Longest Streaks</h2>",
-        unsafe_allow_html=True,
-    )
-    longest_streaks_data = {
-        "Metric": [
-            "Win Streak",
-            "Win Streak Dates",
-            "Unbeaten Run",
-            "Unbeaten Run Dates",
-            "Loss Streak",
-            "Loss Streak Dates",
-            "Winless Run",
-            "Winless Run Dates",
-        ],
-        "Value": [
-            longest_win_streak,
-            f"{longest_win_streak_start_date.strftime('%Y-%m-%d') if longest_win_streak_start_date else 'N/A'} to {longest_win_streak_end_date.strftime('%Y-%m-%d') if longest_win_streak_end_date else 'N/A'}",
-            longest_unbeaten_streak,
-            f"{longest_unbeaten_streak_start_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_start_date else 'N/A'} to {longest_unbeaten_streak_end_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_end_date else 'N/A'}",
-            longest_loss_streak,
-            f"{longest_loss_streak_start_date.strftime('%Y-%m-%d') if longest_loss_streak_start_date else 'N/A'} to {longest_loss_streak_end_date.strftime('%Y-%m-%d') if longest_loss_streak_end_date else 'N/A'}",
-            longest_winless_streak,
-            f"{longest_winless_streak_start_date.strftime('%Y-%m-%d') if longest_winless_streak_start_date else 'N/A'} to {longest_winless_streak_end_date.strftime('%Y-%m-%d') if longest_winless_streak_end_date else 'N/A'}",
-        ],
-    }
-    longest_streaks_df = pd.DataFrame(longest_streaks_data)
-    st.dataframe(longest_streaks_df, hide_index=True, use_container_width=True)
+        # Longest Streaks
+        with col2:
+            st.markdown(
+                f"<h2 style='color:#f04f53; text-align: center;'>Longest Streaks</h2>",
+                unsafe_allow_html=True,
+            )
+            longest_streaks_data = {
+                "Metric": [
+                    "Win Streak",
+                    "Win Streak Dates",
+                    "Unbeaten Run",
+                    "Unbeaten Run Dates",
+                    "Loss Streak",
+                    "Loss Streak Dates",
+                    "Winless Run",
+                    "Winless Run Dates",
+                ],
+                "Value": [
+                    longest_win_streak,
+                    f"{longest_win_streak_start_date.strftime('%Y-%m-%d') if longest_win_streak_start_date else 'N/A'} to {longest_win_streak_end_date.strftime('%Y-%m-%d') if longest_win_streak_end_date else 'N/A'}",
+                    longest_unbeaten_streak,
+                    f"{longest_unbeaten_streak_start_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_start_date else 'N/A'} to {longest_unbeaten_streak_end_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_end_date else 'N/A'}",
+                    longest_loss_streak,
+                    f"{longest_loss_streak_start_date.strftime('%Y-%m-%d') if longest_loss_streak_start_date else 'N/A'} to {longest_loss_streak_end_date.strftime('%Y-%m-%d') if longest_loss_streak_end_date else 'N/A'}",
+                    longest_winless_streak,
+                    f"{longest_winless_streak_start_date.strftime('%Y-%m-%d') if longest_winless_streak_start_date else 'N/A'} to {longest_winless_streak_end_date.strftime('%Y-%m-%d') if longest_winless_streak_end_date else 'N/A'}",
+                ],
+            }
+            longest_streaks_df = pd.DataFrame(longest_streaks_data)
+            st.dataframe(longest_streaks_df, hide_index=True, use_container_width=True)
