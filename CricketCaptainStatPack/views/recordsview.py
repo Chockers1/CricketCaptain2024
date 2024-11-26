@@ -180,7 +180,12 @@ def process_consecutive_scores(filtered_bat_df, threshold):
             }
             streak_records.append(streak_info)
     
+    # If no streaks found, return empty DataFrame with correct columns
+    if not streak_records:
+        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
+    
     return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
+
 
 def process_not_out_99s(filtered_bat_df):
     """Process 99 not out data"""
@@ -435,7 +440,7 @@ def process_best_bowling(filtered_bowl_df):
 def process_consecutive_five_wickets(filtered_bowl_df):
     """Process consecutive matches with 5+ wickets"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
     
     # Sort by date and name
     df = filtered_bowl_df.sort_values(['Name', 'Date'])
@@ -481,7 +486,12 @@ def process_consecutive_five_wickets(filtered_bowl_df):
             }
             streak_records.append(streak_info)
     
+    # If no streaks found, return empty DataFrame with correct columns
+    if not streak_records:
+        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
+    
     return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
+
 
 
 def process_five_wickets_both(filtered_bowl_df):
@@ -686,6 +696,57 @@ def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
+def process_follow_on_victories(filtered_game_df, filtered_match_df):
+    """Process victories after following on"""
+    if filtered_game_df is None or filtered_match_df is None or filtered_game_df.empty:
+        return pd.DataFrame()
+    
+    # Group by match to find consecutive batting innings
+    match_groups = filtered_game_df.groupby(['Date', 'Bat_Team', 'Bowl_Team'])
+    
+    follow_on_victories = []
+    for (date, bat_team, bowl_team), group in match_groups:
+        # Check if team batted in innings 2 and 3 (follow-on)
+        innings_2_3 = group[group['Innings'].isin([2, 3])]
+        if len(innings_2_3) == 2 and all(innings_2_3['Bat_Team'] == bat_team):
+            # Find corresponding match result
+            match_result = filtered_match_df[
+                (filtered_match_df['Date'] == date) & 
+                ((filtered_match_df['Home_Team'] == bat_team) | 
+                 (filtered_match_df['Away_Team'] == bat_team))
+            ]
+            
+            if not match_result.empty:
+                match = match_result.iloc[0]
+                # Check if the following-on team won
+                team_won = (
+                    (match['Home_Team'] == bat_team and match['Home_Win'] == 1) or
+                    (match['Away_Team'] == bat_team and match['Away_Won'] == 1)
+                )
+                
+                if team_won:
+                    innings_2 = group[group['Innings'] == 2].iloc[0]
+                    innings_3 = group[group['Innings'] == 3].iloc[0]
+                    
+                    victory_info = {
+                        'Winning Team': bat_team,
+                        'Opponent': bowl_team,
+                        'First Innings': innings_2['Total_Runs'],
+                        'Second Innings': innings_3['Total_Runs'],
+                        'Format': innings_2['Match_Format'],
+                        'Competition': innings_2['Competition'],
+                        'Date': date.strftime('%d/%m/%Y'),
+                        'Margin': match['Match_Result']
+                    }
+                    follow_on_victories.append(victory_info)
+    
+    if follow_on_victories:
+        df = pd.DataFrame(follow_on_victories)
+        return df.sort_values('Date', ascending=False)
+    
+    return pd.DataFrame()
+
+
 def process_innings_wins(filtered_match_df):
     """Process innings wins data"""
     if filtered_match_df is None or filtered_match_df.empty:
@@ -744,6 +805,14 @@ with tabs[2]:
         bigwin_innings_df = process_innings_wins(filtered_match_df)
         if not bigwin_innings_df.empty:
             st.dataframe(bigwin_innings_df, use_container_width=True, hide_index=True)
+
+        # Victories after Following On
+        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Victories after Following On</h3>", 
+                #unsafe_allow_html=True)
+        #follow_on_victories_df = process_follow_on_victories(filtered_game_df, filtered_match_df)
+        #if not follow_on_victories_df.empty:
+            #st.dataframe(follow_on_victories_df, use_container_width=True, hide_index=True)
+
 
         # Narrowest Wins (Runs)
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Narrowest Wins (Runs)</h3>", 
@@ -835,6 +904,48 @@ def get_match_details(filtered_game_df, filtered_match_df):
     
     return result_df
 
+def get_highest_chases(processed_game_df):
+    """Process highest successful run chases"""
+    if processed_game_df is None or processed_game_df.empty:
+        return pd.DataFrame()
+        
+    chases_df = processed_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
+                                  'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
+                                  'Date', 'Innings', 'Result']].copy()
+
+    # Filter for successful chases and exclude all-out innings
+    successful_chases = (
+        ((chases_df['Match_Format'].isin(['First Class', 'Test Match'])) & 
+         (chases_df['Innings'] == 4) & 
+         (chases_df['Result'] == 'Win') &
+         (chases_df['Wickets'] < 10)) |
+        ((chases_df['Match_Format'].isin(['ODI', 'T20I', 'One Day', 'T20', '20'])) & 
+         (chases_df['Innings'] == 2) & 
+         (chases_df['Result'] == 'Win') &
+         (chases_df['Wickets'] < 10))
+    )
+    chases_df = chases_df[successful_chases]
+    
+    # Calculate wickets remaining
+    chases_df['Margin'] = chases_df.apply(
+        lambda row: f"by {10 - row['Wickets']} wickets",
+        axis=1
+    )
+    
+    # Format date and rename columns
+    chases_df['Date'] = chases_df['Date'].dt.strftime('%d/%m/%Y')
+    chases_df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs', 
+                        'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 
+                        'Result', 'Margin']
+    
+    # Sort by runs scored and return relevant columns
+    chases_df = chases_df.sort_values('Runs', ascending=False)
+    return chases_df[['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 
+                      'Overs', 'Run Rate', 'Competition', 'Format', 'Date', 'Margin']]
+
+
+
+
 def process_team_scores(filtered_game_df, score_type='highest'):
     """Process team scores data"""
     if filtered_game_df is None or filtered_game_df.empty:
@@ -850,11 +961,12 @@ def process_team_scores(filtered_game_df, score_type='highest'):
     else:
         df = df.sort_values('Total_Runs', ascending=False)
     
-    df['Date'] = df['Date'].dt.date
+    df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs',
                  'Run Rate', 'Competition', 'Format', 'Date']
     
     return df
+
 
 # Game Records Tab
 with tabs[3]:
@@ -878,41 +990,6 @@ with tabs[3]:
                 st.dataframe(lowest_scores_df, use_container_width=True, hide_index=True)
 
             # Highest Successful Run Chases
-            def get_highest_chases(processed_game_df):
-                chases_df = processed_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
-                                             'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
-                                             'Date', 'Innings', 'Result', 'Margin']].copy()
-
-                successful_chases = (
-                    ((chases_df['Match_Format'].isin(['First Class', 'Test Match'])) & 
-                     (chases_df['Innings'] == 4) & 
-                     (chases_df['Result'] == 'Win') &
-                     (chases_df['Wickets'] != 10)) |
-                    ((chases_df['Match_Format'].isin(['ODI', 'T20I', 'One Day', 'T20', '20'])) & 
-                     (chases_df['Innings'] == 2) & 
-                     (chases_df['Result'] == 'Win') &
-                     (chases_df['Wickets'] != 10))
-                )
-                chases_df = chases_df[successful_chases]
-                chases_df['Date'] = chases_df['Date'].dt.date
-
-# Calculate margin and store directly as 'Margin'
-                def format_margin_wickets(row):
-                    if pd.notna(row['Margin']) and 'wicket' in str(row['Margin']).lower():
-                        return row['Margin']
-                    elif pd.notna(row['Margin']):
-                        wickets_left = 10 - row['Wickets']
-                        return f"by {wickets_left} wickets"
-                    return "-"
-                
-                chases_df['Margin'] = chases_df.apply(format_margin_wickets, axis=1)
-                chases_df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs', 
-                                   'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 
-                                   'Result', 'Margin']
-                chases_df = chases_df.sort_values('Runs', ascending=False)
-                return chases_df[['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs', 
-                                'Run Rate', 'Competition', 'Format', 'Date', 'Margin']]
-            
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Successful Run Chases</h3>", 
                        unsafe_allow_html=True)
             chases_df = get_highest_chases(processed_game_df)
@@ -920,26 +997,34 @@ with tabs[3]:
                 st.dataframe(chases_df, use_container_width=True, hide_index=True)
 
             # Lowest First Innings Wins
-            def get_lowest_first_innings_wins(processed_game_df):
+            def process_lowest_first_innings_wins(processed_game_df):
+                """Process lowest first innings winning scores"""
+                if processed_game_df is None or processed_game_df.empty:
+                    return pd.DataFrame()
+                    
                 low_wins_df = processed_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
                                                'Overs', 'Run_Rate', 'Competition', 'Match_Format', 
                                                'Date', 'Innings', 'Result', 'Margin']].copy()
 
+                # Filter for first innings wins
                 first_innings_wins = (low_wins_df['Innings'] == 1) & (low_wins_df['Result'] == 'Win')
                 low_wins_df = low_wins_df[first_innings_wins]
-                low_wins_df['Date'] = low_wins_df['Date'].dt.date
-
+                
+                # Format date and rename columns
+                low_wins_df['Date'] = low_wins_df['Date'].dt.strftime('%d/%m/%Y')
                 low_wins_df.columns = ['Bat Team', 'Bowl Team', 'Runs', 'Wickets', 'Overs', 
                                      'Run Rate', 'Competition', 'Format', 'Date', 'Innings', 
                                      'Result', 'Margin']
-                return low_wins_df.sort_values('Runs', ascending=True)[['Bat Team', 'Bowl Team', 
-                                                                      'Innings', 'Runs', 'Wickets', 
-                                                                      'Overs', 'Run Rate', 'Competition', 
-                                                                      'Format', 'Date', 'Margin']]
-            
+                
+                # Sort by runs (ascending for lowest scores) and return relevant columns
+                return low_wins_df.sort_values('Runs', ascending=True)[
+                    ['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs', 
+                     'Run Rate', 'Competition', 'Format', 'Date', 'Margin']
+                ]
+
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Lowest First Innings Winning Scores</h3>", 
                        unsafe_allow_html=True)
-            low_wins_df = get_lowest_first_innings_wins(processed_game_df)
+            low_wins_df = process_lowest_first_innings_wins(processed_game_df)
             if not low_wins_df.empty:
                 st.dataframe(low_wins_df, use_container_width=True, hide_index=True)
 
