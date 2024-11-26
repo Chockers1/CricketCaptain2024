@@ -725,7 +725,23 @@ def display_ar_view():
         padding-left: 1rem;
         padding-bottom: 1rem;
     }
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        justify-content: space-between;
+    }
+    .stTabs [data-baseweb="tab"] {
+        width: 200px;
+        white-space: pre-wrap;
+        text-align: center;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        display: none;
+    }
     </style>""", unsafe_allow_html=True)
+    
+    # Rest of the function remains the same...
+
     
     if 'bat_df' not in st.session_state or 'bowl_df' not in st.session_state:
         st.error("Required data not found in session state")
