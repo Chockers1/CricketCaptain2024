@@ -184,3 +184,406 @@ if 'match_df' in st.session_state:
     
 else:
     st.info("No match records available for head-to-head analysis.")
+
+###################
+
+# Form Guide
+if 'match_df' in st.session_state and 'All' not in team_choice:
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Form Guide</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+    
+    # Style for the form indicators with improved layout
+    form_styles = """
+    <style>
+    .form-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        margin: 10px auto;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        max-width: 100%;
+        width: 100%;
+    }
+    .form-indicator {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        color: white;
+        font-weight: bold;
+        margin: 0 4px;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+    .form-indicators-container {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: 8px;
+        flex: 1;
+        padding: 0 20px;
+    }
+    .team-name {
+        font-weight: bold;
+        width: 150px;
+        font-size: 16px;
+        text-align: right;
+        padding-right: 20px;
+        flex-shrink: 0;
+    }
+    .win {
+        background-color: #28a745;
+    }
+    .draw {
+        background-color: #ffc107;
+        color: black;
+    }
+    .loss {
+        background-color: #dc3545;
+    }
+    </style>
+    """
+    st.markdown(form_styles, unsafe_allow_html=True)
+
+    for team in team_choice:
+        # Use the same filtered matches dataframe
+        team_matches = raw_matches[
+            (raw_matches['Home Team'] == team) | 
+            (raw_matches['Away Team'] == team)
+        ].copy()
+
+        # Take only the last 15 matches
+        team_matches = team_matches.head(15)
+
+        # Create form indicators
+        form_indicators = []
+        for _, match in team_matches.iterrows():
+            margin = match['Margin']
+            is_home = match['Home Team'] == team
+            
+            # Get the date for the tooltip
+            date = match['Date'].strftime('%Y-%m-%d')
+            opponent = match['Away Team'] if is_home else match['Home Team']
+            tooltip = f"{date} vs {opponent}"
+            
+            if 'won by' in margin:
+                winning_team = margin.split(' won')[0]
+                if winning_team == team:
+                    form_indicators.append(f'<div class="form-indicator win" title="{tooltip}">W</div>')
+                else:
+                    form_indicators.append(f'<div class="form-indicator loss" title="{tooltip}">L</div>')
+            else:
+                form_indicators.append(f'<div class="form-indicator draw" title="{tooltip}">D</div>')
+
+        # Display team name and form
+        if form_indicators:  # Only display if there are matches
+            form_html = f"""
+            <div class="form-container">
+                <span class="team-name">{team}</span>
+                <div class="form-indicators-container">
+                    {''.join(reversed(form_indicators))}
+                </div>
+            </div>
+            """
+            st.markdown(form_html, unsafe_allow_html=True)
+else:
+    if 'match_df' in st.session_state:
+        st.info("Select a team in the filter to see their form guide.")
+
+#######
+if 'match_df' in st.session_state and 'All' not in team_choice:
+    for team in team_choice:
+        team_matches = raw_matches[
+            (raw_matches['Home Team'] == team) | 
+            (raw_matches['Away Team'] == team)
+        ].head(50)[::-1]  # Last 50 matches, reversed to go from old to recent
+        
+        # Create win/loss/draw data for plotting
+        results = []
+        colors = []
+        for _, match in team_matches.iterrows():
+            if 'drawn' in match['Margin'].lower():
+                results.append(0.5)  # Draw
+                colors.append('#ffc107')  # Amber
+            elif match['Margin'].startswith(team):
+                results.append(1)    # Win
+                colors.append('#28a745')  # Green
+            else:
+                results.append(0)    # Loss
+                colors.append('#dc3545')  # Red
+        
+        # Create line chart
+        fig = go.Figure()
+        
+        # Add the main line with custom shape
+        fig.add_trace(go.Scatter(
+            y=results,
+            mode='lines',
+            name='Performance',
+            line=dict(
+                shape='spline',  # Makes the line more fluid
+                smoothing=0.8,   # Adjusts the smoothness
+                width=2,
+                color='#666666'  # Neutral gray for the line
+            )
+        ))
+        
+        # Add colored markers on top
+        fig.add_trace(go.Scatter(
+            y=results,
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=colors,
+                line=dict(
+                    width=2,
+                    color='white'
+                )
+            ),
+            showlegend=False
+        ))
+        
+        fig.update_layout(
+            #title=f"{team} - Performance Trend",
+            yaxis=dict(
+                ticktext=["Loss", "Draw", "Win"],
+                tickvals=[0, 0.5, 1],
+                range=[-0.1, 1.1],
+                gridcolor='lightgray'
+            ),
+            xaxis=dict(
+                title="Last 50 Matches (Old → Recent)",
+                gridcolor='lightgray'
+            ),
+            plot_bgcolor='white',
+            showlegend=False,
+            height=300
+        )
+        
+        # Add markdown-style team name as a title
+        st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Performance Trend </h1>", unsafe_allow_html=True)
+        
+        st.plotly_chart(fig, use_container_width=True)
+
+###########
+
+# Add before the Form Guide
+if 'match_df' in st.session_state and 'All' not in team_choice:
+    for team in team_choice:
+        team_matches = raw_matches[
+            (raw_matches['Home Team'] == team) | 
+            (raw_matches['Away Team'] == team)
+        ].sort_values('Date')  # Ensure matches are sorted by date
+        
+        # Initialize streak tracking variables
+        current_win_streak = 0
+        current_unbeaten_streak = 0
+        current_loss_streak = 0
+        current_winless_streak = 0
+        
+        longest_win_streak = 0
+        longest_unbeaten_streak = 0
+        longest_loss_streak = 0
+        longest_winless_streak = 0
+        
+        # Streak date tracking
+        win_streak_start_date = None
+        win_streak_end_date = None
+        unbeaten_streak_start_date = None
+        unbeaten_streak_end_date = None
+        loss_streak_start_date = None
+        loss_streak_end_date = None
+        winless_streak_start_date = None
+        winless_streak_end_date = None
+        
+        longest_win_streak_start_date = None
+        longest_win_streak_end_date = None
+        longest_unbeaten_streak_start_date = None
+        longest_unbeaten_streak_end_date = None
+        longest_loss_streak_start_date = None
+        longest_loss_streak_end_date = None
+        longest_winless_streak_start_date = None
+        longest_winless_streak_end_date = None
+        
+        current_streak_type = ''
+        
+        # Calculate streaks
+        for _, match in team_matches.iterrows():
+            is_win = match['Margin'].startswith(team)
+            is_draw = 'drawn' in match['Margin'].lower()
+            is_loss = not (is_win or is_draw)
+            
+            # Current streak type and date tracking
+            if is_win:
+                # Win streak tracking
+                if current_win_streak == 0:
+                    win_streak_start_date = match['Date']
+                current_win_streak += 1
+                win_streak_end_date = match['Date']
+                
+                # Unbeaten streak tracking
+                if current_unbeaten_streak == 0:
+                    unbeaten_streak_start_date = match['Date']
+                current_unbeaten_streak += 1
+                unbeaten_streak_end_date = match['Date']
+                
+                # Reset loss and winless streaks
+                current_loss_streak = 0
+                current_winless_streak = 0
+                loss_streak_start_date = None
+                loss_streak_end_date = None
+                winless_streak_start_date = None
+                winless_streak_end_date = None
+                
+            elif is_draw:
+                # Unbeaten streak tracking
+                if current_unbeaten_streak == 0:
+                    unbeaten_streak_start_date = match['Date']
+                current_unbeaten_streak += 1
+                unbeaten_streak_end_date = match['Date']
+                
+                # Winless streak tracking
+                if current_winless_streak == 0:
+                    winless_streak_start_date = match['Date']
+                current_winless_streak += 1
+                winless_streak_end_date = match['Date']
+                
+                # Reset win and loss streaks
+                current_win_streak = 0
+                current_loss_streak = 0
+                win_streak_start_date = None
+                win_streak_end_date = None
+                loss_streak_start_date = None
+                loss_streak_end_date = None
+                
+            else:  # Loss
+                # Loss streak tracking
+                if current_loss_streak == 0:
+                    loss_streak_start_date = match['Date']
+                current_loss_streak += 1
+                loss_streak_end_date = match['Date']
+                
+                # Winless streak tracking
+                if current_winless_streak == 0:
+                    winless_streak_start_date = match['Date']
+                current_winless_streak += 1
+                winless_streak_end_date = match['Date']
+                
+                # Reset win and unbeaten streaks
+                current_win_streak = 0
+                current_unbeaten_streak = 0
+                win_streak_start_date = None
+                win_streak_end_date = None
+                unbeaten_streak_start_date = None
+                unbeaten_streak_end_date = None
+            
+            # Update longest streaks
+            if current_win_streak > longest_win_streak:
+                longest_win_streak = current_win_streak
+                longest_win_streak_start_date = win_streak_start_date
+                longest_win_streak_end_date = win_streak_end_date
+            
+            if current_unbeaten_streak > longest_unbeaten_streak:
+                longest_unbeaten_streak = current_unbeaten_streak
+                longest_unbeaten_streak_start_date = unbeaten_streak_start_date
+                longest_unbeaten_streak_end_date = unbeaten_streak_end_date
+            
+            if current_loss_streak > longest_loss_streak:
+                longest_loss_streak = current_loss_streak
+                longest_loss_streak_start_date = loss_streak_start_date
+                longest_loss_streak_end_date = loss_streak_end_date
+            
+            if current_winless_streak > longest_winless_streak:
+                longest_winless_streak = current_winless_streak
+                longest_winless_streak_start_date = winless_streak_start_date
+                longest_winless_streak_end_date = winless_streak_end_date
+        
+        # Create two columns for the streak information
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"""
+                <div style='background-color: white; padding: 20px; border-radius: 10px; margin: 20px 0; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                    <h3 style='color: #f04f53; margin: 0;'>Current Streaks</h3>
+                    <table style='width: 100%; margin-top: 10px;'>
+                        <tr>
+                            <td style='padding: 5px 0;'>Win Streak:</td>
+                            <td style='font-weight: bold;'>{current_win_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Win Streak Dates:</td>
+                            <td>{win_streak_start_date.strftime('%Y-%m-%d') if win_streak_start_date else ''} {" to " + win_streak_end_date.strftime('%Y-%m-%d') if win_streak_start_date and win_streak_end_date else ''}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Unbeaten Run:</td>
+                            <td style='font-weight: bold;'>{current_unbeaten_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Unbeaten Run Dates:</td>
+                            <td>{unbeaten_streak_start_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date else ''} {" to " + unbeaten_streak_end_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date and unbeaten_streak_end_date else ''}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Loss Streak:</td>
+                            <td style='font-weight: bold;'>{current_loss_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Loss Streak Dates:</td>
+                            <td>{loss_streak_start_date.strftime('%Y-%m-%d') if loss_streak_start_date else ''} {" to " + loss_streak_end_date.strftime('%Y-%m-%d') if loss_streak_start_date and loss_streak_end_date else ''}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Winless Run:</td>
+                            <td style='font-weight: bold;'>{current_winless_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Winless Run Dates:</td>
+                            <td>{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else ''} {" to " + winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_start_date and winless_streak_end_date else ''}</td>
+                        </tr>
+                    </table>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        with col2:
+            st.markdown(f"""
+                <div style='background-color: white; padding: 20px; border-radius: 10px; margin: 20px 0; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                    <h3 style='color: #f04f53; margin: 0;'>Longest Streaks</h3>
+                    <table style='width: 100%; margin-top: 10px;'>
+                        <tr>
+                            <td style='padding: 5px 0;'>Win Streak:</td>
+                            <td style='font-weight: bold;'>{longest_win_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Win Streak Dates:</td>
+                            <td>{longest_win_streak_start_date or 'N/A'} to {longest_win_streak_end_date or 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Unbeaten Run:</td>
+                            <td style='font-weight: bold;'>{longest_unbeaten_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Unbeaten Run Dates:</td>
+                            <td>{longest_unbeaten_streak_start_date or 'N/A'} to {longest_unbeaten_streak_end_date or 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Loss Streak:</td>
+                            <td style='font-weight: bold;'>{longest_loss_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Loss Streak Dates:</td>
+                            <td>{longest_loss_streak_start_date or 'N/A'} to {longest_loss_streak_end_date or 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Winless Run:</td>
+                            <td style='font-weight: bold;'>{longest_winless_streak}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 5px 0;'>Winless Run Dates:</td>
+                            <td>{longest_winless_streak_start_date or 'N/A'} to {longest_winless_streak_end_date or 'N/A'}</td>
+                        </tr>
+                    </table>
+                </div>
+            """, unsafe_allow_html=True)
