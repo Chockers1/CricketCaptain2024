@@ -509,61 +509,61 @@ col1, col2 = st.columns(2)
 # Current Streaks
 with col1:
     st.markdown(
-        f"<h2 style='color:#f04f53; text-align: center;'>Current Streaks</h2>", 
-        unsafe_allow_html=True
+        f"<h2 style='color:#f04f53; text-align: center;'>Current Streaks</h2>",
+        unsafe_allow_html=True,
     )
     current_streaks_data = {
         "Metric": [
-            "Win Streak", 
-            "Win Streak Dates", 
-            "Unbeaten Run", 
-            "Unbeaten Run Dates", 
-            "Loss Streak", 
-            "Loss Streak Dates", 
-            "Winless Run", 
-            "Winless Run Dates"
+            "Win Streak",
+            "Win Streak Dates",
+            "Unbeaten Run",
+            "Unbeaten Run Dates",
+            "Loss Streak",
+            "Loss Streak Dates",
+            "Winless Run",
+            "Winless Run Dates",
         ],
         "Value": [
-            current_win_streak, 
+            current_win_streak,
             f"{win_streak_start_date.strftime('%Y-%m-%d') if win_streak_start_date else ''} to {win_streak_end_date.strftime('%Y-%m-%d') if win_streak_start_date and win_streak_end_date else ''}",
-            current_unbeaten_streak, 
+            current_unbeaten_streak,
             f"{unbeaten_streak_start_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date else ''} to {unbeaten_streak_end_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date and unbeaten_streak_end_date else ''}",
-            current_loss_streak, 
+            current_loss_streak,
             f"{loss_streak_start_date.strftime('%Y-%m-%d') if loss_streak_start_date else ''} to {loss_streak_end_date.strftime('%Y-%m-%d') if loss_streak_start_date and loss_streak_end_date else ''}",
-            current_winless_streak, 
-            f"{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else ''} to {winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_start_date and winless_streak_end_date else ''}"
-        ]
+            current_winless_streak,
+            f"{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else ''} to {winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_start_date and winless_streak_end_date else ''}",
+        ],
     }
     current_streaks_df = pd.DataFrame(current_streaks_data)
-    st.dataframe(current_streaks_df, use_container_width=True)
+    st.dataframe(current_streaks_df, hide_index=True, use_container_width=True)
 
 # Longest Streaks
 with col2:
     st.markdown(
-        f"<h2 style='color:#f04f53; text-align: center;'>Longest Streaks</h2>", 
-        unsafe_allow_html=True
+        f"<h2 style='color:#f04f53; text-align: center;'>Longest Streaks</h2>",
+        unsafe_allow_html=True,
     )
     longest_streaks_data = {
         "Metric": [
-            "Win Streak", 
-            "Win Streak Dates", 
-            "Unbeaten Run", 
-            "Unbeaten Run Dates", 
-            "Loss Streak", 
-            "Loss Streak Dates", 
-            "Winless Run", 
-            "Winless Run Dates"
+            "Win Streak",
+            "Win Streak Dates",
+            "Unbeaten Run",
+            "Unbeaten Run Dates",
+            "Loss Streak",
+            "Loss Streak Dates",
+            "Winless Run",
+            "Winless Run Dates",
         ],
         "Value": [
-            longest_win_streak, 
+            longest_win_streak,
             f"{longest_win_streak_start_date or 'N/A'} to {longest_win_streak_end_date or 'N/A'}",
-            longest_unbeaten_streak, 
+            longest_unbeaten_streak,
             f"{longest_unbeaten_streak_start_date or 'N/A'} to {longest_unbeaten_streak_end_date or 'N/A'}",
-            longest_loss_streak, 
+            longest_loss_streak,
             f"{longest_loss_streak_start_date or 'N/A'} to {longest_loss_streak_end_date or 'N/A'}",
-            longest_winless_streak, 
-            f"{longest_winless_streak_start_date or 'N/A'} to {longest_winless_streak_end_date or 'N/A'}"
-        ]
+            longest_winless_streak,
+            f"{longest_winless_streak_start_date or 'N/A'} to {longest_winless_streak_end_date or 'N/A'}",
+        ],
     }
     longest_streaks_df = pd.DataFrame(longest_streaks_data)
-    st.dataframe(longest_streaks_df, use_container_width=True)
+    st.dataframe(longest_streaks_df, hide_index=True, use_container_width=True)
