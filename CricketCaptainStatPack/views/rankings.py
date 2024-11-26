@@ -261,132 +261,299 @@ TEAM_COLORS = {
 # After your existing rankings display code:
 ranking_per_year = existing_data
 
-# Create line graph
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rankings History</h3>", unsafe_allow_html=True)
-fig = go.Figure()
+#
 
-# Add traces for each team
-for team in TEAMS:
-    team_data = ranking_per_year[ranking_per_year['Team'] == team]
-    if not team_data.empty:
-        fig.add_trace(go.Scatter(
-            x=team_data['Year'],
-            y=team_data['Position'],
-            name=team,
-            line=dict(color=TEAM_COLORS[team], width=2),
-            mode='lines+markers',
-            marker=dict(size=8),
-            opacity=1,
-            hovertemplate=f"{team}<br>Year: %{{x}}<br>Position: %{{y}}<extra></extra>"
-        ))
+#######################
 
-# Update layout
-fig.update_layout(
-    height=600,
-    xaxis_title="Year",
-    yaxis_title="Position",
-    yaxis=dict(
-        autorange="reversed",
-        tickmode='linear',
-        tick0=1,
-        dtick=1,
-        range=[12.5, 0.5]
-    ),
-    xaxis=dict(
-        tickmode='linear',
-        dtick=1
-    ),
-    hovermode='x unified',
-    legend=dict(
-        yanchor="top",
-        y=0.99,
-        xanchor="left",
-        x=1.02,
-        itemsizing='constant',
-        itemwidth=30,
-        bgcolor='rgba(0, 0, 0, 0)'
-    ),
-    showlegend=True,
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    margin=dict(r=150)
-)
+# Add Rating Distribution and Gap Analysis
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rating Distribution and Gap Analysis</h3>", unsafe_allow_html=True)
 
-# Add gridlines
-fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
-fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
+# Get the most recent year's data and sort by rating
+latest_year = ranking_per_year['Year'].max()
+latest_data = ranking_per_year[ranking_per_year['Year'] == latest_year].sort_values('Rating', ascending=False)
 
-# Update trace defaults
-for trace in fig.data:
-    trace.update(
-        selected=dict(
-            marker=dict(size=12, opacity=1),
-        ),
-        unselected=dict(
-            marker=dict(size=8, opacity=0.3),
-        )
+# Calculate rating gaps and percentage differences
+latest_data['Rating_Gap'] = latest_data['Rating'].diff().abs()
+latest_data['Percentage_Diff'] = (latest_data['Rating_Gap'] / latest_data['Rating'].shift()) * 100
+
+# Create visualization with just the bars and annotations
+fig_dist = go.Figure()
+
+# Add bars for ratings
+fig_dist.add_trace(go.Bar(
+    x=latest_data['Team'],
+    y=latest_data['Rating'],
+    name='Rating',
+    marker_color=[TEAM_COLORS[team] for team in latest_data['Team']],
+    text=latest_data['Rating'].round(1),
+    textposition='auto',
+))
+
+# Add annotations for gaps between bars
+for idx in range(1, len(latest_data)):
+    fig_dist.add_annotation(
+        x=latest_data['Team'].iloc[idx],
+        y=latest_data['Rating'].iloc[idx-1],
+        text=f'↓ {latest_data["Rating_Gap"].iloc[idx]:.1f}<br>({latest_data["Percentage_Diff"].iloc[idx]:.1f}%)',
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=2,
+        arrowcolor='rgba(255, 0, 0, 0.5)',
+        ax=0,
+        ay=30
     )
 
-# Display the plot
-st.plotly_chart(fig, use_container_width=True)
+fig_dist.update_layout(
+    height=500,
+    xaxis_title="Team",
+    yaxis_title="Rating",
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    showlegend=False,
+    yaxis=dict(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='LightGrey',
+        range=[0, max(latest_data['Rating']) * 1.2]
+    ),
+    bargap=0.2,
+    margin=dict(t=50, b=50, l=50, r=50)
+)
 
-###############RATING PER YEAR
+st.plotly_chart(fig_dist, use_container_width=True)
 
-# Display the first plot with a unique key
-#st.plotly_chart(fig, use_container_width=True, key="rankings_history")
+##########
 
-# Add a new line graph with Year as the x-axis and Rating as the y-axis, with a different key
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Ratings History</h3>", unsafe_allow_html=True)
-fig_rating = go.Figure()
+# Year-over-Year Analysis
+st.markdown(f"<h3 style='color:#f04f53; text-align: center;'>Year-over-Year Rating Changes</h3>", unsafe_allow_html=True)
+#st.markdown(f"<p style='text-align: center; font-size: 1.1em;'>Comparing {latest_year} vs {latest_year-1}</p>", unsafe_allow_html=True)
 
-# Add traces for each team
+# Get previous year's data
+prev_year = latest_year - 1
+prev_data = ranking_per_year[ranking_per_year['Year'] == prev_year]
+
+if not prev_data.empty:
+    # Merge current and previous year data
+    yoy_data = latest_data.merge(
+        prev_data[['Team', 'Rating']], 
+        on='Team', 
+        suffixes=('_current', '_prev')
+    )
+    
+    yoy_data['Rating_Change'] = yoy_data['Rating_current'] - yoy_data['Rating_prev']
+    
+    # Create YoY change visualization
+    fig_yoy = go.Figure()
+    
+    # Add bars with custom hover text
+    fig_yoy.add_trace(go.Bar(
+        x=yoy_data['Team'],
+        y=yoy_data['Rating_Change'],
+        marker_color=[TEAM_COLORS[team] for team in yoy_data['Team']],
+        text=yoy_data['Rating_Change'].apply(lambda x: f"+{x:.1f}" if x > 0 else f"{x:.1f}"),
+        textposition='auto',
+        hovertemplate=(
+            "<b>%{x}</b><br>" +
+            f"{latest_year} Rating: %{{customdata[0]:.1f}}<br>" +
+            f"{prev_year} Rating: %{{customdata[1]:.1f}}<br>" +
+            "Change: %{text}<br>" +
+            "<extra></extra>"
+        ),
+        customdata=yoy_data[['Rating_current', 'Rating_prev']].values
+    ))
+    
+    fig_yoy.update_layout(
+        height=400,
+        xaxis_title="Team",
+        yaxis_title="Rating Change",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='LightGrey',
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='black'
+        ),
+        # Add a more detailed title with years
+        title=dict(
+            text=f"Rating Changes from {prev_year} to {latest_year}",
+            y=0.95,
+            x=0.5,
+            xanchor='center',
+            yanchor='top'
+        )
+    )
+    
+    st.plotly_chart(fig_yoy, use_container_width=True)
+    
+##########
+
+# Best Ratings Ever Section
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Ratings Ever</h3>", unsafe_allow_html=True)
+
+# Get all ratings sorted by value
+best_ratings = ranking_per_year.sort_values('Rating', ascending=False)
+
+# Keep top 20 ratings overall
+best_ratings_table = best_ratings[['Team', 'Rating', 'Position', 'Year']].head(20)
+best_ratings_table.columns = ['Team', 'Rating', 'Rank', 'Year']
+
+# Display the table
+st.dataframe(best_ratings_table.round(1), use_container_width=True, hide_index=True)
+
+# Create enhanced scatter plot visualization
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>All-Time Ratings & Rankings Distribution</h3>", unsafe_allow_html=True)
+
+fig_scatter = go.Figure()
+
+# Add scatter points for each team
 for team in TEAMS:
     team_data = ranking_per_year[ranking_per_year['Team'] == team]
-    if not team_data.empty:
-        fig_rating.add_trace(go.Scatter(
-            x=team_data['Year'],             # Year as the x-axis
-            y=team_data['Rating'],           # Rating as the y-axis
-            name=team,
-            line=dict(color=TEAM_COLORS[team], width=2),
-            mode='lines+markers',
-            marker=dict(size=8),
-            opacity=1,
-            hovertemplate=f"{team}<br>Year: %{{x}}<br>Rating: %{{y}}<extra></extra>"
-        ))
+    
+    fig_scatter.add_trace(go.Scatter(
+        x=team_data['Year'],
+        y=team_data['Rating'],
+        name=team,
+        mode='markers',
+        marker=dict(
+            color=TEAM_COLORS[team],
+            size=10,
+            symbol='circle',
+        ),
+        hovertemplate=(
+            f"<b>{team}</b><br>" +
+            "Year: %{x}<br>" +
+            "Rating: %{y:.1f}<br>" +
+            "Rank: %{customdata}<br>" +
+            "<extra></extra>"
+        ),
+        customdata=team_data['Position']
+    ))
 
-# Update layout for the new chart with gridlines and labels every 10 units on the y-axis
-fig_rating.update_layout(
+    # Add connecting lines between points
+    fig_scatter.add_trace(go.Scatter(
+        x=team_data['Year'],
+        y=team_data['Rating'],
+        name=team + " (line)",
+        mode='lines',
+        line=dict(
+            color=TEAM_COLORS[team],
+            width=1,
+            dash='dot'
+        ),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+# Update layout
+fig_scatter.update_layout(
     height=600,
     xaxis_title="Year",
     yaxis_title="Rating",
-    yaxis=dict(
-        tickmode='linear',
-        dtick=10,                       # Sets labels every 10 units on the y-axis
-        range=[0, max(ranking_per_year['Rating'].max(), 100)],  # Adjust max range as needed
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey'
-    ),
-    xaxis=dict(
-        tickmode='linear',
-        dtick=1
-    ),
-    hovermode='x unified',
-    legend=dict(
-        yanchor="top",
-        y=0.99,
-        xanchor="left",
-        x=1.02,
-        itemsizing='constant',
-        itemwidth=30,
-        bgcolor='rgba(0, 0, 0, 0)'
-    ),
     showlegend=True,
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
-    margin=dict(r=150)
+    xaxis=dict(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='LightGrey',
+        zeroline=False
+    ),
+    yaxis=dict(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='LightGrey',
+        zeroline=False
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ),
+    margin=dict(l=10, r=10, t=50, b=10)
 )
 
-# Display the second plot with a unique key
-st.plotly_chart(fig_rating, use_container_width=True, key="ratings_history")
+# Add a horizontal line for the overall mean rating
+mean_rating = ranking_per_year['Rating'].mean()
+fig_scatter.add_hline(
+    y=mean_rating, 
+    line_dash="dash", 
+    line_color="grey",
+    annotation_text=f"Overall Mean Rating ({mean_rating:.1f})",
+    annotation_position="bottom right"
+)
 
+# Display the plot
+st.plotly_chart(fig_scatter, use_container_width=True)
+
+# Add a second visualization for rankings distribution
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rankings Movement Over Time</h3>", unsafe_allow_html=True)
+
+fig_rankings = go.Figure()
+
+# Add traces for each team's ranking
+for team in TEAMS:
+    team_data = ranking_per_year[ranking_per_year['Team'] == team]
+    
+    fig_rankings.add_trace(go.Scatter(
+        x=team_data['Year'],
+        y=team_data['Position'],
+        name=team,
+        mode='lines+markers',
+        line=dict(
+            color=TEAM_COLORS[team],
+            width=2
+        ),
+        marker=dict(
+            size=8,
+            symbol='circle'
+        ),
+        hovertemplate=(
+            f"<b>{team}</b><br>" +
+            "Year: %{x}<br>" +
+            "Rank: %{y}<br>" +
+            "Rating: %{customdata:.1f}<br>" +
+            "<extra></extra>"
+        ),
+        customdata=team_data['Rating']
+    ))
+
+# Update layout for rankings
+fig_rankings.update_layout(
+    height=600,
+    xaxis_title="Year",
+    yaxis_title="Ranking",
+    showlegend=True,
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    xaxis=dict(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='LightGrey',
+        zeroline=False
+    ),
+    yaxis=dict(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='LightGrey',
+        zeroline=False,
+        autorange="reversed",  # Reverse y-axis so rank 1 is at the top
+        dtick=1  # Show every rank
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ),
+    margin=dict(l=10, r=10, t=50, b=10)
+)
+
+# Display the rankings plot
+st.plotly_chart(fig_rankings, use_container_width=True)
