@@ -1817,7 +1817,7 @@ def display_bat_view():
 
             boundary_fig.update_layout(
                 barmode='group',
-                title='Run Distribution (%)',
+                #title='Run Distribution (%)',
                 height=400,
                 showlegend=True,
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -1862,7 +1862,7 @@ def display_bat_view():
 
             dismissal_fig.update_layout(
                 barmode='group',
-                title='Dismissal Distribution (%)',
+                #title='Dismissal Distribution (%)',
                 height=400,
                 showlegend=True,
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -1916,7 +1916,7 @@ def display_bat_view():
 
             score_fig.update_layout(
                 barmode='group',
-                title='Score Range Distribution (%)',
+                #title='Score Range Distribution (%)',
                 height=400,
                 showlegend=True,
                 paper_bgcolor='rgba(0,0,0,0)',
