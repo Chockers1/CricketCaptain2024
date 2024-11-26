@@ -131,6 +131,57 @@ def process_highest_scores(filtered_bat_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
+def process_consecutive_scores(filtered_bat_df, threshold):
+    """Process consecutive scores above threshold"""
+    if filtered_bat_df is None or filtered_bat_df.empty:
+        return pd.DataFrame()
+    
+    # Sort by date and name
+    df = filtered_bat_df.sort_values(['Name', 'Date'])
+    
+    # Initialize variables for tracking streaks
+    current_streaks = {}
+    best_streaks = {}
+    streak_dates = {}
+    
+    for _, row in df.iterrows():
+        name = row['Name']
+        runs = row['Runs']
+        date = row['Date']
+        
+        if name not in current_streaks:
+            current_streaks[name] = 0
+            best_streaks[name] = 0
+            streak_dates[name] = {'start': None, 'end': None, 'current_start': None}
+        
+        if runs >= threshold:
+            if current_streaks[name] == 0:
+                streak_dates[name]['current_start'] = date
+            
+            current_streaks[name] += 1
+            
+            if current_streaks[name] > best_streaks[name]:
+                best_streaks[name] = current_streaks[name]
+                streak_dates[name]['start'] = streak_dates[name]['current_start']
+                streak_dates[name]['end'] = date
+        else:
+            current_streaks[name] = 0
+            streak_dates[name]['current_start'] = None
+    
+    # Create DataFrame from streak data
+    streak_records = []
+    for name in best_streaks:
+        if best_streaks[name] >= 2:  # Only include streaks of 2 or more matches
+            streak_info = {
+                'Name': name,
+                'Consecutive Matches': best_streaks[name],
+                'Start Date': streak_dates[name]['start'].strftime('%d/%m/%Y'),
+                'End Date': streak_dates[name]['end'].strftime('%d/%m/%Y')
+            }
+            streak_records.append(streak_info)
+    
+    return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
+
 def process_not_out_99s(filtered_bat_df):
     """Process 99 not out data"""
     if filtered_bat_df is None or filtered_bat_df.empty:
@@ -302,6 +353,20 @@ with tabs[0]:
         highest_scores_df = process_highest_scores(filtered_bat_df)
         if not highest_scores_df.empty:
             st.dataframe(highest_scores_df, use_container_width=True, hide_index=True)
+
+        # Consecutive 50+ Scores
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 50+ Scores</h3>", 
+                   unsafe_allow_html=True)
+        fifties_streak_df = process_consecutive_scores(filtered_bat_df, 50)
+        if not fifties_streak_df.empty:
+            st.dataframe(fifties_streak_df, use_container_width=True, hide_index=True)
+
+        # Consecutive Centuries
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with Centuries</h3>", 
+                   unsafe_allow_html=True)
+        centuries_streak_df = process_consecutive_scores(filtered_bat_df, 100)
+        if not centuries_streak_df.empty:
+            st.dataframe(centuries_streak_df, use_container_width=True, hide_index=True)
 
         # 99 Not Out Club
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>99 Not Out Club</h3>", 
