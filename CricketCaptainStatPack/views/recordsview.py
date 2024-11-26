@@ -432,6 +432,58 @@ def process_best_bowling(filtered_bowl_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
+def process_consecutive_five_wickets(filtered_bowl_df):
+    """Process consecutive matches with 5+ wickets"""
+    if filtered_bowl_df is None or filtered_bowl_df.empty:
+        return pd.DataFrame()
+    
+    # Sort by date and name
+    df = filtered_bowl_df.sort_values(['Name', 'Date'])
+    
+    # Initialize variables for tracking streaks
+    current_streaks = {}
+    best_streaks = {}
+    streak_dates = {}
+    
+    for _, row in df.iterrows():
+        name = row['Name']
+        wickets = row['Bowler_Wkts']
+        date = row['Date']
+        
+        if name not in current_streaks:
+            current_streaks[name] = 0
+            best_streaks[name] = 0
+            streak_dates[name] = {'start': None, 'end': None, 'current_start': None}
+        
+        if wickets >= 5:
+            if current_streaks[name] == 0:
+                streak_dates[name]['current_start'] = date
+            
+            current_streaks[name] += 1
+            
+            if current_streaks[name] > best_streaks[name]:
+                best_streaks[name] = current_streaks[name]
+                streak_dates[name]['start'] = streak_dates[name]['current_start']
+                streak_dates[name]['end'] = date
+        else:
+            current_streaks[name] = 0
+            streak_dates[name]['current_start'] = None
+    
+    # Create DataFrame from streak data
+    streak_records = []
+    for name in best_streaks:
+        if best_streaks[name] >= 2:  # Only include streaks of 2 or more matches
+            streak_info = {
+                'Name': name,
+                'Consecutive Matches': best_streaks[name],
+                'Start Date': streak_dates[name]['start'].strftime('%d/%m/%Y'),
+                'End Date': streak_dates[name]['end'].strftime('%d/%m/%Y')
+            }
+            streak_records.append(streak_info)
+    
+    return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
+
+
 def process_five_wickets_both(filtered_bowl_df):
     """Process 5+ wickets in both innings data"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
@@ -556,6 +608,14 @@ with tabs[1]:
         best_bowling_df = process_best_bowling(filtered_bowl_df)
         if not best_bowling_df.empty:
             st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
+
+        # Consecutive 5-Wicket Hauls
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 5+ Wickets</h3>", 
+                   unsafe_allow_html=True)
+        consecutive_five_wickets_df = process_consecutive_five_wickets(filtered_bowl_df)
+        if not consecutive_five_wickets_df.empty:
+            st.dataframe(consecutive_five_wickets_df, use_container_width=True, hide_index=True)
+
 
         # 5+ Wickets in Both Innings
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>5+ Wickets in Both Innings</h3>", 
