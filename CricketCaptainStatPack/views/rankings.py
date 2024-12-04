@@ -6,7 +6,7 @@ import io
 
 # Add file upload option
 st.markdown("### Upload Previous Rankings (Optional) this is the rankings.csv from the Scorecard folder")
-uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'])
+uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'], key="rankings_file_uploader")
 
 # Load data from uploaded file if it exists
 if uploaded_file is not None:
@@ -77,7 +77,7 @@ selected_year = st.number_input(
     max_value=2100,
     value=datetime.now().year,
     step=1,
-    key="global_year"
+    key="year_input"  # Changed from global_year to year_input
 )
 
 # Initialize session state
@@ -89,14 +89,14 @@ if 'current_rankings' not in st.session_state:
             st.session_state.current_rankings[row['Position']] = {
                 'team': row['Team'],
                 'rating': row['Rating'],
-                'year': selected_year  # Use the global year
+                'year': selected_year
             }
     else:
         for pos in POSITIONS:
             st.session_state.current_rankings[pos] = {
                 'team': '',
                 'rating': 0,
-                'year': selected_year  # Use the global year
+                'year': selected_year
             }
 
 # Column headers
@@ -164,7 +164,7 @@ def reset_form():
         st.session_state.current_rankings[pos] = {
             'team': '',
             'rating': 0,
-            'year': st.session_state.global_year
+            'year': selected_year
         }
 
 # Create a row for the buttons - modify to have three equal columns
@@ -225,7 +225,6 @@ with col3:
             st.success("Historical rankings cleared successfully!")
             st.rerun()
 
-
 # Load the existing data without modifying it directly
 existing_data = load_existing_data()
 if not existing_data.empty:
@@ -233,16 +232,16 @@ if not existing_data.empty:
     
     # Create a new DataFrame to manipulate, keeping existing_data unaltered
     current_rating_df = (existing_data
-                         .sort_values(by=['Year', 'Position'], ascending=[False, True])  # Sort by Year descending, Position ascending
+                         .sort_values(by=['Year', 'Position'], ascending=[False, True])
                          .drop(columns=['Last Updated'])
-                         .head(12))  # Display only the top 12 rows
+                         .head(12))
 
     # Display the manipulated DataFrame with adjusted height
     st.dataframe(current_rating_df, use_container_width=True, hide_index=True, height=455)
 
 ranking_per_year = existing_data
 
-# Define team colors at the top of your file after TEAMS list
+# Define team colors
 TEAM_COLORS = {
     "Australia": "#fdcd3c",       # Yellow
     "Bangladesh": "#006a4e",      # Dark Green
@@ -257,13 +256,6 @@ TEAM_COLORS = {
     "Zimbabwe": "#d40000",       # Red
     "Afghanistan": "#0066FF"     # Light Blue
 }
-
-# After your existing rankings display code:
-ranking_per_year = existing_data
-
-#
-
-#######################
 
 # Add Rating Distribution and Gap Analysis
 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rating Distribution and Gap Analysis</h3>", unsafe_allow_html=True)
@@ -323,11 +315,8 @@ fig_dist.update_layout(
 
 st.plotly_chart(fig_dist, use_container_width=True)
 
-##########
-
 # Year-over-Year Analysis
 st.markdown(f"<h3 style='color:#f04f53; text-align: center;'>Year-over-Year Rating Changes</h3>", unsafe_allow_html=True)
-#st.markdown(f"<p style='text-align: center; font-size: 1.1em;'>Comparing {latest_year} vs {latest_year-1}</p>", unsafe_allow_html=True)
 
 # Get previous year's data
 prev_year = latest_year - 1
@@ -377,7 +366,6 @@ if not prev_data.empty:
             zerolinewidth=2,
             zerolinecolor='black'
         ),
-        # Add a more detailed title with years
         title=dict(
             text=f"Rating Changes from {prev_year} to {latest_year}",
             y=0.95,
@@ -388,8 +376,6 @@ if not prev_data.empty:
     )
     
     st.plotly_chart(fig_yoy, use_container_width=True)
-    
-##########
 
 # Best Ratings Ever Section
 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Ratings Ever</h3>", unsafe_allow_html=True)
@@ -557,3 +543,153 @@ fig_rankings.update_layout(
 
 # Display the rankings plot
 st.plotly_chart(fig_rankings, use_container_width=True)
+
+###########################################
+
+# Box Plot Analysis
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Distribution Analysis</h3>", unsafe_allow_html=True)
+
+# Create two columns for the box plots
+col1, col2 = st.columns(2)
+
+
+# Ratings Box Plot
+with col1:
+    fig_box_ratings = go.Figure()
+    
+    for team in TEAMS:
+        team_data = ranking_per_year[ranking_per_year['Team'] == team]
+        
+        fig_box_ratings.add_trace(go.Box(
+            y=team_data['Rating'],
+            name=team,
+            marker_color=TEAM_COLORS[team],
+            boxpoints=False,  # No points will be shown
+            jitter=0.3,
+            pointpos=-1.8,
+            hovertemplate=(
+                f"<b>{team}</b><br>" +
+                "Min: %{customdata[0]:.1f}<br>" +
+                "Q1: %{customdata[1]:.1f}<br>" +
+                "Median: %{customdata[2]:.1f}<br>" +
+                "Q3: %{customdata[3]:.1f}<br>" +
+                "Max: %{customdata[4]:.1f}<br>" +
+                "<extra></extra>"
+            ),
+            customdata=[[ 
+                team_data['Rating'].min(),
+                team_data['Rating'].quantile(0.25),
+                team_data['Rating'].median(),
+                team_data['Rating'].quantile(0.75),
+                team_data['Rating'].max()
+            ]]
+        ))
+    
+    fig_box_ratings.update_layout(
+        title={
+            'text': "Rating Distribution by Team",
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'color': '#f04f53'}
+        },
+        height=600,
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        yaxis_title="Rating",
+        xaxis_title="Team",
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='LightGrey'
+        )
+    )
+
+    st.plotly_chart(fig_box_ratings, use_container_width=True)
+
+# Rankings Box Plot
+with col2:
+    fig_box_rankings = go.Figure()
+    
+    for team in TEAMS:
+        team_data = ranking_per_year[ranking_per_year['Team'] == team]
+        
+        fig_box_rankings.add_trace(go.Box(
+            y=team_data['Position'],
+            name=team,
+            marker_color=TEAM_COLORS[team],
+            boxpoints=False,  # No points will be shown
+            jitter=0.3,
+            pointpos=-1.8,
+            hovertemplate=(
+                f"<b>{team}</b><br>" +
+                "Best Rank: %{customdata[0]}<br>" +
+                "Q1: %{customdata[1]:.1f}<br>" +
+                "Median: %{customdata[2]:.1f}<br>" +
+                "Q3: %{customdata[3]:.1f}<br>" +
+                "Worst Rank: %{customdata[4]}<br>" +
+                "<extra></extra>"
+            ),
+            customdata=[[ 
+                int(team_data['Position'].min()),
+                team_data['Position'].quantile(0.25),
+                team_data['Position'].median(),
+                team_data['Position'].quantile(0.75),
+                int(team_data['Position'].max())
+            ]]
+        ))
+    
+    fig_box_rankings.update_layout(
+        title={
+            'text': "Ranking Distribution by Team",
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'color': '#f04f53'}
+        },
+        height=600,
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        yaxis_title="Ranking",
+        xaxis_title="Team",
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='LightGrey',
+            autorange="reversed"  # Reverse y-axis so rank 1 is at the top
+        )
+    )
+    
+    st.plotly_chart(fig_box_rankings, use_container_width=True)
+
+
+
+
+
+
+# Add statistical summary
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Statistical Summary</h3>", unsafe_allow_html=True)
+
+# Create summary statistics
+summary_stats = []
+for team in TEAMS:
+    team_data = ranking_per_year[ranking_per_year['Team'] == team]
+    summary_stats.append({
+        'Team': team,
+        'Avg Rating': team_data['Rating'].mean(),
+        'Median Rating': team_data['Rating'].median(),
+        'Rating Std Dev': team_data['Rating'].std(),
+        'Best Rank': int(team_data['Position'].min()),
+        'Worst Rank': int(team_data['Position'].max()),
+        'Avg Rank': team_data['Position'].mean(),
+        'Rank Stability': team_data['Position'].std()
+    })
+
+summary_df = pd.DataFrame(summary_stats)
+summary_df = summary_df.round(2)
+summary_df = summary_df.sort_values('Avg Rating', ascending=False)
+
+# Display the summary statistics
+st.dataframe(summary_df, use_container_width=True, hide_index=True)
