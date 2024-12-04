@@ -552,3 +552,120 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
             }
             longest_streaks_df = pd.DataFrame(longest_streaks_data)
             st.dataframe(longest_streaks_df, hide_index=True, use_container_width=True)
+
+################## updated graphics ############
+
+# Add a head-to-head comparison heatmap
+if 'match_df' in st.session_state and len(team_choice) >= 2:
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Head-to-Head Comparison Heatmap</h1>", unsafe_allow_html=True)
+    
+    # Create a matrix of win percentages between teams
+    teams = sorted(list(all_teams))
+    matrix_data = np.zeros((len(teams), len(teams)))
+    
+    for i, team1 in enumerate(teams):
+        for j, team2 in enumerate(teams):
+            if team1 != team2:
+                matches = head2headrecord_df[
+                    (head2headrecord_df['Team'] == team1) & 
+                    (head2headrecord_df['Opponent'] == team2)
+                ]
+                if not matches.empty:
+                    matrix_data[i][j] = matches.iloc[0]['Win_Percentage']
+    
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix_data,
+        x=teams,
+        y=teams,
+        colorscale='RdYlGn',  # Red to Yellow to Green colorscale
+        text=np.round(matrix_data, 1).astype(str) + '%',
+        texttemplate='%{text}',
+        textfont={"size": 10},
+        hoverongaps=False,
+        showscale=True,
+        colorbar=dict(title='Win %')
+    ))
+    
+    fig.update_layout(
+        height=600,
+        xaxis_title="Opponent",
+        yaxis_title="Team",
+        xaxis={'tickangle': 45}
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+# Add a win percentage by year chart
+if 'match_df' in st.session_state and 'All' not in team_choice:
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Win Percentage by Year</h1>", unsafe_allow_html=True)
+    
+    for team in team_choice:
+        # Get matches for the team and ensure Date is datetime
+        team_matches = raw_matches[
+            (raw_matches['Home Team'] == team) | 
+            (raw_matches['Away Team'] == team)
+        ].copy()
+        
+        # Extract year using string operations since Date is already in datetime format
+        team_matches['Year'] = pd.to_datetime(team_matches['Date']).apply(lambda x: x.year)
+        
+        # Calculate win percentage by year
+        yearly_stats = []
+        for year in sorted(team_matches['Year'].unique()):
+            year_matches = team_matches[team_matches['Year'] == year]
+            wins = sum(
+                (year_matches['Home Team'] == team) & (year_matches['Margin'].str.startswith(team)) |
+                (year_matches['Away Team'] == team) & (year_matches['Margin'].str.startswith(team))
+            )
+            total = len(year_matches)
+            win_pct = round((wins / total * 100), 2) if total > 0 else 0
+            yearly_stats.append({
+                'Year': year,
+                'Win_Percentage': win_pct,
+                'Total_Matches': total
+            })
+        
+        yearly_df = pd.DataFrame(yearly_stats)
+        
+        # Create line chart
+        fig = go.Figure()
+        
+        # Add win percentage line
+        fig.add_trace(go.Scatter(
+            x=yearly_df['Year'],
+            y=yearly_df['Win_Percentage'],
+            mode='lines+markers',
+            name='Win %',
+            line=dict(color='#28a745', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Add total matches as bar chart
+        fig.add_trace(go.Bar(
+            x=yearly_df['Year'],
+            y=yearly_df['Total_Matches'],
+            name='Total Matches',
+            yaxis='y2',
+            opacity=0.3,
+            marker_color='#666666'
+        ))
+        
+        fig.update_layout(
+            #title=f"{team} - Yearly Performance",
+            yaxis=dict(
+                title="Win Percentage",
+                ticksuffix="%",
+                range=[0, 100]
+            ),
+            yaxis2=dict(
+                title="Total Matches",
+                overlaying='y',
+                side='right'
+            ),
+            hovermode='x unified',
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+
