@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
+
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
     try:
@@ -589,3 +590,119 @@ if 'elo_df' in st.session_state:
     )
 
 
+#########################new features------------------
+
+# Add after the Head-to-Head Analysis
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Elo Rating Volatility</h3>", unsafe_allow_html=True)
+
+if 'elo_df' in st.session_state:
+    elo_df = st.session_state['elo_df']
+    
+    # Calculate volatility metrics
+    volatility_data = []
+    for team in sorted(elo_df['Team'].unique()):
+        team_data = elo_df[elo_df['Team'] == team]
+        
+        volatility_data.append({
+            'Team': team,
+            'Std Dev': round(team_data['Team_Elo_End'].std(), 2),
+            'Avg Change': round(abs(team_data['Elo_Change']).mean(), 2),
+            'Max Swing': round(max(abs(team_data['Elo_Change'])), 2),
+            'Rating Range': round(team_data['Team_Elo_End'].max() - team_data['Team_Elo_End'].min(), 2)
+        })
+    
+    volatility_df = pd.DataFrame(volatility_data)
+    
+    # Create bar chart
+    fig = go.Figure()
+    
+    for metric in ['Std Dev', 'Avg Change', 'Max Swing']:
+        fig.add_trace(go.Bar(
+            name=metric,
+            x=volatility_df['Team'],
+            y=volatility_df[metric],
+            text=volatility_df[metric],
+            textposition='auto',
+        ))
+    
+    fig.update_layout(
+        barmode='group',
+        height=500,
+        #title="Elo Rating Volatility Metrics by Team",
+        xaxis_title="Team",
+        yaxis_title="Rating Points"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Display detailed table
+    st.dataframe(
+        volatility_df.sort_values('Std Dev', ascending=False),
+        hide_index=True,
+        use_container_width=True
+    )
+
+# Add Metrics Explanation Section
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Understanding the Metrics</h3>", unsafe_allow_html=True)
+
+# Create columns for the explanation
+col1, col2 = st.columns(2)
+
+with col1:
+    # Performance Metrics Explanation
+    st.markdown("#### 📊 Performance Metrics")
+    st.markdown("""
+    - **Matches**: Total number of games played by the team
+    - **Avg ELO**: Team's average ELO rating across all matches
+    - **Biggest Win**: Largest ELO rating gain in a single match
+    - **Biggest Loss**: Largest ELO rating drop in a single match
+    """)
+    
+    # ELO Distribution Explanation
+    st.markdown("#### 📈 ELO Rating Distribution")
+    st.markdown("""
+    The box plot visualization shows:
+    - **Middle Line**: Median ELO rating
+    - **Box**: Contains 50% of ratings (25th to 75th percentile)
+    - **Whiskers**: Full range of ratings (excluding outliers)
+    - **Points**: Outlier ratings (unusually high/low)
+    """)
+
+with col2:
+    # Rating Volatility Explanation
+    st.markdown("#### 📊 Rating Volatility")
+    st.markdown("""
+    Understanding the metrics:
+    - **Std Dev**: Lower values = more consistent performance
+    - **Avg Change**: Typical rating change per match
+    - **Max Swing**: Largest single-match rating change
+    - **Rating Range**: Difference between highest/lowest ratings
+    """)
+    
+    # Monthly Leaders Explanation
+    st.markdown("#### 👑 Monthly Leaders")
+    st.markdown("""
+    The monthly leaders table shows:
+    - **Team**: Leading team for each format
+    - **Rating**: Highest ELO rating achieved that month
+    - **Duration**: How long teams maintained #1 position
+    """)
+
+# Add ELO Calculation Note
+st.markdown("---")
+st.markdown("#### ℹ️ About ELO Calculations")
+st.markdown("""
+The ELO rating system calculates ratings based on:
+1. **Match Outcome**: Win/Loss/Draw result
+2. **Rating Difference**: Expected vs actual result
+3. **K-Factor**: Set to 32 for maximum possible rating change
+4. **Format Specific**: Separate ratings for each match format
+""")
+
+# Add footer with additional information
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: gray; font-size: 0.8em;'>
+    ELO Rating Analysis | Updated Daily
+</div>
+""", unsafe_allow_html=True)
