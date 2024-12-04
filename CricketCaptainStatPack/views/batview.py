@@ -10,6 +10,7 @@ import json
 import pickle
 from datetime import timedelta
 from functools import wraps
+from streamlit_dynamic_filters import DynamicFilters
 
 # Global flag to track Redis availability
 REDIS_AVAILABLE = False
@@ -61,6 +62,8 @@ def clear_all_caches():
     """Clear all Redis caches"""
     redis_client.flushall()
     st.success("All caches cleared successfully")
+
+    
 
 def display_bat_view():
     # [Previous code for CSS and header remains the same...]
@@ -216,10 +219,6 @@ def display_bat_view():
             if REDIS_AVAILABLE:
                 cache_dataframe(cache_key, filtered_df)
 
-        # [Rest of your code for statistics and visualizations remains the same...]
-
-######---------------------------------------CAREER STATS TAB-------------------------------
-
 ######---------------------------------------CAREER STATS TAB-------------------------------
 
         # Calculate milestone innings based on run ranges with caching
@@ -280,6 +279,8 @@ def display_bat_view():
 
             # Calculate BPB (Balls Per Boundary)
             bat_career_df['BPB'] = (bat_career_df['Balls'] / (bat_career_df['4s'] + bat_career_df['6s']).replace(0, 1)).round(2)
+            bat_career_df['Boundary%'] = (((bat_career_df['4s'] * 4) + (bat_career_df['6s'] * 6))   / (bat_career_df['Runs'].replace(0, 1))* 100 ).round(2)
+            bat_career_df['RPM'] = (bat_career_df['Runs'] / bat_career_df['Matches'].replace(0, 1)).round(2)
 
             # Calculate new statistics
             bat_career_df['50+PI'] = (((bat_career_df['50s'] + bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
@@ -287,6 +288,8 @@ def display_bat_view():
             bat_career_df['150PI'] = (((bat_career_df['150s'] + bat_career_df['200s']) / bat_career_df['Inns']) * 100).round(2).fillna(0)
             bat_career_df['200PI'] = ((bat_career_df['200s'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
             bat_career_df['<25&OutPI'] = ((bat_career_df['<25&Out'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
+            bat_career_df['Conversion Rate'] = ((bat_career_df['100s'] / (bat_career_df['50s'] + bat_career_df['100s']).replace(0, 1)) * 100).round(2)
+
 
             # Calculate dismissal percentages
             bat_career_df['Caught%'] = ((bat_career_df['Caught'] / bat_career_df['Inns']) * 100).round(2).fillna(0)
@@ -300,12 +303,15 @@ def display_bat_view():
             pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
             bat_career_df = bat_career_df.merge(pom_counts, on='Name', how='left')
             bat_career_df['POM'] = bat_career_df['POM'].fillna(0).astype(int)
+            bat_career_df['POM Per Match'] = (bat_career_df['POM'] / bat_career_df['Matches'].replace(0, 1)*100).round(2)
+
+
 
             # Reorder columns and drop Team Avg and Team SR
             bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
-                                       'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', '150s', '200s',
+                                       'Avg', 'BPO', 'SR', '4s', '6s', 'BPB','Boundary%','RPM', '<25&Out', '50s', '100s', '150s', '200s','Conversion Rate',
                                        '<25&OutPI', '50+PI', '100PI', '150PI', '200PI', 'P+ Avg', 'P+ SR', 
-                                       'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%', 'POM']]
+                                       'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%', 'POM','POM Per Match']]
             
             # Sort the DataFrame by 'Runs' in descending order
             bat_career_df = bat_career_df.sort_values(by='Runs', ascending=False)
@@ -1528,12 +1534,12 @@ def display_bat_view():
             # Ensure 'Date' column is in the proper format for chronological sorting
             filtered_df['Date'] = pd.to_datetime(filtered_df['Date'], format='%d %b %Y').dt.date
 
-            # Add match block column based on Cumulative Matches
-            cumulative_stats_df['Match_Range'] = (((cumulative_stats_df['Cumulative Matches'] - 1) // 10) * 10).astype(str) + '-' + \
-                                                ((((cumulative_stats_df['Cumulative Matches'] - 1) // 10) * 10 + 9)).astype(str)
+            # Add match block column based on Cumulative Matches (now using 20-match ranges)
+            cumulative_stats_df['Match_Range'] = (((cumulative_stats_df['Cumulative Matches'] - 1) // 20) * 20).astype(str) + '-' + \
+                                                ((((cumulative_stats_df['Cumulative Matches'] - 1) // 20) * 20 + 19)).astype(str)
 
             # Add a numeric start range for sorting
-            cumulative_stats_df['Range_Start'] = ((cumulative_stats_df['Cumulative Matches'] - 1) // 10) * 10
+            cumulative_stats_df['Range_Start'] = ((cumulative_stats_df['Cumulative Matches'] - 1) // 20) * 20
 
             # Group by blocks and calculate differences for each statistic
             block_stats_df = cumulative_stats_df.groupby(['Name', 'Match_Format', 'Match_Range', 'Range_Start']).agg({
@@ -1590,7 +1596,7 @@ def display_bat_view():
         df_blocks = block_stats_df.copy()
 
         # Display the block statistics
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 10 Matches)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
         st.dataframe(df_blocks, use_container_width=True, hide_index=True)
 
         # Cache key for batting average chart
@@ -1638,7 +1644,7 @@ def display_bat_view():
             # Update layout
             fig.update_layout(
                 height=500,
-                xaxis_title='Match Range',
+                xaxis_title='Innings Range',
                 yaxis_title='Batting Average',
                 margin=dict(l=50, r=50, t=70, b=50),
                 font=dict(size=12),
