@@ -3,6 +3,11 @@ import pandas as pd
 from datetime import datetime
 import plotly.express as px
 import io
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import plotly.express as px
+
 
 # Title
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
@@ -795,3 +800,87 @@ if not st.session_state.historical_data.empty:
     # Display summary statistics
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+#############################
+
+# Custom CSS for styling
+st.markdown("""
+    <style>
+    /* Table styling */
+    table { color: black; width: 100%; }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    tbody tr:nth-child(even) { background-color: #f0f2f6; }
+    tbody tr:nth-child(odd) { background-color: white; }
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        display: flex;
+        justify-content: space-between; /* This will space out the tabs evenly */
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# After the existing position history graph, add new visualizations
+if not st.session_state.historical_data.empty:
+    # Add tabs for different visualizations (including Points Distribution)
+    tab1, tab2, tab3 = st.tabs(["Performance Metrics", "Season Points Comparison", "Points Distribution"])
+
+    with tab1:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Metrics</h3>", unsafe_allow_html=True)
+
+        # Calculate win rates over time
+        performance_df = filtered_df.copy()
+        performance_df['Win_Rate'] = (performance_df['W'] / performance_df['P'] * 100).round(2)
+
+        # Create performance metrics visualization
+        fig_metrics = px.line(performance_df,
+                            x='Year',
+                            y='Win_Rate',
+                            color='Team',
+                            markers=True,
+                            title='Win Rate Over Time')
+        fig_metrics.update_layout(height=500)
+        st.plotly_chart(fig_metrics, use_container_width=True)
+
+    with tab2:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Points Comparison</h3>", unsafe_allow_html=True)
+
+        # Create season comparison visualization
+        season_df = filtered_df.pivot_table(
+            values='Points',
+            index='Team',
+            columns='Year',
+            aggfunc='sum'
+        ).fillna(0)
+
+        fig_season = px.imshow(season_df,
+                              labels=dict(x="Year", y="Team", color="Points"),
+                              aspect="auto")
+        fig_season.update_layout(height=600)
+        st.plotly_chart(fig_season, use_container_width=True)
+
+        with tab3:
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Points Distribution</h3>", unsafe_allow_html=True)
+
+            # Create box plot for points distribution (showing only the box stats)
+            fig_box = px.box(filtered_df, 
+                            x='Team', 
+                            y='Points', 
+                            title='Points Distribution by Team',
+                            labels={'Points': 'Points', 'Team': 'Team'})
+            
+            fig_box.update_layout(height=500, 
+                                xaxis_title="Team", 
+                                yaxis_title="Points",
+                                showlegend=False)
+
+            # Display the plot
+            st.plotly_chart(fig_box, use_container_width=True)
