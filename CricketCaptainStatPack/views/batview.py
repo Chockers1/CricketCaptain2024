@@ -10,7 +10,6 @@ import json
 import pickle
 from datetime import timedelta
 from functools import wraps
-from streamlit_dynamic_filters import DynamicFilters
 
 # Global flag to track Redis availability
 REDIS_AVAILABLE = False
