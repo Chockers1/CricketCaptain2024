@@ -4,6 +4,7 @@ import sys
 import traceback
 import pandas as pd
 import tempfile
+import time
 
 # Import the processing functions from each script
 from match import process_match_data
@@ -12,58 +13,85 @@ from bat import process_bat_stats
 from bowl import process_bowl_stats
 
 def load_data(uploaded_files):
-    with st.spinner("Processing scorecards..."):
-        try:
-            # Create a temporary directory to store uploaded files
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Save uploaded files to temporary directory
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join(temp_dir, uploaded_file.name)
-                    with open(file_path, 'wb') as f:
-                        f.write(uploaded_file.getbuffer())
+    # Total number of files
+    total_files = len(uploaded_files)
+    
+    # Create a progress bar
+    progress_bar = st.progress(0, text=f"Processing 0 out of {total_files} matches...")
+    
+    try:
+        # Create a temporary directory to store uploaded files
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Save uploaded files to temporary directory with progress tracking
+            processed_files = 0
+            processed_files_list = []
+            
+            for uploaded_file in uploaded_files:
+                file_path = os.path.join(temp_dir, uploaded_file.name)
+                with open(file_path, 'wb') as f:
+                    f.write(uploaded_file.getbuffer())
+                processed_files_list.append(file_path)
+                
+                # Update progress
+                processed_files += 1
+                progress_percentage = int((processed_files / total_files) * 100)
+                progress_bar.progress(progress_percentage, 
+                    text=f"Processing {processed_files} out of {total_files} matches...")
+            
+            # Display initial message about number of matches
+            st.info(f"Uploaded {total_files} match scorecards to process")
+            
+            # Process match data
+            st.write("Processing match data...")
+            match_df = process_match_data(temp_dir)
+            if match_df is not None and not match_df.empty:
+                st.success("Match data processed successfully.")
+                st.session_state['match_df'] = match_df
 
-                # Process match data
-                st.write("Processing match data...")
-                match_df = process_match_data(temp_dir)
-                if match_df is not None and not match_df.empty:
-                    st.success("Match data processed successfully.")
-                    st.session_state['match_df'] = match_df
+                # Process game stats
+                st.write("Processing game stats...")
+                game_df = process_game_stats(temp_dir, match_df)
+                if game_df is not None and not game_df.empty:
+                    st.success("Game stats processed successfully.")
+                    st.session_state['game_df'] = game_df
 
-                    # Process game stats
-                    st.write("Processing game stats...")
-                    game_df = process_game_stats(temp_dir, match_df)
-                    if game_df is not None and not game_df.empty:
-                        st.success("Game stats processed successfully.")
-                        st.session_state['game_df'] = game_df
+                    # Process bowling stats
+                    st.write("Processing bowling stats...")
+                    bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
+                    if bowl_df is not None and not bowl_df.empty:
+                        st.success("Bowling stats processed successfully.")
+                        st.session_state['bowl_df'] = bowl_df
 
-                        # Process bowling stats
-                        st.write("Processing bowling stats...")
-                        bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
-                        if bowl_df is not None and not bowl_df.empty:
-                            st.success("Bowling stats processed successfully.")
-                            st.session_state['bowl_df'] = bowl_df
+                        # Process batting stats
+                        st.write("Processing batting stats...")
+                        bat_df = process_bat_stats(temp_dir, game_df, match_df)
+                        if bat_df is not None and not bat_df.empty:
+                            st.success("Batting stats processed successfully.")
+                            st.session_state['bat_df'] = bat_df
 
-                            # Process batting stats
-                            st.write("Processing batting stats...")
-                            bat_df = process_bat_stats(temp_dir, game_df, match_df)
-                            if bat_df is not None and not bat_df.empty:
-                                st.success("Batting stats processed successfully.")
-                                st.session_state['bat_df'] = bat_df
-
-                                st.success("All scorecards processed successfully. Data is now available across all pages.")
-                                st.session_state['data_loaded'] = True
-                            else:
-                                st.error("Batting stats processing failed or returned empty DataFrame.")
+                            # Final success message
+                            st.success(f"All {total_files} scorecards processed successfully. Data is now available across all pages.")
+                            st.session_state['data_loaded'] = True
+                            
+                            # Complete the progress bar
+                            progress_bar.progress(100, text=f"Processed {total_files} out of {total_files} matches complete!")
                         else:
-                            st.error("Bowling stats processing failed or returned empty DataFrame.")
+                            st.error("Batting stats processing failed or returned empty DataFrame.")
+                            progress_bar.progress(0, text="Processing failed")
                     else:
-                        st.error("Game stats processing failed or returned empty DataFrame.")
+                        st.error("Bowling stats processing failed or returned empty DataFrame.")
+                        progress_bar.progress(0, text="Processing failed")
                 else:
-                    st.error("Match data processing failed or returned empty DataFrame.")
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
-            st.error("Traceback:")
-            st.text(traceback.format_exc())
+                    st.error("Game stats processing failed or returned empty DataFrame.")
+                    progress_bar.progress(0, text="Processing failed")
+            else:
+                st.error("Match data processing failed or returned empty DataFrame.")
+                progress_bar.progress(0, text="Processing failed")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        st.error("Traceback:")
+        st.text(traceback.format_exc())
+        progress_bar.progress(0, text="Processing failed")
 
 # --- HEADER MARKDOWN ---
 st.markdown(
@@ -74,7 +102,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- UPLOAD SCORECARDS SECTION ---
+# --- WELCOME MESSAGE SECTION ---
 st.markdown(
     """
     <div style="text-align: center; max-width: 1200px; margin: auto;">
@@ -85,9 +113,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- HOW TO USE THE DASHBOARD SECTION ---
-# --- HOW TO USE THE DASHBOARD SECTION ---
-# --- HOW TO USE THE DASHBOARD SECTION ---
 # --- HOW TO USE THE DASHBOARD SECTION ---
 st.markdown(
     """
@@ -111,9 +136,25 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+def update_file_count():
+    """Update the session state with the number of files and display a message."""
+    if 'uploaded_files' in st.session_state and st.session_state.uploaded_files:
+        num_files = len(st.session_state.uploaded_files)
+        st.session_state.file_upload_message = f"You're about to upload {num_files} match{'es' if num_files > 1 else ''}"
+    else:
+        st.session_state.file_upload_message = ""
 
-# File uploader
-uploaded_files = st.file_uploader("Upload your scorecard files", type=['txt'], accept_multiple_files=True)
+# File uploader with a custom label and file count tracking
+uploaded_files = st.file_uploader("Upload your scorecard files", 
+                                   type=['txt'], 
+                                   accept_multiple_files=True, 
+                                   help="Select multiple .txt scorecard files from your Cricket Captain game",
+                                   key="uploaded_files",
+                                   on_change=update_file_count)
+
+# Display the number of files message
+if 'file_upload_message' in st.session_state:
+    st.info(st.session_state.file_upload_message)
 
 # Process Scorecards button
 if st.button("Process Scorecards"):
