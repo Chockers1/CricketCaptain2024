@@ -136,25 +136,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-def update_file_count():
-    """Update the session state with the number of files and display a message."""
-    if 'uploaded_files' in st.session_state and st.session_state.uploaded_files:
-        num_files = len(st.session_state.uploaded_files)
-        st.session_state.file_upload_message = f"You're about to upload {num_files} match{'es' if num_files > 1 else ''}"
-    else:
-        st.session_state.file_upload_message = ""
-
-# File uploader with a custom label and file count tracking
+# File uploader with a custom label
 uploaded_files = st.file_uploader("Upload your scorecard files", 
                                    type=['txt'], 
                                    accept_multiple_files=True, 
-                                   help="Select multiple .txt scorecard files from your Cricket Captain game",
-                                   key="uploaded_files",
-                                   on_change=update_file_count)
-
-# Display the number of files message
-if 'file_upload_message' in st.session_state:
-    st.info(st.session_state.file_upload_message)
+                                   help="Select multiple .txt scorecard files from your Cricket Captain game")
 
 # Process Scorecards button
 if st.button("Process Scorecards"):
