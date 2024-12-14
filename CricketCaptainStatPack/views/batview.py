@@ -62,33 +62,94 @@ def clear_all_caches():
     redis_client.flushall()
     st.success("All caches cleared successfully")
 
+def get_filtered_options(df, column, selected_filters=None):
+    """
+    Get available options for a column based on current filter selections.
     
+    Args:
+        df: The DataFrame to filter
+        column: The column to get unique values from
+        selected_filters: Dictionary of current filter selections
+    """
+    if selected_filters is None:
+        return ['All'] + sorted(df[column].unique().tolist())
+    
+    filtered_df = df.copy()
+    
+    # Apply each active filter
+    for filter_col, filter_val in selected_filters.items():
+        if filter_val and 'All' not in filter_val and filter_col != column:
+            filtered_df = filtered_df[filtered_df[filter_col].isin(filter_val)]
+    
+    return ['All'] + sorted(filtered_df[column].unique().tolist())
 
 def display_bat_view():
-    # [Previous code for CSS and header remains the same...]
-
     # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         bat_df = st.session_state['bat_df']
-
+        
+        # Initialize session state for filters if not exists
+        if 'filter_state' not in st.session_state:
+            st.session_state.filter_state = {
+                'name': ['All'],
+                'bat_team': ['All'],
+                'bowl_team': ['All'],
+                'match_format': ['All']
+            }
+        
         # Create filters at the top of the page
-        names = ['All'] + sorted(bat_df['Name'].unique().tolist())
-        bat_teams = ['All'] + sorted(bat_df['Bat_Team_y'].unique().tolist())
-        bowl_teams = ['All'] + sorted(bat_df['Bowl_Team_y'].unique().tolist())
+        selected_filters = {
+            'Name': st.session_state.filter_state['name'],
+            'Bat_Team_y': st.session_state.filter_state['bat_team'],
+            'Bowl_Team_y': st.session_state.filter_state['bowl_team'],
+            'Match_Format': st.session_state.filter_state['match_format']
+        }
+
+        # Get years for the year filter - add this before using 'years'
         years = sorted(bat_df['Year'].astype(int).unique().tolist())
-        positions = ['All'] + sorted(bat_df['Position'].unique().tolist())
-        match_formats = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
 
         # Create filters at the top of the page
         col1, col2, col3, col4 = st.columns(4)
+        
         with col1:
-            name_choice = st.multiselect('Name:', names, default='All')
+            available_names = get_filtered_options(bat_df, 'Name', 
+                {k: v for k, v in selected_filters.items() if k != 'Name' and 'All' not in v})
+            name_choice = st.multiselect('Name:', 
+                                       available_names,
+                                       default=st.session_state.filter_state['name'])
+            if name_choice != st.session_state.filter_state['name']:
+                st.session_state.filter_state['name'] = name_choice
+                st.rerun()
+
         with col2:
-            bat_team_choice = st.multiselect('Batting Team:', bat_teams, default='All')
+            available_bat_teams = get_filtered_options(bat_df, 'Bat_Team_y', 
+                {k: v for k, v in selected_filters.items() if k != 'Bat_Team_y' and 'All' not in v})
+            bat_team_choice = st.multiselect('Batting Team:', 
+                                           available_bat_teams,
+                                           default=st.session_state.filter_state['bat_team'])
+            if bat_team_choice != st.session_state.filter_state['bat_team']:
+                st.session_state.filter_state['bat_team'] = bat_team_choice
+                st.rerun()
+
         with col3:
-            bowl_team_choice = st.multiselect('Bowling Team:', bowl_teams, default='All')
+            available_bowl_teams = get_filtered_options(bat_df, 'Bowl_Team_y', 
+                {k: v for k, v in selected_filters.items() if k != 'Bowl_Team_y' and 'All' not in v})
+            bowl_team_choice = st.multiselect('Bowling Team:', 
+                                            available_bowl_teams,
+                                            default=st.session_state.filter_state['bowl_team'])
+            if bowl_team_choice != st.session_state.filter_state['bowl_team']:
+                st.session_state.filter_state['bowl_team'] = bowl_team_choice
+                st.rerun()
+
         with col4:
-            match_format_choice = st.multiselect('Format:', match_formats, default='All')
+            available_formats = get_filtered_options(bat_df, 'Match_Format', 
+                {k: v for k, v in selected_filters.items() if k != 'Match_Format' and 'All' not in v})
+            match_format_choice = st.multiselect('Format:', 
+                                               available_formats,
+                                               default=st.session_state.filter_state['match_format'])
+            if match_format_choice != st.session_state.filter_state['match_format']:
+                st.session_state.filter_state['match_format'] = match_format_choice
+                st.rerun()
 
         # Calculate career statistics
         career_stats = bat_df.groupby('Name').agg({
@@ -1784,18 +1845,21 @@ def display_bat_view():
             for player in name_choice if player != 'All'
         }
 
+        # Get the unfiltered data for overall statistics
+        overall_df = bat_df.copy()
+
         with col1:
             # Run Distribution Analysis
             boundary_fig = go.Figure()
             
-            # Calculate overall statistics
+            # Calculate overall statistics using unfiltered data
             overall_stats = {
-                '4s': (filtered_df['4s'].sum() * 4 / filtered_df['Runs'].sum() * 100),
-                '6s': (filtered_df['6s'].sum() * 6 / filtered_df['Runs'].sum() * 100),
-                'Other': (100 - ((filtered_df['4s'].sum() * 4 + filtered_df['6s'].sum() * 6) / filtered_df['Runs'].sum() * 100))
+                '4s': (overall_df['4s'].sum() * 4 / overall_df['Runs'].sum() * 100),
+                '6s': (overall_df['6s'].sum() * 6 / overall_df['Runs'].sum() * 100),
+                'Other': (100 - ((overall_df['4s'].sum() * 4 + overall_df['6s'].sum() * 6) / overall_df['Runs'].sum() * 100))
             }
 
-            # Add overall bar
+            # Add overall bar (always show this)
             boundary_fig.add_trace(go.Bar(
                 name='Overall',
                 x=['4s', '6s', 'Other Runs'],
@@ -1837,11 +1901,11 @@ def display_bat_view():
             dismissal_fig = go.Figure()
             dismissal_types = ['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Not Out']
             
-            # Calculate overall percentages
-            total_dismissals = sum([filtered_df[type].sum() for type in dismissal_types])
-            overall_percentages = [filtered_df[type].sum() / total_dismissals * 100 for type in dismissal_types]
+            # Calculate overall percentages using unfiltered data
+            total_dismissals_overall = sum([overall_df[type].sum() for type in dismissal_types])
+            overall_percentages = [overall_df[type].sum() / total_dismissals_overall * 100 for type in dismissal_types]
             
-            # Add overall bar
+            # Add overall bar (always show this)
             dismissal_fig.add_trace(go.Bar(
                 name='Overall',
                 x=dismissal_types,
@@ -1882,16 +1946,16 @@ def display_bat_view():
             score_fig = go.Figure()
             score_ranges = ['0-24', '25-49', '50-99', '100+']
             
-            # Calculate overall percentages
-            total_innings = len(filtered_df)
+            # Calculate overall percentages using unfiltered data
+            total_innings_overall = len(overall_df)
             overall_percentages = [
-                len(filtered_df[filtered_df['Runs'] < 25]) / total_innings * 100,
-                len(filtered_df[(filtered_df['Runs'] >= 25) & (filtered_df['Runs'] < 50)]) / total_innings * 100,
-                len(filtered_df[(filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)]) / total_innings * 100,
-                len(filtered_df[filtered_df['Runs'] >= 100]) / total_innings * 100
+                len(overall_df[overall_df['Runs'] < 25]) / total_innings_overall * 100,
+                len(overall_df[(overall_df['Runs'] >= 25) & (overall_df['Runs'] < 50)]) / total_innings_overall * 100,
+                len(overall_df[(overall_df['Runs'] >= 50) & (overall_df['Runs'] < 100)]) / total_innings_overall * 100,
+                len(overall_df[overall_df['Runs'] >= 100]) / total_innings_overall * 100
             ]
             
-            # Add overall bar
+            # Add overall bar (always show this)
             score_fig.add_trace(go.Bar(
                 name='Overall',
                 x=score_ranges,
