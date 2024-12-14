@@ -116,7 +116,7 @@ def display_bat_view():
                 {k: v for k, v in selected_filters.items() if k != 'Name' and 'All' not in v})
             name_choice = st.multiselect('Name:', 
                                        available_names,
-                                       default=st.session_state.filter_state['name'])
+                                       default=[name for name in st.session_state.filter_state['name'] if name in available_names])
             if name_choice != st.session_state.filter_state['name']:
                 st.session_state.filter_state['name'] = name_choice
                 st.rerun()
@@ -126,7 +126,7 @@ def display_bat_view():
                 {k: v for k, v in selected_filters.items() if k != 'Bat_Team_y' and 'All' not in v})
             bat_team_choice = st.multiselect('Batting Team:', 
                                            available_bat_teams,
-                                           default=st.session_state.filter_state['bat_team'])
+                                           default=[team for team in st.session_state.filter_state['bat_team'] if team in available_bat_teams])
             if bat_team_choice != st.session_state.filter_state['bat_team']:
                 st.session_state.filter_state['bat_team'] = bat_team_choice
                 st.rerun()
@@ -136,7 +136,7 @@ def display_bat_view():
                 {k: v for k, v in selected_filters.items() if k != 'Bowl_Team_y' and 'All' not in v})
             bowl_team_choice = st.multiselect('Bowling Team:', 
                                             available_bowl_teams,
-                                            default=st.session_state.filter_state['bowl_team'])
+                                            default=[team for team in st.session_state.filter_state['bowl_team'] if team in available_bowl_teams])
             if bowl_team_choice != st.session_state.filter_state['bowl_team']:
                 st.session_state.filter_state['bowl_team'] = bowl_team_choice
                 st.rerun()
@@ -146,7 +146,7 @@ def display_bat_view():
                 {k: v for k, v in selected_filters.items() if k != 'Match_Format' and 'All' not in v})
             match_format_choice = st.multiselect('Format:', 
                                                available_formats,
-                                               default=st.session_state.filter_state['match_format'])
+                                               default=[fmt for fmt in st.session_state.filter_state['match_format'] if fmt in available_formats])
             if match_format_choice != st.session_state.filter_state['match_format']:
                 st.session_state.filter_state['match_format'] = match_format_choice
                 st.rerun()
