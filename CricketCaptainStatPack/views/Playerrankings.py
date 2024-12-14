@@ -370,6 +370,98 @@ def display_batting_rankings(bat_df):
         }
     )
 
+    # Create a row for both trend graphs
+    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Performance Trends</h3>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Rating per game trend graph
+        fig1 = go.Figure()
+        
+        trend_data = filtered_batting.sort_values('Year')
+        show_legend = len(selected_names) > 0  # Only show legend if players are selected
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig1.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['RPG'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
+
+        fig1.update_layout(
+            title="Rating Per Game Trends",
+            xaxis_title="Year",
+            yaxis_title="Rating Per Game",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+        )
+
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with col2:
+        # Rank trend graph
+        fig2 = go.Figure()
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig2.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['Rank'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
+
+        fig2.update_layout(
+            title="Ranking Trends",
+            xaxis_title="Year",
+            yaxis_title="Rank",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1,
+                      autorange="reversed")
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # Remove the Batting Milestones Analysis and Team Performance Breakdown sections
+    # End of the function
+
 
 def display_bowling_rankings(bowl_df):
     """Display Bowling Rankings tab content"""
@@ -512,7 +604,94 @@ def display_bowling_rankings(bowl_df):
         }
     )
 
+    # Create a row for both trend graphs
+    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Performance Trends</h3>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Rating per game trend graph
+        fig1 = go.Figure()
+        
+        trend_data = filtered_bowling.sort_values('Year')
+        show_legend = len(selected_names) > 0  # Only show legend if players are selected
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig1.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['RPG'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
 
+        fig1.update_layout(
+            title="Rating Per Game Trends",
+            xaxis_title="Year",
+            yaxis_title="Rating Per Game",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+        )
+
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with col2:
+        # Rank trend graph
+        fig2 = go.Figure()
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig2.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['Rank'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
+
+        fig2.update_layout(
+            title="Ranking Trends",
+            xaxis_title="Year",
+            yaxis_title="Rank",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1,
+                      autorange="reversed")
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
 
 def display_allrounder_rankings(bat_df, bowl_df):
     """Display All-Rounder Rankings tab content"""
@@ -621,88 +800,94 @@ def display_allrounder_rankings(bat_df, bowl_df):
         }
     )
 
-    # Rating per game trend graph
-    st.markdown("<h3 style='text-align: center; color:#f04f53;'>All-Rounder Rating Per Game Trends</h3>", unsafe_allow_html=True)
-    fig1 = go.Figure()
+    # Create a row for both trend graphs
+    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Performance Trends</h3>", unsafe_allow_html=True)
     
-    trend_data = filtered_ar.sort_values('Year')
+    col1, col2 = st.columns(2)
     
-    for player in trend_data['Name'].unique():
-        player_data = trend_data[trend_data['Name'] == player]
-        fig1.add_trace(go.Scatter(
-            x=player_data['Year'],
-            y=player_data['AR_RPG'],
-            name=player,
-            mode='lines+markers',
-            line=dict(width=2),
-            hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-            customdata=player_data['Team']
-        ))
-
-    fig1.update_layout(
-        xaxis_title="Year",
-        yaxis_title="All-Rounder Rating Per Game",
-        hovermode='closest',
-        showlegend=False,
-        margin=dict(l=20, r=20, t=40, b=40),
-        height=650,
-        plot_bgcolor='rgba(255,255,255,0)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        xaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(128,128,128,0.2)',
-            gridwidth=1
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(128,128,128,0.2)',
-            gridwidth=1
-        )
-    )
-
-    st.plotly_chart(fig1, use_container_width=True)
-
-    # Rank trend graph
-    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Rank Trends</h3>", unsafe_allow_html=True)
-    fig2 = go.Figure()
-
-    for player in trend_data['Name'].unique():
-        player_data = trend_data[trend_data['Name'] == player]
-        player_data = player_data.sort_values('Year')
+    with col1:
+        # Rating per game trend graph
+        fig1 = go.Figure()
         
-        fig2.add_trace(go.Scatter(
-            x=player_data['Year'],
-            y=player_data['Rank'],
-            name=player,
-            mode='lines+markers',
-            line=dict(width=2),
-            hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-            customdata=player_data['Team']
-        ))
+        trend_data = filtered_ar.sort_values('Year')
+        show_legend = len(selected_names) > 0  # Only show legend if players are selected
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig1.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['AR_RPG'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
 
-    fig2.update_layout(
-        xaxis_title="Year",
-        yaxis_title="Rank",
-        hovermode='closest',
-        showlegend=False,
-        margin=dict(l=20, r=20, t=40, b=40),
-        height=650,
-        plot_bgcolor='rgba(255,255,255,0)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        xaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(128,128,128,0.2)',
-            gridwidth=1
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(128,128,128,0.2)',
-            gridwidth=1,
-            autorange="reversed"
+        fig1.update_layout(
+            title="Rating Per Game Trends",
+            xaxis_title="Year",
+            yaxis_title="Rating Per Game",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
         )
-    )
 
-    st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with col2:
+        # Rank trend graph
+        fig2 = go.Figure()
+        
+        for player in trend_data['Name'].unique():
+            player_data = trend_data[trend_data['Name'] == player]
+            fig2.add_trace(go.Scatter(
+                x=player_data['Year'],
+                y=player_data['Rank'],
+                name=player,
+                mode='lines+markers',
+                line=dict(width=2),
+                hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
+                customdata=player_data['Team'],
+                showlegend=show_legend
+            ))
+
+        fig2.update_layout(
+            title="Ranking Trends",
+            xaxis_title="Year",
+            yaxis_title="Rank",
+            hovermode='closest',
+            showlegend=show_legend,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            margin=dict(l=20, r=20, t=40, b=40),
+            height=500,
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)',
+            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1,
+                      autorange="reversed")
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
 
 def display_ar_view():
     """Main function to display all rankings views"""
