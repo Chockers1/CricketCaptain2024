@@ -977,15 +977,21 @@ if not st.session_state.historical_data.empty:
                 x='Team',
                 y='Total Weighted Points',
                 color='Overall Win %',
-                text=final_rankings['Rank'].astype(str) + '. ' + final_rankings['Total Weighted Points'].round(1).astype(str),
-                title='Current Rankings (Weighted by Season Recency)'
+                text=final_rankings['Rank'].astype(str) + '. ' + final_rankings['Total Weighted Points'].round(1).astype(str)
             )
 
             fig_rankings.update_layout(
                 height=500,
                 xaxis_title="Team",
                 yaxis_title="Ranking Points",
-                showlegend=True
+                showlegend=True,
+                title={
+                    'text': 'Current Rankings (Weighted by Season Recency)',
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'color': '#f04f53'}
+                }
             )
 
             st.plotly_chart(fig_rankings, use_container_width=True)
@@ -1041,10 +1047,18 @@ if not st.session_state.historical_data.empty:
                     x='Team',
                     y='Points',
                     color='Season',
-                    title='Points Breakdown by Season',
                     barmode='stack'
                 )
-                fig_breakdown.update_layout(height=400)
+                fig_breakdown.update_layout(
+                    height=400,
+                    title={
+                        'text': 'Points Breakdown by Season',
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
                 st.plotly_chart(fig_breakdown, use_container_width=True)
 
             with insight_col2:
@@ -1065,12 +1079,20 @@ if not st.session_state.historical_data.empty:
                         movement_df.reset_index(),
                         x='Team',
                         y='Change',
-                        title='Position Change from Previous Season',
                         color='Change',
                         color_continuous_scale=['red', 'lightgray', 'green'],
                         text=movement_df['Change'].round(1)
                     )
-                    fig_movement.update_layout(height=400)
+                    fig_movement.update_layout(
+                        height=400,
+                        title={
+                            'text': 'Position Change from Previous Season',
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'yanchor': 'top',
+                            'font': {'color': '#f04f53'}
+                        }
+                    )
                     st.plotly_chart(fig_movement, use_container_width=True)
 
             # Add a summary metrics section
