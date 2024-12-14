@@ -5,6 +5,27 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
 
+def get_filtered_options(df, column, selected_filters=None):
+    """
+    Get available options for a column based on current filter selections.
+    
+    Args:
+        df: The DataFrame to filter
+        column: The column to get unique values from
+        selected_filters: Dictionary of current filter selections
+    """
+    if selected_filters is None:
+        return ['All'] + sorted(df[column].unique().tolist())
+    
+    filtered_df = df.copy()
+    
+    # Apply each active filter
+    for filter_col, filter_val in selected_filters.items():
+        if filter_val and 'All' not in filter_val and filter_col != column:
+            filtered_df = filtered_df[filtered_df[filter_col].isin(filter_val)]
+    
+    return ['All'] + sorted(filtered_df[column].unique().tolist())
+
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
         # Get the bowling dataframe with safer date parsing
@@ -16,31 +37,92 @@ def display_bowl_view():
         except Exception as e:
             st.error(f"Error processing dates. Using original dates.")
             bowl_df = st.session_state['bowl_df'].copy()
-            # Try alternate date format
             bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
             bowl_df['Year'] = bowl_df['Date'].dt.year
+
+        # Add data validation check and reset filters if needed
+        if 'prev_bowl_teams' not in st.session_state:
+            st.session_state.prev_bowl_teams = set()
+            
+        current_bowl_teams = set(bowl_df['Bowl_Team'].unique())
+        
+        # Reset filters if the available teams have changed
+        if current_bowl_teams != st.session_state.prev_bowl_teams:
+            st.session_state.bowl_filter_state = {
+                'name': ['All'],
+                'bowl_team': ['All'],
+                'bat_team': ['All'],
+                'match_format': ['All']
+            }
+            st.session_state.prev_bowl_teams = current_bowl_teams
 
         ###-------------------------------------HEADER AND FILTERS-------------------------------------###
         st.markdown("<h1 style='color:#f04f53; text-align: center;'>Bowling Statistics</h1>", unsafe_allow_html=True)
         
+        # Initialize session state for filters if not exists
+        if 'bowl_filter_state' not in st.session_state:
+            st.session_state.bowl_filter_state = {
+                'name': ['All'],
+                'bowl_team': ['All'],
+                'bat_team': ['All'],
+                'match_format': ['All']
+            }
+        
+        # Create filters at the top of the page
+        selected_filters = {
+            'Name': st.session_state.bowl_filter_state['name'],
+            'Bowl_Team': st.session_state.bowl_filter_state['bowl_team'],
+            'Bat_Team': st.session_state.bowl_filter_state['bat_team'],
+            'Match_Format': st.session_state.bowl_filter_state['match_format']
+        }
+
         # Create filter lists
-        names = ['All'] + sorted(bowl_df['Name'].unique().tolist())
-        bowl_teams = ['All'] + sorted(bowl_df['Bowl_Team'].unique().tolist())
-        bat_teams = ['All'] + sorted(bowl_df['Bat_Team'].unique().tolist())
-        match_formats = ['All'] + sorted(bowl_df['Match_Format'].unique().tolist())
+        names = get_filtered_options(bowl_df, 'Name', 
+            {k: v for k, v in selected_filters.items() if k != 'Name' and 'All' not in v})
+        bowl_teams = get_filtered_options(bowl_df, 'Bowl_Team', 
+            {k: v for k, v in selected_filters.items() if k != 'Bowl_Team' and 'All' not in v})
+        bat_teams = get_filtered_options(bowl_df, 'Bat_Team', 
+            {k: v for k, v in selected_filters.items() if k != 'Bat_Team' and 'All' not in v})
+        match_formats = get_filtered_options(bowl_df, 'Match_Format', 
+            {k: v for k, v in selected_filters.items() if k != 'Match_Format' and 'All' not in v})
+
+        # Get list of years before creating the slider
         years = sorted(bowl_df['Year'].unique().tolist())
 
         # Create four columns for filters
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            name_choice = st.multiselect('Name:', names, default='All')
+            name_choice = st.multiselect('Name:', 
+                                       names,
+                                       default=st.session_state.bowl_filter_state['name'])
+            if name_choice != st.session_state.bowl_filter_state['name']:
+                st.session_state.bowl_filter_state['name'] = name_choice
+                st.rerun()
+
         with col2:
-            bowl_team_choice = st.multiselect('Bowl Team:', bowl_teams, default='All')
+            bowl_team_choice = st.multiselect('Bowl Team:', 
+                                            bowl_teams,
+                                            default=st.session_state.bowl_filter_state['bowl_team'])
+            if bowl_team_choice != st.session_state.bowl_filter_state['bowl_team']:
+                st.session_state.bowl_filter_state['bowl_team'] = bowl_team_choice
+                st.rerun()
+
         with col3:
-            bat_team_choice = st.multiselect('Bat Team:', bat_teams, default='All')
+            bat_team_choice = st.multiselect('Bat Team:', 
+                                           bat_teams,
+                                           default=st.session_state.bowl_filter_state['bat_team'])
+            if bat_team_choice != st.session_state.bowl_filter_state['bat_team']:
+                st.session_state.bowl_filter_state['bat_team'] = bat_team_choice
+                st.rerun()
+
         with col4:
-            match_format_choice = st.multiselect('Format:', match_formats, default='All')
+            match_format_choice = st.multiselect('Format:', 
+                                               match_formats,
+                                               default=st.session_state.bowl_filter_state['match_format'])
+            if match_format_choice != st.session_state.bowl_filter_state['match_format']:
+                st.session_state.bowl_filter_state['match_format'] = match_format_choice
+                st.rerun()
 
         # Get individual players and create color mapping
         individual_players = [name for name in name_choice if name != 'All']
