@@ -1,3 +1,4 @@
+from operator import index
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -1122,5 +1123,232 @@ if not st.session_state.historical_data.empty:
 
             # Add existing expander with points calculation explanation
             # ...rest of existing code...
+
+# ...rest of existing code...
+
+            # Add historical rankings comparison
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Rankings Comparison</h4>", unsafe_allow_html=True)
+            
+            # Create columns for the two charts
+            hist_col1, hist_col2 = st.columns(2)
+            
+            # Prepare historical rankings data
+            historical_rankings = []
+            for year in years:
+                year_data = rankings_df[rankings_df['Year'] == year].copy()
+                year_data['Total_Points'] = year_data['Total_Ranking_Points']
+                year_data = year_data.sort_values('Total_Points', ascending=False)
+                year_data['Rank'] = range(1, len(year_data) + 1)
+                historical_rankings.append(year_data)
+            
+            historical_df = pd.concat(historical_rankings)
+            
+            with hist_col1:
+                # Create rank by year visualization
+                fig_rank_history = px.line(
+                    historical_df,
+                    x='Year',
+                    y='Rank',
+                    color='Team',
+                    markers=True,
+                    title='Team Rankings by Year'
+                )
+                
+                # Customize the rank chart
+                fig_rank_history.update_layout(
+                    height=500,
+                    yaxis_title="Rank",
+                    yaxis_autorange='reversed',  # Higher rank (1) at the top
+                    xaxis_title="Year",
+                    showlegend=True,
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
+                
+                st.plotly_chart(fig_rank_history, use_container_width=True)
+            
+            with hist_col2:
+                # Create points by year visualization
+                fig_points_history = px.line(
+                    historical_df,
+                    x='Year',
+                    y='Total_Points',
+                    color='Team',
+                    markers=True,
+                    title='Team Total Points by Year'
+                )
+                
+                # Customize the points chart
+                fig_points_history.update_layout(
+                    height=500,
+                    yaxis_title="Total Points",
+                    xaxis_title="Year",
+                    showlegend=True,
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
+                
+                st.plotly_chart(fig_points_history, use_container_width=True)
+
+            # Add Historical Statistics Summary
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Statistics Summary</h4>", unsafe_allow_html=True)
+
+            # Calculate historical statistics
+            historical_stats = {}
+
+            # Number 1 teams by year
+            top_teams_by_year = historical_df.loc[historical_df.groupby('Year')['Rank'].idxmin()][['Year', 'Team', 'Total_Points']]
+            
+            # Most frequent #1 team
+            most_frequent_top = top_teams_by_year['Team'].value_counts().index[0]
+            most_frequent_top_count = top_teams_by_year['Team'].value_counts().iloc[0]
+
+            # Highest total points ever
+            highest_points_record = historical_df.loc[historical_df['Total_Points'].idxmax()]
+
+            # Most years as last place
+            last_place_counts = historical_df[historical_df['Rank'] == historical_df.groupby('Year')['Rank'].transform('max')]['Team'].value_counts()
+            most_last_place = last_place_counts.index[0] if not last_place_counts.empty else "N/A"
+            most_last_place_count = last_place_counts.iloc[0] if not last_place_counts.empty else 0
+
+            # Lowest total points ever
+            lowest_points_record = historical_df.loc[historical_df['Total_Points'].idxmin()]
+
+            # Average rank by team
+            avg_ranks = historical_df.groupby('Team')['Rank'].mean().sort_values()
+            most_consistent = avg_ranks.index[0]
+            most_consistent_avg = avg_ranks.iloc[0]
+
+            # Create a DataFrame for number 1 teams by year
+            top_teams_df = top_teams_by_year.set_index('Year')
+
+            # Display statistics in expandable sections
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### 🏆 Number 1 Teams By Year")
+                st.dataframe(top_teams_df, use_container_width=True)
+
+            with col2:
+                st.markdown("#### 📊 All-Time Records")
+                
+                # Create records DataFrame
+                records_df = pd.DataFrame({
+                    'Record': [
+                        'Most Frequent #1',
+                        'Highest Points Ever',
+                        'Most Last Place Finishes',
+                        'Lowest Points Ever',
+                        'Most Consistent Team'
+                    ],
+                    'Team': [
+                        most_frequent_top,
+                        highest_points_record['Team'],
+                        most_last_place,
+                        lowest_points_record['Team'],
+                        most_consistent
+                    ],
+                    'Details': [
+                        f"{most_frequent_top_count} times",
+                        f"{highest_points_record['Total_Points']:.1f} pts in {highest_points_record['Year']}",
+                        f"{most_last_place_count} times",
+                        f"{lowest_points_record['Total_Points']:.1f} pts in {lowest_points_record['Year']}",
+                        f"Avg. Rank: {most_consistent_avg:.1f}"
+                    ]
+                })
+                
+                # Display the records table
+                st.dataframe(
+                    records_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Record": st.column_config.TextColumn(
+                            "Record Type",
+                            width="medium"
+                        ),
+                        "Team": st.column_config.TextColumn(
+                            "Team",
+                            width="medium"
+                        ),
+                        "Details": st.column_config.TextColumn(
+                            "Achievement Details",
+                            width="medium"
+                        )
+                    }
+                )
+
+            # Additional Statistics
+            st.markdown("#### 📈 Detailed Statistics")
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
+
+            with stat_col1:
+                # Point Distribution Stats
+                points_stats = historical_df.groupby('Team')['Total_Points'].agg(['mean', 'max', 'min']).round(1)
+                points_stats.columns = ['Avg Points', 'Max Points', 'Min Points']
+                points_stats = points_stats.sort_values('Avg Points', ascending=False)
+                st.markdown("##### Average Points by Team")
+                st.dataframe(points_stats, use_container_width=True, hide_index=True)
+
+            with stat_col2:
+                # Rank Volatility (standard deviation of ranks)
+                rank_volatility = historical_df.groupby('Team')['Rank'].agg(['mean', 'std']).round(2)
+                rank_volatility.columns = ['Avg Rank', 'Rank Volatility']
+                rank_volatility = rank_volatility.sort_values('Avg Rank')
+                st.markdown("##### Rank Consistency")
+                st.dataframe(rank_volatility, use_container_width=True, hide_index=True)
+
+            with stat_col3:
+                # Top 3 Finishes
+                top_3_mask = historical_df['Rank'] <= 3
+                top_3_finishes = historical_df[top_3_mask]['Team'].value_counts()
+                top_3_df = pd.DataFrame({
+                    'Team': top_3_finishes.index,
+                    'Top 3 Finishes': top_3_finishes.values
+                })
+                st.markdown("##### Top 3 Finish Counts")
+                st.dataframe(top_3_df, use_container_width=True, hide_index=True)
+
+            # Add interesting insights
+            st.markdown("#### 🎯 Key Insights")
+            insights_col1, insights_col2 = st.columns(2)
+
+            with insights_col1:
+                # Year-over-year improvement
+                year_improvements = []
+                for team in historical_df['Team'].unique():
+                    team_data = historical_df[historical_df['Team'] == team].sort_values('Year')
+                    if len(team_data) >= 2:
+                        rank_diff = team_data['Rank'].iloc[-1] - team_data['Rank'].iloc[-2]
+                        year_improvements.append((team, -rank_diff))  # Negative because improvement means rank number decreases
+                
+                if year_improvements:
+                    year_improvements.sort(key=lambda x: x[1], reverse=True)
+                    st.markdown("##### Biggest Recent Improvers")
+                    for team, improvement in year_improvements[:5]:
+                        if improvement > 0:
+                            st.markdown(f"- {team}: ⬆️ {improvement} positions")
+
+            with insights_col2:
+                # Longest streaks in top 3
+                st.markdown("##### Notable Streaks")
+                for team in historical_df['Team'].unique():
+                    team_data = historical_df[historical_df['Team'] == team].sort_values('Year')
+                    current_streak = 0
+                    max_streak = 0
+                    for rank in team_data['Rank']:
+                        if rank <= 3:
+                            current_streak += 1
+                            max_streak = max(max_streak, current_streak)
+                        else:
+                            current_streak = 0
+                    if max_streak >= 2:  # Only show streaks of 2 or more years
+                        st.markdown(f"- {team}: {max_streak} consecutive years in top 3")
 
 # ...rest of existing code...
