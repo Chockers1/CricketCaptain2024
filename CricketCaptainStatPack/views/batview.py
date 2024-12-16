@@ -173,7 +173,7 @@ def display_bat_view():
         max_avg = float(career_stats['Avg'].max())
 
         # Add range filters
-        col5, col6, col7, col8, col9, col10 = st.columns(6)
+        col5, col6, col7, col8, col9, col10, col11, col12 = st.columns(8)  # Changed from 6 to 8 columns
 
         # Handle year selection
         with col5:
@@ -186,7 +186,8 @@ def display_bat_view():
                     min_value=min(years),
                     max_value=max(years),
                     value=(min(years), max(years)),
-                    label_visibility='collapsed')
+                    label_visibility='collapsed',
+                    key='year_slider')
 
         # Position slider
         with col6:
@@ -195,7 +196,8 @@ def display_bat_view():
                    min_value=1, 
                    max_value=11, 
                    value=(1, 11),
-                   label_visibility='collapsed')
+                   label_visibility='collapsed',
+                   key='position_slider')
 
         # Runs range slider
         with col7:
@@ -204,7 +206,8 @@ def display_bat_view():
                             min_value=1, 
                             max_value=max_runs, 
                             value=(1, max_runs),
-                            label_visibility='collapsed')
+                            label_visibility='collapsed',
+                            key='runs_slider')
 
         # Matches range slider
         with col8:
@@ -213,7 +216,8 @@ def display_bat_view():
                                 min_value=1, 
                                 max_value=max_matches, 
                                 value=(1, max_matches),
-                                label_visibility='collapsed')
+                                label_visibility='collapsed',
+                                key='matches_slider')
 
         # Average range slider
         with col9:
@@ -222,7 +226,8 @@ def display_bat_view():
                             min_value=0.0, 
                             max_value=max_avg, 
                             value=(0.0, max_avg),
-                            label_visibility='collapsed')
+                            label_visibility='collapsed',
+                            key='avg_slider')
 
         # Strike rate range slider
         with col10:
@@ -231,7 +236,28 @@ def display_bat_view():
                             min_value=0.0, 
                             max_value=600.0, 
                             value=(0.0, 600.0),
-                            label_visibility='collapsed')
+                            label_visibility='collapsed',
+                            key='sr_slider')
+
+        # Add P+ Avg range slider
+        with col11:
+            st.markdown("<p style='text-align: center;'>P+ Avg Range</p>", unsafe_allow_html=True)
+            p_avg_range = st.slider('', 
+                            min_value=0.0, 
+                            max_value=500.0,  # Changed from 200.0 to 500.0
+                            value=(0.0, 500.0),  # Updated range to match new maximum
+                            label_visibility='collapsed',
+                            key='p_avg_slider')
+
+        # Add P+ SR range slider
+        with col12:
+            st.markdown("<p style='text-align: center;'>P+ SR Range</p>", unsafe_allow_html=True)
+            p_sr_range = st.slider('', 
+                            min_value=0.0, 
+                            max_value=500.0,  # Changed from 200.0 to 500.0
+                            value=(0.0, 500.0),  # Updated range to match new maximum
+                            label_visibility='collapsed',
+                            key='p_sr_slider')
 
         # Generate cache key based on filter selections
         filters = {
@@ -244,7 +270,9 @@ def display_bat_view():
             'runs_range': runs_range,
             'matches_range': matches_range,
             'avg_range': avg_range,
-            'sr_range': sr_range
+            'sr_range': sr_range,
+            'p_avg_range': p_avg_range,
+            'p_sr_range': p_sr_range
         }
         cache_key = generate_cache_key(filters)
 
@@ -275,6 +303,31 @@ def display_bat_view():
                 (sr_range[0] <= ((x['Runs'].sum() / x['Balls'].sum()) * 100) <= sr_range[1] if x['Balls'].sum() > 0 else True)
             )
             
+            # Calculate P+ metrics for filtering
+            player_stats = filtered_df.groupby('Name').agg({
+                'Runs': 'sum',
+                'Out': 'sum',
+                'Balls': 'sum',
+                'Total_Runs': 'sum',
+                'Wickets': 'sum',
+                'Team Balls': 'sum'
+            }).reset_index()
+
+            player_stats['Avg'] = player_stats['Runs'] / player_stats['Out']
+            player_stats['SR'] = (player_stats['Runs'] / player_stats['Balls']) * 100
+            player_stats['Team Avg'] = player_stats['Total_Runs'] / player_stats['Wickets']
+            player_stats['Team SR'] = (player_stats['Total_Runs'] / player_stats['Team Balls']) * 100
+            player_stats['P+ Avg'] = (player_stats['Avg'] / player_stats['Team Avg'] * 100).round(2)
+            player_stats['P+ SR'] = (player_stats['SR'] / player_stats['Team SR'] * 100).round(2)
+
+            # Filter based on P+ metrics
+            filtered_players = player_stats[
+                (player_stats['P+ Avg'].between(p_avg_range[0], p_avg_range[1])) &
+                (player_stats['P+ SR'].between(p_sr_range[0], p_sr_range[1]))
+            ]['Name'].tolist()
+
+            filtered_df = filtered_df[filtered_df['Name'].isin(filtered_players)]
+
             # Cache the filtered DataFrame if Redis is available
             if REDIS_AVAILABLE:
                 cache_dataframe(cache_key, filtered_df)
@@ -468,14 +521,68 @@ def display_bat_view():
                 showlegend=False
             )
 
-        # Display the title using Streamlit's markdown
-        st.markdown(
-            "<h3 style='color:#f04f53; text-align: center;'>Batting Average vs Strike Rate Analysis</h3>",
-            unsafe_allow_html=True
-        )
+        # Create two columns for the scatter plots
+        col1, col2 = st.columns(2)
 
-        # Show plot
-        st.plotly_chart(scatter_fig)
+        with col1:
+            # Display the title for first plot
+            st.markdown(
+                "<h3 style='color:#f04f53; text-align: center;'>Batting Average vs Strike Rate Analysis</h3>",
+                unsafe_allow_html=True
+            )
+            # Show first plot
+            st.plotly_chart(scatter_fig, use_container_width=True)
+
+        with col2:
+            # Create new scatter plot for Strike Rate vs Balls Per Out
+            sr_bpo_fig = go.Figure()
+
+            # Plot data for each player
+            for name in bat_career_df['Name'].unique():
+                player_stats = bat_career_df[bat_career_df['Name'] == name]
+                
+                # Get statistics
+                strike_rate = player_stats['SR'].iloc[0]
+                balls_per_out = player_stats['BPO'].iloc[0]
+                runs = player_stats['Runs'].iloc[0]
+                
+                # Add scatter point for the player
+                sr_bpo_fig.add_trace(go.Scatter(
+                    x=[balls_per_out],
+                    y=[strike_rate],
+                    mode='markers+text',
+                    text=[name],
+                    textposition='top center',
+                    marker=dict(size=10),
+                    name=name,
+                    hovertemplate=(
+                        f"<b>{name}</b><br><br>"
+                        f"Balls Per Out: {balls_per_out:.2f}<br>"
+                        f"Strike Rate: {strike_rate:.2f}<br>"
+                        f"Runs: {runs}<br>"
+                        "<extra></extra>"
+                    )
+                ))
+
+            # Update layout for second plot
+            sr_bpo_fig.update_layout(
+                xaxis_title="Balls Per Out",
+                yaxis_title="Strike Rate",
+                height=500,
+                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                showlegend=False
+            )
+
+            # Display the title for second plot
+            st.markdown(
+                "<h3 style='color:#f04f53; text-align: center;'>Strike Rate vs Balls Per Out Analysis</h3>",
+                unsafe_allow_html=True
+            )
+            # Show second plot
+            st.plotly_chart(sr_bpo_fig, use_container_width=True)
+
 ###---------------------------------------------FORMAT STATS-------------------------------------------------------------------###
 ###---------------------------------------------FORMAT STATS-------------------------------------------------------------------###
 
@@ -1994,7 +2101,6 @@ def display_bat_view():
                 yaxis=dict(range=[0, 100])
             )
             st.plotly_chart(score_fig, use_container_width=True)
-
 
 # Call the function to display the batting view
 display_bat_view()
