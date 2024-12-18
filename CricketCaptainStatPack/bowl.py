@@ -129,8 +129,34 @@ def process_bowl_stats(directory_path, game_df, match_df):
         bowl_df['5Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if 5 <= x < 10 else 0)
         bowl_df['10Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 10 else 0)
 
-        # Calculate Balls from Overs
-        bowl_df['Bowler_Balls'] = bowl_df['Bowler_Overs'].apply(lambda x: int(x) * 6 + round((x - int(x)) * 10))
+        # Calculate Balls from Overs based on format
+        def calculate_balls_and_overs(row):
+            if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
+                # For The Hundred, balls are the same as the overs value
+                balls = row['Bowler_Overs']
+                # Convert balls to overs (divide by 5 as each over is 5 balls)
+                overs = balls / 5
+                # Calculate economy rate for The Hundred format (runs per 5 balls)
+                economy = (row['Bowler_Runs'] / balls) * 5 if balls > 0 else 0
+                return pd.Series({
+                    'Bowler_Balls': balls, 
+                    'Bowler_Overs': overs,
+                    'Bowler_Econ': economy
+                })
+            else:
+                # Regular format calculation
+                balls = int(row['Bowler_Overs']) * 6 + round((row['Bowler_Overs'] - int(row['Bowler_Overs'])) * 10)
+                return pd.Series({
+                    'Bowler_Balls': balls, 
+                    'Bowler_Overs': row['Bowler_Overs'],
+                    'Bowler_Econ': row['Bowler_Econ']
+                })
+
+        # Apply the calculation
+        ball_over_calc = bowl_df.apply(calculate_balls_and_overs, axis=1)
+        bowl_df['Bowler_Balls'] = ball_over_calc['Bowler_Balls']
+        bowl_df['Bowler_Overs'] = ball_over_calc['Bowler_Overs']
+        bowl_df['Bowler_Econ'] = ball_over_calc['Bowler_Econ']
 
         # Remove rows where the 'Name' column is blank
         bowl_df = bowl_df[bowl_df['Name'].str.strip() != '']
@@ -194,5 +220,4 @@ if os.path.exists(game_csv_path) and os.path.exists(match_csv_path):
     bowl_df = process_bowl_stats(directory_path, game_df, match_df)
 else:
     print("game_data.csv or match_data.csv not found. Please run match.py and game.py first.")
-    bowl_df = None
-    
+    bowl_df = None     
