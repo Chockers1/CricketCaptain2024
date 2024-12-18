@@ -154,10 +154,43 @@ def process_bat_stats(directory_path, game_df, match_df):
         # Calculate Strike Rate
         bat_df['Strike Rate'] = (bat_df['Runs'] / bat_df['Balls'] * 100).round(2)
 
-        # Ensure that Balls are calculated correctly
-        bat_df['Team Balls'] = (bat_df['Overs'].astype(int) * 6) + ((bat_df['Overs'] - bat_df['Overs'].astype(int)) * 10).astype(int)
+        # Calculate team balls based on format and innings state
+        def calculate_team_balls(row):
+            # If team is all out in any format, use sum of actual balls faced
+            if row['Wickets'] == 10:
+                # Group by File Name and Innings to sum actual balls faced in this innings
+                return bat_df[
+                    (bat_df['File Name'] == row['File Name']) & 
+                    (bat_df['Innings'] == row['Innings'])
+                ]['Balls'].sum()
+            else:
+                # Format-specific ball calculations for incomplete innings
+                if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
+                    return 100  # Standard 100 balls
+                elif row['Match_Format'] == 'T20':
+                    return 120  # Standard 20 overs = 120 balls
+                elif row['Match_Format'] == 'One Day':
+                    return 300  # Standard 50 overs = 300 balls
+                else:  # Test Match or First Class
+                    # Handle decimal overs correctly
+                    if pd.isna(row['Overs']):
+                        return 0
+                    try:
+                        # Split overs into whole and partial
+                        whole_overs = int(float(row['Overs']))
+                        partial_balls = int((float(row['Overs']) % 1) * 10)  # Convert decimal part to balls
+                        return (whole_overs * 6) + partial_balls
+                    except (ValueError, TypeError):
+                        # If conversion fails, calculate from actual balls faced
+                        return bat_df[
+                            (bat_df['File Name'] == row['File Name']) & 
+                            (bat_df['Innings'] == row['Innings'])
+                        ]['Balls'].sum()
 
-        # Optionally, you may want to handle divisions by zero
+        # Apply team balls calculation
+        bat_df['Team Balls'] = bat_df.apply(calculate_team_balls, axis=1)
+
+        # Handle divisions by zero
         bat_df['Strike Rate'] = bat_df.apply(lambda x: x['Strike Rate'] if x['Balls'] > 0 else 0, axis=1)
 
         return bat_df  # Return the modified DataFrame
