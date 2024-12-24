@@ -936,18 +936,57 @@ def display_ar_view():
     bat_df = st.session_state['bat_df'].copy()
     bowl_df = st.session_state['bowl_df'].copy()
 
-    # Process dates and add Year column
-    if 'Date' in bat_df.columns:
-        bat_df['Date'] = pd.to_datetime(bat_df['Date'], errors='coerce')
-        bat_df['Year'] = bat_df['Date'].dt.year
+    def extract_date(text):
+        """Extract date from match description string"""
+        if pd.isna(text):
+            return pd.NaT
+        
+        # Find the last dash and get everything after it
+        if ' - ' in text:
+            date_part = text.split(' - ')[-1].strip()
+        else:
+            date_part = text.strip()
+            
+        # Try parsing with different formats
+        try:
+            # Try the common formats in your data
+            for fmt in ['%d %b %Y', '%d/%m/%Y', '%d %B %Y']:
+                try:
+                    return pd.to_datetime(date_part, format=fmt)
+                except ValueError:
+                    continue
+            # If none of the specific formats work, try general parsing
+            return pd.to_datetime(date_part)
+        except:
+            return pd.NaT
 
-    # Add Year to bowling dataframe using File Name as key
+    # Process dates and add Year column with robust date parsing
+    if 'Date' in bat_df.columns:
+        bat_df['Date'] = bat_df['Date'].apply(extract_date)
+        bat_df['Year'] = bat_df['Date'].dt.year
+        # Remove any rows where Year is null or 0
+        bat_df = bat_df[bat_df['Year'].notna() & (bat_df['Year'] != 0)]
+
+    # Process bowling dataframe dates
+    if 'Date' in bowl_df.columns:
+        bowl_df['Date'] = bowl_df['Date'].apply(extract_date)
+        bowl_df['Year'] = bowl_df['Date'].dt.year
+    
+    # Merge with batting years as backup
     bowl_df = pd.merge(
         bowl_df,
         bat_df[['File Name', 'Year']].drop_duplicates(),
         on='File Name',
         how='left'
     )
+    
+    # If there are two Year columns, use the first non-null value
+    if 'Year_x' in bowl_df.columns and 'Year_y' in bowl_df.columns:
+        bowl_df['Year'] = bowl_df['Year_x'].combine_first(bowl_df['Year_y'])
+        bowl_df = bowl_df.drop(['Year_x', 'Year_y'], axis=1)
+    
+    # Remove any rows where Year is null or 0
+    bowl_df = bowl_df[bowl_df['Year'].notna() & (bowl_df['Year'] != 0)]
 
     # Calculate ratings
     bat_df = calculate_batter_rating_per_match(bat_df)
@@ -979,4 +1018,3 @@ def display_ar_view():
 
 # Call the function to display
 display_ar_view()
- 
