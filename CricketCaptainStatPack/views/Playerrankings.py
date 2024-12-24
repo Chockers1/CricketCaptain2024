@@ -979,3 +979,4 @@ def display_ar_view():
 
 # Call the function to display
 display_ar_view()
+ 
