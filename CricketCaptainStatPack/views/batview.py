@@ -1121,85 +1121,95 @@ def display_bat_view():
             # Cache the computed location statistics
             cache_dataframe(location_cache_key, opponents_stats_df)
 
-        # Display the location Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(opponents_stats_df, use_container_width=True, hide_index=True)
 
-        # Cache key for location averages
-        location_avg_cache_key = f"{cache_key}_location_averages"
-        opponent_stats_df = get_cached_dataframe(location_avg_cache_key)
 
-        if opponent_stats_df is None:
-            # Calculate average runs against locations
-            opponent_stats_df = filtered_df.groupby('Home Team').agg({
-                'Runs': 'sum',
-                'Out': 'sum',
-                'Balls': 'sum'
-            }).reset_index()
+        # Display the location Stats and bar chart side by side
+        col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
-            # Calculate Average
-            opponent_stats_df['Avg'] = (opponent_stats_df['Runs'] / opponent_stats_df['Out']).round(2)
+        with col1:
+            st.dataframe(opponents_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
 
-            # Cache the location averages
-            cache_dataframe(location_avg_cache_key, opponent_stats_df)
+        with col2:
+            # Cache key for location averages
+            location_avg_cache_key = f"{cache_key}_location_averages"
+            opponent_stats_df = get_cached_dataframe(location_avg_cache_key)
 
-        # Create a bar chart for Average runs by location
-        location_chart_cache_key = f"{cache_key}_location_chart"
-        fig = get_cached_dataframe(location_chart_cache_key)
+            if opponent_stats_df is None:
+                # Calculate average runs against locations
+                opponent_stats_df = filtered_df.groupby('Home Team').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum'
+                }).reset_index()
 
-        if fig is None:
-            fig = go.Figure()
+                # Calculate Average
+                opponent_stats_df['Avg'] = (opponent_stats_df['Runs'] / opponent_stats_df['Out']).round(2)
 
-            # Add Average runs trace
-            fig.add_trace(
-                go.Bar(
-                    x=opponent_stats_df['Home Team'], 
-                    y=opponent_stats_df['Avg'], 
-                    name='Average', 
-                    marker_color='#f84e4e'
+                # Cache the location averages
+                cache_dataframe(location_avg_cache_key, opponent_stats_df)
+
+            # Sort by average in descending order
+            opponent_stats_df = opponent_stats_df.sort_values(by='Avg', ascending=True)
+
+            # Create a bar chart for Average runs by location
+            location_chart_cache_key = f"{cache_key}_location_chart"
+            fig = get_cached_dataframe(location_chart_cache_key)
+
+            if fig is None:
+                fig = go.Figure()
+
+                # Add Average runs trace
+                fig.add_trace(
+                    go.Bar(
+                        y=opponent_stats_df['Home Team'], 
+                        x=opponent_stats_df['Avg'], 
+                        name='Average', 
+                        marker_color='#f84e4e',
+                        orientation='h'
+                    )
                 )
-            )
 
-            # Calculate the appropriate average based on selection
-            if 'All' in name_choice and len(name_choice) == 1:
-                # Calculate overall average across all data
-                overall_avg = opponent_stats_df['Avg'].mean()
-            else:
-                # Use individual player's average from bat_career_df
-                overall_avg = bat_career_df['Avg'].iloc[0]
+                # Calculate the appropriate average based on selection
+                if 'All' in name_choice and len(name_choice) == 1:
+                    # Calculate overall average across all data
+                    overall_avg = opponent_stats_df['Avg'].mean()
+                else:
+                    # Use individual player's average from bat_career_df
+                    overall_avg = bat_career_df['Avg'].iloc[0]
 
-            # Add horizontal line for average
-            fig.add_trace(
-                go.Scatter(
-                    x=[opponent_stats_df['Home Team'].iloc[0], opponent_stats_df['Home Team'].iloc[-1]],
-                    y=[overall_avg, overall_avg],
-                    mode='lines+text',
-                    name='Average',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
-                    textposition='top center',
-                    showlegend=False
+                # Add horizontal line for average
+                fig.add_trace(
+                    go.Scatter(
+                        y=[opponent_stats_df['Home Team'].iloc[0], opponent_stats_df['Home Team'].iloc[-1]],
+                        x=[overall_avg, overall_avg],
+                        mode='lines+text',
+                        name='Average',
+                        line=dict(color='black', width=2, dash='dash'),
+                        text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
+                        textposition='top center',
+                        showlegend=False
+                    )
                 )
-            )
 
-            # Update layout
-            fig.update_layout(
-                height=500,
-                xaxis_title='Location',
-                yaxis_title='Average',
-                margin=dict(l=50, r=50, t=70, b=50),
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+                # Update layout
+                fig.update_layout(
+                    height=500,
+                    yaxis_title='Location',
+                    xaxis_title='Average',
+                    margin=dict(l=50, r=50, t=0, b=50),  # Adjust top margin to align with table
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
 
-            # Cache the location chart
-            cache_dataframe(location_chart_cache_key, fig)
+                # Cache the location chart
+                cache_dataframe(location_chart_cache_key, fig)
 
-        # Display the bar chart
-        st.plotly_chart(fig)
- 
- ###---------------------------------------------INNINGS STATS-------------------------------------------------------------------###
+            # Display the bar chart
+            st.plotly_chart(fig)
+
+###---------------------------------------------INNINGS STATS-------------------------------------------------------------------###
 ###---------------------------------------------INNINGS STATS-------------------------------------------------------------------###
 
         # Cache key for innings statistics
@@ -1274,101 +1284,105 @@ def display_bat_view():
                                                'P+ Avg', 'P+ SR', 'Caught%', 'Bowled%', 'LBW%', 
                                                'Run Out%', 'Stumped%', 'Not Out%']]
             
-            innings_stats_df = innings_stats_df.sort_values(by='Runs', ascending=False)
+            innings_stats_df = innings_stats_df.sort_values(by='Innings', ascending=False)
 
             # Cache the computed innings statistics
             cache_dataframe(innings_cache_key, innings_stats_df)
 
-        # Display the Innings Stats
+        # Display the Innings Stats and bar chart side by side
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(innings_stats_df, use_container_width=True, hide_index=True)
+        col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
-        # Cache key for average runs across innings
-        innings_avg_cache_key = f"{cache_key}_innings_averages"
-        average_runs_innings_df = get_cached_dataframe(innings_avg_cache_key)
+        with col1:
+            st.dataframe(innings_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
 
-        if average_runs_innings_df is None:
-            # Calculate average runs across innings
-            average_runs_innings_df = filtered_df.groupby('Innings').agg({
-                'Runs': 'sum',
-                'Out': 'sum',
-                'Balls': 'sum'
-            }).reset_index()
+        with col2:
+            # Cache key for average runs across innings
+            innings_avg_cache_key = f"{cache_key}_innings_averages"
+            average_runs_innings_df = get_cached_dataframe(innings_avg_cache_key)
 
-            # Calculate Average
-            average_runs_innings_df['Avg'] = (average_runs_innings_df['Runs'] / average_runs_innings_df['Out']).round(2)
+            if average_runs_innings_df is None:
+                # Calculate average runs across innings
+                average_runs_innings_df = filtered_df.groupby('Innings').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum'
+                }).reset_index()
 
-            # Cache the innings averages
-            cache_dataframe(innings_avg_cache_key, average_runs_innings_df)
+                # Calculate Average
+                average_runs_innings_df['Avg'] = (average_runs_innings_df['Runs'] / average_runs_innings_df['Out']).round(2)
 
-        # Create a bar chart for Average runs per innings
-        innings_chart_cache_key = f"{cache_key}_innings_chart"
-        fig = get_cached_dataframe(innings_chart_cache_key)
+                # Cache the innings averages
+                cache_dataframe(innings_avg_cache_key, average_runs_innings_df)
 
-        if fig is None:
-            fig = go.Figure()
+            # Create a bar chart for Average runs per innings
+            innings_chart_cache_key = f"{cache_key}_innings_chart"
+            fig = get_cached_dataframe(innings_chart_cache_key)
 
-            # Add Average runs trace
-            fig.add_trace(
-                go.Bar(
-                    x=average_runs_innings_df['Innings'], 
-                    y=average_runs_innings_df['Avg'], 
-                    name='Average', 
-                    marker_color='#f84e4e'
+            if fig is None:
+                fig = go.Figure()
+
+                # Add Average runs trace
+                fig.add_trace(
+                    go.Bar(
+                        x=average_runs_innings_df['Innings'], 
+                        y=average_runs_innings_df['Avg'], 
+                        name='Average', 
+                        marker_color='#f84e4e'
+                    )
                 )
-            )
 
-            # Calculate the appropriate average based on selection
-            if 'All' in name_choice and len(name_choice) == 1:
-                # Calculate overall average across all innings
-                overall_avg = average_runs_innings_df['Avg'].mean()
-            else:
-                # Use individual player's average from bat_career_df
-                overall_avg = bat_career_df['Avg'].iloc[0]
+                # Calculate the appropriate average based on selection
+                if 'All' in name_choice and len(name_choice) == 1:
+                    # Calculate overall average across all innings
+                    overall_avg = average_runs_innings_df['Avg'].mean()
+                else:
+                    # Use individual player's average from bat_career_df
+                    overall_avg = bat_career_df['Avg'].iloc[0]
 
-            # Add horizontal line for average
-            fig.add_trace(
-                go.Scatter(
-                    x=[1, max(average_runs_innings_df['Innings'])],
-                    y=[overall_avg, overall_avg],
-                    mode='lines+text',
-                    name='Average',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
-                    textposition='top center',
-                    showlegend=False
+                # Add horizontal line for average
+                fig.add_trace(
+                    go.Scatter(
+                        x=[1, max(average_runs_innings_df['Innings'])],
+                        y=[overall_avg, overall_avg],
+                        mode='lines+text',
+                        name='Average',
+                        line=dict(color='black', width=2, dash='dash'),
+                        text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
+                        textposition='top center',
+                        showlegend=False
+                    )
                 )
-            )
 
-            # Update layout
-            fig.update_layout(
-                height=500,
-                xaxis_title='Innings',
-                yaxis_title='Average',
-                margin=dict(l=50, r=50, t=70, b=50),
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+                # Update layout
+                fig.update_layout(
+                    height=500,
+                    xaxis_title='Innings',
+                    yaxis_title='Average',
+                    margin=dict(l=50, r=50, t=0, b=50),  # Adjust top margin to align with table
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
 
-            # Update y-axis to show intervals of 5
-            fig.update_yaxes(
-                tickmode='linear',
-                dtick=5
-            )
+                # Update y-axis to show intervals of 5
+                fig.update_yaxes(
+                    tickmode='linear',
+                    dtick=5
+                )
 
-            # Update x-axis to show all bar positions
-            fig.update_xaxes(
-                tickmode='linear',
-                tick0=0,
-                dtick=1,
-            )
+                # Update x-axis to show all bar positions
+                fig.update_xaxes(
+                    tickmode='linear',
+                    tick0=0,
+                    dtick=1,
+                )
 
-            # Cache the innings chart
-            cache_dataframe(innings_chart_cache_key, fig)
+                # Cache the innings chart
+                cache_dataframe(innings_chart_cache_key, fig)
 
-        # Display the bar chart
-        st.plotly_chart(fig)
+            # Display the bar chart
+            st.plotly_chart(fig)
     
  ###---------------------------------------------POSITION STATS-------------------------------------------------------------------###
 ###---------------------------------------------POSITION STATS-------------------------------------------------------------------###
@@ -1444,109 +1458,112 @@ def display_bat_view():
                                                  '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
                                                  'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
             
-            position_stats_df = position_stats_df.sort_values(by='Runs', ascending=False)
+            position_stats_df = position_stats_df.sort_values(by='Position', ascending=False)
             
             # Cache the computed position statistics
             cache_dataframe(position_cache_key, position_stats_df)
 
-        # Display the Position Stats
+        # Display the Position Stats and bar chart side by side
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(position_stats_df, use_container_width=True, hide_index=True)
+        col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
-        # Cache key for position averages
-        position_avg_cache_key = f"{cache_key}_position_averages"
-        position_avg_stats_df = get_cached_dataframe(position_avg_cache_key)
+        with col1:
+            st.dataframe(position_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
 
-        if position_avg_stats_df is None:
-            # Calculate average runs by position
-            position_avg_stats_df = filtered_df.groupby('Position').agg({
-                'Runs': 'sum',
-                'Out': 'sum',
-                'Balls': 'sum'
-            }).reset_index()
+        with col2:
+            # Cache key for position averages
+            position_avg_cache_key = f"{cache_key}_position_averages"
+            position_avg_stats_df = get_cached_dataframe(position_avg_cache_key)
 
-            # Calculate Average
-            position_avg_stats_df['Avg'] = (position_avg_stats_df['Runs'] / position_avg_stats_df['Out']).round(2)
+            if position_avg_stats_df is None:
+                # Calculate average runs by position
+                position_avg_stats_df = filtered_df.groupby('Position').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum'
+                }).reset_index()
 
-            # Ensure we have all positions 1-11
-            all_positions = pd.DataFrame({'Position': range(1, 12)})
-            position_avg_stats_df = pd.merge(all_positions, position_avg_stats_df, on='Position', how='left')
-            position_avg_stats_df['Avg'] = position_avg_stats_df['Avg'].fillna(0)
-            
-            # Cache the position averages
-            cache_dataframe(position_avg_cache_key, position_avg_stats_df)
+                # Calculate Average
+                position_avg_stats_df['Avg'] = (position_avg_stats_df['Runs'] / position_avg_stats_df['Out']).round(2)
 
-        # Create a bar chart for Average runs by position
-        position_chart_cache_key = f"{cache_key}_position_chart"
-        fig = get_cached_dataframe(position_chart_cache_key)
+                # Ensure we have all positions 1-11
+                all_positions = pd.DataFrame({'Position': range(1, 12)})
+                position_avg_stats_df = pd.merge(all_positions, position_avg_stats_df, on='Position', how='left')
+                position_avg_stats_df['Avg'] = position_avg_stats_df['Avg'].fillna(0)
+                
+                # Cache the position averages
+                cache_dataframe(position_avg_cache_key, position_avg_stats_df)
 
-        if fig is None:
-            fig = go.Figure()
+            # Create a bar chart for Average runs by position
+            position_chart_cache_key = f"{cache_key}_position_chart"
+            fig = get_cached_dataframe(position_chart_cache_key)
 
-            # Add Average runs trace
-            fig.add_trace(
-                go.Bar(
-                    x=position_avg_stats_df['Position'], 
-                    y=position_avg_stats_df['Avg'], 
-                    name='Average', 
-                    marker_color='#f84e4e'
+            if fig is None:
+                fig = go.Figure()
+
+                # Add Average runs trace
+                fig.add_trace(
+                    go.Bar(
+                        y=position_avg_stats_df['Position'], 
+                        x=position_avg_stats_df['Avg'], 
+                        name='Average', 
+                        marker_color='#f84e4e',
+                        orientation='h'
+                    )
                 )
-            )
 
-            # Calculate the appropriate average based on selection
-            if 'All' in name_choice and len(name_choice) == 1:
-                # Calculate overall average across all positions
-                overall_avg = position_avg_stats_df[position_avg_stats_df['Avg'] > 0]['Avg'].mean()
-            else:
-                # Use individual player's average from bat_career_df
-                overall_avg = bat_career_df['Avg'].iloc[0]
+                # Calculate the appropriate average based on selection
+                if 'All' in name_choice and len(name_choice) == 1:
+                    # Calculate overall average across all positions
+                    overall_avg = position_avg_stats_df[position_avg_stats_df['Avg'] > 0]['Avg'].mean()
+                else:
+                    # Use individual player's average from bat_career_df
+                    overall_avg = bat_career_df['Avg'].iloc[0]
 
-            # Add horizontal line for average
-            fig.add_trace(
-                go.Scatter(
-                    x=[1, 11],  # Show only positions 1-11
-                    y=[overall_avg, overall_avg],
-                    mode='lines+text',
-                    name='Average',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
-                    textposition='top center',
-                    showlegend=False
+                # Add horizontal line for average
+                fig.add_trace(
+                    go.Scatter(
+                        y=[1, 11],  # Show only positions 1-11
+                        x=[overall_avg, overall_avg],
+                        mode='lines+text',
+                        name='Average',
+                        line=dict(color='black', width=2, dash='dash'),
+                        text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} Average: {overall_avg:.2f}", ''],
+                        textposition='top center',
+                        showlegend=False
+                    )
                 )
-            )
 
-            # Update layout
-            fig.update_layout(
-                height=500,
-                xaxis_title='Position',
-                yaxis_title='Average',
-                margin=dict(l=50, r=50, t=70, b=50),
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+                # Update layout
+                fig.update_layout(
+                    height=500,
+                    yaxis_title='Position',
+                    xaxis_title='Average',
+                    margin=dict(l=50, r=50, t=0, b=50),  # Adjust top margin to align with table
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
 
-            # Update y-axis to show intervals of 5
-            fig.update_yaxes(
-                tickmode='linear',
-                dtick=5,
-                range=[0, max(position_avg_stats_df['Avg']) + 5]  # Add some padding to the top
-            )
+                # Update y-axis to show intervals of 1
+                fig.update_yaxes(
+                    tickmode='linear',
+                    dtick=1,
+                    range=[0.5, 11.5]  # Add padding on either side of the bars
+                )
 
-            # Update x-axis to show only positions 1-11
-            fig.update_xaxes(
-                tickmode='linear',
-                tick0=1,  # Start at position 1
-                dtick=1,  # Show every position
-                range=[0.5, 11.5]  # Add padding on either side of the bars
-            )
+                # Update x-axis to show intervals of 5
+                fig.update_xaxes(
+                    tickmode='linear',
+                    dtick=5,
+                    range=[0, max(position_avg_stats_df['Avg']) + 5]  # Add some padding to the top
+                )
 
-            # Cache the position chart
-            cache_dataframe(position_chart_cache_key, fig)
+                # Cache the position chart
+                cache_dataframe(position_chart_cache_key, fig)
 
-        # Display the bar chart
-        st.plotly_chart(fig)
-
+            # Display the bar chart
+            st.plotly_chart(fig)
 
 ###--------------------------------------CUMULATIVE STATS CHARTS------------------------------------------#######
 ###--------------------------------------CUMULATIVE STATS CHARTS------------------------------------------#######
