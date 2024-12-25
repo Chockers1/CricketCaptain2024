@@ -1854,7 +1854,7 @@ def display_bat_view():
             cache_dataframe(batting_avg_chart_cache_key, fig)
 
         # Display the bar chart
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, key="final_bar_chart")  # Added unique key
 
 ##########################
 
@@ -2118,6 +2118,53 @@ def display_bat_view():
                 yaxis=dict(range=[0, 100])
             )
             st.plotly_chart(score_fig, use_container_width=True)
+
+        # Display the bar chart
+        #st.plotly_chart(fig)
+#################PERCENTILE ANALYSIS####################################
+        # Create percentile analysis
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Percentile Analysis (Min 10 Matches)</h3>", unsafe_allow_html=True)
+        
+        # Create a copy of df_format for percentile analysis
+        percentile_df = df_format.copy()
+        
+        # Filter for players with 10 or more matches
+        percentile_df = percentile_df[percentile_df['Matches'] >= 10]
+        
+        # Calculate percentiles for each format separately
+        for format in percentile_df['Match_Format'].unique():
+            format_mask = percentile_df['Match_Format'] == format
+            
+            # Calculate percentiles for each metric
+            percentile_df.loc[format_mask, 'Avg_Percentile'] = percentile_df.loc[format_mask, 'Avg'].rank(pct=True) * 100
+            percentile_df.loc[format_mask, 'BPO_Percentile'] = percentile_df.loc[format_mask, 'BPO'].rank(pct=True) * 100
+            percentile_df.loc[format_mask, 'SR_Percentile'] = percentile_df.loc[format_mask, 'SR'].rank(pct=True) * 100
+            percentile_df.loc[format_mask, '50+PI_Percentile'] = percentile_df.loc[format_mask, '50+PI'].rank(pct=True) * 100
+            percentile_df.loc[format_mask, '100PI_Percentile'] = percentile_df.loc[format_mask, '100PI'].rank(pct=True) * 100
+
+        # Round percentiles to 1 decimal place
+        percentile_columns = ['Avg_Percentile', 'BPO_Percentile', 'SR_Percentile', '50+PI_Percentile', '100PI_Percentile']
+        for col in percentile_columns:
+            percentile_df[col] = percentile_df[col].round(1)
+
+        # Calculate total percentile score (sum of all percentile columns)
+        percentile_df['Total_Score'] = percentile_df[percentile_columns].sum(axis=1)
+
+        # Calculate the total percentile ranking within each format
+        for format in percentile_df['Match_Format'].unique():
+            format_mask = percentile_df['Match_Format'] == format
+            percentile_df.loc[format_mask, 'Total_Percentile'] = (
+                percentile_df.loc[format_mask, 'Total_Score'].rank(pct=True) * 100
+            ).round(1)
+
+        # Select and reorder columns for display
+        display_columns = ['Name', 'Match_Format', 'Matches', 'Runs', 'Avg', 'BPO', 'SR', '50+PI', '100PI'] + percentile_columns + ['Total_Score', 'Total_Percentile']
+        
+        # Sort by Total_Percentile in descending order within each format
+        percentile_df = percentile_df[display_columns].sort_values(['Match_Format', 'Total_Percentile'], ascending=[True, False])
+        
+        # Display the percentile analysis
+        st.dataframe(percentile_df, use_container_width=True, hide_index=True)
 
 # Call the function to display the batting view
 display_bat_view()
