@@ -257,8 +257,8 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
             (raw_matches['Away Team'] == team)
         ].copy()
 
-        # Take only the last 15 matches
-        team_matches = team_matches.head(15)
+        # Take only the last 20 matches
+        team_matches = team_matches.head(20)
 
         # Create form indicators
         form_indicators = []
@@ -668,4 +668,95 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
         )
         
         st.plotly_chart(fig, use_container_width=True)
+
+
+if 'match_df' in st.session_state and 'All' not in team_choice:
+
+    # Similar styling as Form Guide
+    opponent_form_styles = """
+    <style>
+    .opponent-form-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        margin: 10px auto;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        max-width: 100%;
+        width: 100%;
+        flex-direction: column;
+    }
+    .opponent-name {
+        font-weight: bold;
+        padding: 10px 0;
+    }
+    .outings-container {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .outing-indicator {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        font-weight: bold;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .win { background-color: #28a745; }
+    .draw { background-color: #ffc107; color: black; }
+    .loss { background-color: #dc3545; }
+    </style>
+    """
+    st.markdown(opponent_form_styles, unsafe_allow_html=True)
+
+    for team in team_choice:
+        st.markdown(f"<h2 style='color:#f04f53; text-align: center;'>{team} - Last 20 Outings vs Each Opponent</h2>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+
+        # Filter matches for this team
+        team_data = raw_matches[
+            (raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)
+        ]
+
+        # Get opponents the team has faced
+        opponents = set(team_data['Home Team'].unique()) | set(team_data['Away Team'].unique())
+        opponents.discard(team)
+
+        for opponent in sorted(opponents):
+            # Get last 20 matches vs this opponent
+            mask = (
+                ((team_data['Home Team'] == team) & (team_data['Away Team'] == opponent)) |
+                ((team_data['Home Team'] == opponent) & (team_data['Away Team'] == team))
+            )
+            last_ten = team_data[mask].sort_values('Date', ascending=False).head(20)
+            
+            if not last_ten.empty:
+                outings = []
+                w_count, l_count, d_count = 0, 0, 0
+                for _, mtch in last_ten.iterrows():
+                    margin = mtch['Margin'].lower()
+                    if margin.startswith(team.lower()):
+                        outings.append("<div class='outing-indicator win'>W</div>")
+                        w_count += 1
+                    elif 'drawn' in margin:
+                        outings.append("<div class='outing-indicator draw'>D</div>")
+                        d_count += 1
+                    else:
+                        outings.append("<div class='outing-indicator loss'>L</div>")
+                        l_count += 1
+                
+                html_block = f"""
+                <div class="opponent-form-container">
+                    <div class="opponent-name">Opponent: {opponent} (W {w_count}, L {l_count}, D {d_count})</div>
+                    <div class="outings-container">{''.join(reversed(outings))}</div>
+                </div>
+                """
+                st.markdown(html_block, unsafe_allow_html=True)
+
 
