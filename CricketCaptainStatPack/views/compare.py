@@ -2,6 +2,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 def display_comparison_view():
     # Custom styling
@@ -183,6 +185,109 @@ def display_comparison_view():
             """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+        # Add Radar Chart
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Comparison Radar</h3>", unsafe_allow_html=True)
+        
+        # Select metrics for radar chart
+        radar_metrics = ["Bat Average", "Bat Strike Rate", "Balls Per Out", "Bowl Average", "Bowl Strike Rate"]
+        
+        fig = go.Figure()
+        
+        # Add trace for player 1
+        fig.add_trace(go.Scatterpolar(
+            r=[player1_stats[m].values[0] for m in radar_metrics],
+            theta=radar_metrics,
+            fill='toself',
+            name=player1_choice
+        ))
+        
+        # Add trace for player 2
+        fig.add_trace(go.Scatterpolar(
+            r=[player2_stats[m].values[0] for m in radar_metrics],
+            theta=radar_metrics,
+            fill='toself',
+            name=player2_choice
+        ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, max([max([player1_stats[m].values[0] for m in radar_metrics]),
+                                 max([player2_stats[m].values[0] for m in radar_metrics])])]
+                )),
+            showlegend=True,
+            height=500,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Career Progression Chart
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Progression</h3>", unsafe_allow_html=True)
+        
+        # Create year-by-year stats for both players
+        def get_yearly_stats(player_name):
+            bat_yearly = filtered_bat_df[filtered_bat_df['Name'] == player_name].groupby('Year').agg({
+                'Runs': 'sum',
+                'Out': 'sum'
+            }).reset_index()
+            
+            bowl_yearly = filtered_bowl_df[filtered_bowl_df['Name'] == player_name].groupby('Year').agg({
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
+            
+            return pd.merge(bat_yearly, bowl_yearly, on='Year', how='outer').fillna(0)
+
+        player1_yearly = get_yearly_stats(player1_choice)
+        player2_yearly = get_yearly_stats(player2_choice)
+
+        # Create subplot with two y-axes
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # Add traces for runs
+        fig.add_trace(
+            go.Scatter(x=player1_yearly['Year'], y=player1_yearly['Runs'],
+                      name=f"{player1_choice} Runs", line=dict(color='#f04f53')),
+            secondary_y=False,
+        )
+        
+        fig.add_trace(
+            go.Scatter(x=player2_yearly['Year'], y=player2_yearly['Runs'],
+                      name=f"{player2_choice} Runs", line=dict(dash='dash', color='#f04f53')),
+            secondary_y=False,
+        )
+
+        # Add traces for wickets
+        fig.add_trace(
+            go.Scatter(x=player1_yearly['Year'], y=player1_yearly['Bowler_Wkts'],
+                      name=f"{player1_choice} Wickets", line=dict(color='#6c24c0')),
+            secondary_y=True,
+        )
+        
+        fig.add_trace(
+            go.Scatter(x=player2_yearly['Year'], y=player2_yearly['Bowler_Wkts'],
+                      name=f"{player2_choice} Wickets", line=dict(dash='dash', color='#6c24c0')),
+            secondary_y=True,
+        )
+
+        # Update layout
+        fig.update_layout(
+            title_text="Runs and Wickets by Year",
+            height=500,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            hovermode='x unified'
+        )
+
+        # Update axes
+        fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_yaxes(title_text="Runs", secondary_y=False, showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_yaxes(title_text="Wickets", secondary_y=True, showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+        st.plotly_chart(fig, use_container_width=True)
 
     else:
         st.error("Required data not found. Please ensure you have processed the scorecards.")
