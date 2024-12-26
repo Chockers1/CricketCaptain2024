@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 # --- PAGE CONFIG ---
 st.set_page_config(
     page_title="Welcome to The Cricket Captain Stats Dashboard",
@@ -76,6 +77,11 @@ all_rounders_page = st.Page(
     title="All Rounders",
     icon="🚀",
 )
+compare_page= st.Page(
+    "views/compare.py",
+    title="Compare Players",
+    icon="⚖️",
+)
 team_page = st.Page(
     "views/teamview.py",
     title="Team",
@@ -112,6 +118,11 @@ elorating_page = st.Page(
     title="Elo Rating",
     icon="♟️",
 )
+reportabug_page = st.Page(
+    "views/reportabug.py",
+    title="Report a bug",
+    icon="⚠️",
+)
 
 # -------------------- NAVIGATION SETUP ------------------------
 pg = st.navigation(
@@ -121,6 +132,7 @@ pg = st.navigation(
             batting_page,
             bowling_page,
             all_rounders_page,
+            compare_page,
             team_page,
             rankings_page,
             int_player_rankings_page,
@@ -128,6 +140,7 @@ pg = st.navigation(
             headtohead_page,
             domestictables_page,
             elorating_page,
+            reportabug_page
         ],
     }
 )
