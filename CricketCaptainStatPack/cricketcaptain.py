@@ -118,11 +118,7 @@ elorating_page = st.Page(
     title="Elo Rating",
     icon="♟️",
 )
-reportabug_page = st.Page(
-    "views/reportabug.py",
-    title="Report a bug",
-    icon="⚠️",
-)
+
 
 # -------------------- NAVIGATION SETUP ------------------------
 pg = st.navigation(
@@ -140,7 +136,6 @@ pg = st.navigation(
             headtohead_page,
             domestictables_page,
             elorating_page,
-            reportabug_page
         ],
     }
 )
