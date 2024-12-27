@@ -150,6 +150,12 @@ def display_comparison_view():
             career_stats['5Ws Per Match'] = (
                 (career_stats['5Ws'] / career_stats['Matches'].replace(0, np.inf)) * 100
             ).round(2)
+            career_stats['50+ Scores Per Match'] = (
+                (career_stats['50s'] + career_stats['100s']) 
+                / career_stats['Matches'].replace(0, np.inf) 
+                * 100
+            ).round(2)
+            career_stats['50+ Scores'] = career_stats['50s'] + career_stats['100s']
 
             pom_count = bat_stats[bat_stats['Player_of_the_Match'] == player_name].groupby('Name').agg(
                 POM=('File Name', 'nunique')
@@ -177,8 +183,10 @@ def display_comparison_view():
             "Bat Strike Rate",
             "Balls Per Out",
             "Runs Per Match",
+            "50+ Scores",
             "50s",
             "100s",
+            "50+ Scores Per Match",
             "100s Per Match",
             "Overs",
             "Wickets",
@@ -203,8 +211,10 @@ def display_comparison_view():
                 "Bat Strike Rate",
                 "Balls Per Out",
                 "Runs Per Match",
+                "50+ Scores",
                 "50s",
                 "100s",
+                "50+ Scores Per Match",
                 "100s Per Match",
                 "Overs",
                 "Wickets",
@@ -226,7 +236,7 @@ def display_comparison_view():
             if metric == "Economy Rate" and player2_value == 0.0 and player2_stats['Overs'].values[0] == 0.0:
                 player2_class = "highlight-red"
 
-            if metric in ["100s Per Match", "5Ws Per Match", "POM Per Match"]:
+            if metric in ["100s Per Match", "5Ws Per Match", "POM Per Match", "50+ Scores Per Match"]:
                 p1_display = f"{player1_value}%"
                 p2_display = f"{player2_value}%"
             else:
