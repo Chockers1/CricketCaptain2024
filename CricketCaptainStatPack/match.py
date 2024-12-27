@@ -40,7 +40,7 @@ def process_match_data(directory_path):
                 match_format = 'T20'
             elif 'Test Championship Final' in line_3:
                 match_format = 'Test Match'
-            elif '100 Ball Trophy' in line_3:
+            elif '100 Ball Trophy' in line_3 or 'The Hundred' in line_3:
                 match_format = 'The Hundred'
             elif 'English FC League' in line_3 or 'Australian League' in line_3 or 'FC League' in line_3 or 'FC Plate' in line_3 or '4 Day Competition' in line_3 or 'Vitality County Championship' in line_3 or 'University Match' in line_3:
                 match_format = 'First Class'
