@@ -116,6 +116,11 @@ def display_comparison_view():
                 how='outer'
             ).fillna(0)
 
+            bowl_stats_per_file = bowl_stats.groupby('File Name')['Bowler_Wkts'].sum().reset_index()
+            bowl_stats_per_file['TenW'] = np.where(bowl_stats_per_file['Bowler_Wkts'] >= 10, 1, 0)
+            tenW_count = bowl_stats_per_file['TenW'].sum()
+            career_stats['10Ws'] = tenW_count
+
             career_stats['Matches'] = career_stats['File Name']
             career_stats['Bat Average'] = (career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)).round(2)
             career_stats['Bat Strike Rate'] = ((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) * 100).round(2)
@@ -139,6 +144,12 @@ def display_comparison_view():
                 np.inf
             )
             career_stats['Wickets Per Match'] = (career_stats['Wickets'] / career_stats['Matches']).round(2)
+            career_stats['100s Per Match'] = (
+                (career_stats['100s'] / career_stats['Matches'].replace(0, np.inf)) * 100
+            ).round(2)
+            career_stats['5Ws Per Match'] = (
+                (career_stats['5Ws'] / career_stats['Matches'].replace(0, np.inf)) * 100
+            ).round(2)
 
             pom_count = bat_stats[bat_stats['Player_of_the_Match'] == player_name].groupby('Name').agg(
                 POM=('File Name', 'nunique')
@@ -146,6 +157,9 @@ def display_comparison_view():
 
             career_stats = career_stats.merge(pom_count, on='Name', how='left')
             career_stats['POM'] = career_stats['POM'].fillna(0).astype(int)
+            career_stats['POM Per Match'] = (
+                (career_stats['POM'] / career_stats['Matches'].replace(0, np.inf)) * 100
+            ).round(2)
 
             return career_stats
 
@@ -156,15 +170,51 @@ def display_comparison_view():
         
         st.markdown(f"<div class='comparison-row'><div class='comparison-column'>{player1_choice}</div><div class='comparison-metric'></div><div class='comparison-column'>{player2_choice}</div></div>", unsafe_allow_html=True)
         
-        metrics = ["Matches", "Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match", 
-                  "50s", "100s", "Overs", "Wickets", "Bowl Average", "Economy Rate", "Bowl Strike Rate", 
-                  "Wickets Per Match", "5Ws", "POM"]
+        metrics = [
+            "Matches",
+            "Runs",
+            "Bat Average",
+            "Bat Strike Rate",
+            "Balls Per Out",
+            "Runs Per Match",
+            "50s",
+            "100s",
+            "100s Per Match",
+            "Overs",
+            "Wickets",
+            "Bowl Average",
+            "Economy Rate",
+            "Bowl Strike Rate",
+            "Wickets Per Match",
+            "5Ws",
+            "5Ws Per Match",
+            "10Ws",
+            "POM",
+            "POM Per Match"
+        ]
         for metric in metrics:
             player1_value = player1_stats[metric].values[0]
             player2_value = player2_stats[metric].values[0]
             
-            if metric in ["Matches", "Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match", 
-                         "50s", "100s", "Overs", "Wickets", "Wickets Per Match", "5Ws", "POM"]:
+            if metric in [
+                "Matches",
+                "Runs",
+                "Bat Average",
+                "Bat Strike Rate",
+                "Balls Per Out",
+                "Runs Per Match",
+                "50s",
+                "100s",
+                "100s Per Match",
+                "Overs",
+                "Wickets",
+                "Wickets Per Match",
+                "5Ws",
+                "5Ws Per Match",
+                "10Ws",
+                "POM",
+                "POM Per Match"
+            ]:
                 player1_class = "highlight-green" if player1_value > player2_value else "highlight-red"
                 player2_class = "highlight-green" if player2_value > player1_value else "highlight-red"
             else:
@@ -176,11 +226,18 @@ def display_comparison_view():
             if metric == "Economy Rate" and player2_value == 0.0 and player2_stats['Overs'].values[0] == 0.0:
                 player2_class = "highlight-red"
 
+            if metric in ["100s Per Match", "5Ws Per Match", "POM Per Match"]:
+                p1_display = f"{player1_value}%"
+                p2_display = f"{player2_value}%"
+            else:
+                p1_display = player1_value
+                p2_display = player2_value
+
             st.markdown(f"""
             <div class='comparison-row'>
-                <div class='comparison-column {player1_class}'>{player1_value}</div>
+                <div class='comparison-column {player1_class}'>{p1_display}</div>
                 <div class='comparison-metric'>{metric}</div>
-                <div class='comparison-column {player2_class}'>{player2_value}</div>
+                <div class='comparison-column {player2_class}'>{p2_display}</div>
             </div>
             """, unsafe_allow_html=True)
 
