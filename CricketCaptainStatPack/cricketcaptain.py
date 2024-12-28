@@ -1,6 +1,5 @@
 import streamlit as st
 
-
 # --- PAGE CONFIG ---
 st.set_page_config(
     page_title="Welcome to The Cricket Captain Stats Dashboard",
@@ -108,6 +107,11 @@ headtohead_page = st.Page(
     title="Head to Head",
     icon="🆚",
 )
+scorecard_page = st.Page(
+    "views/scorecards.py",
+    title="Scorecards",
+    icon="📜",
+)
 domestictables_page = st.Page(
     "views/domestictables.py",
     title="Domestic Tables",
@@ -136,6 +140,7 @@ pg = st.navigation(
             headtohead_page,
             domestictables_page,
             elorating_page,
+            scorecard_page,
         ],
     }
 )
