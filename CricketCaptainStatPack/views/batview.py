@@ -153,10 +153,21 @@ def display_bat_view():
                 st.session_state.filter_state['match_format'] = match_format_choice
                 st.rerun()
 
+        # Ensure comp column exists
+        if 'comp' not in bat_df.columns:
+            print("Warning: comp column not found, creating from Competition")
+            bat_df['comp'] = bat_df['Competition']
+
         with col5:
-            available_comp = get_filtered_options(bat_df, 'comp', 
-                {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
-            comp_choice = st.multiselect('Competition:', 
+            try:
+                available_comp = get_filtered_options(bat_df, 'comp',
+                    {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            except KeyError:
+                print("Error accessing comp column, using Competition instead")
+                available_comp = get_filtered_options(bat_df, 'Competition',
+                    {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            
+            comp_choice = st.multiselect('Competition:',
                                        available_comp,
                                        default=[c for c in st.session_state.filter_state['comp'] if c in available_comp])
             if comp_choice != st.session_state.filter_state['comp']:
