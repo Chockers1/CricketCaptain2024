@@ -250,8 +250,18 @@ def process_bat_stats(directory_path, game_df, match_df):
             else:
                 return comp
 
-        # Apply transformation with full row context
-        bat_df['comp'] = bat_df.apply(transform_competition, axis=1)
+        # Ensure comp column is created
+        try:
+            bat_df['comp'] = bat_df.apply(transform_competition, axis=1)
+        except Exception as e:
+            print(f"Error creating comp column: {e}")
+            # Fallback - just copy Competition if transform fails
+            bat_df['comp'] = bat_df['Competition']
+
+        # Verify comp column exists before returning
+        if 'comp' not in bat_df.columns:
+            print("Warning: comp column not created, using Competition instead")
+            bat_df['comp'] = bat_df['Competition']
 
         return bat_df  # Return the modified DataFrame
     except Exception as e:
