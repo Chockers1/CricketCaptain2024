@@ -193,6 +193,66 @@ def process_bat_stats(directory_path, game_df, match_df):
         # Handle divisions by zero
         bat_df['Strike Rate'] = bat_df.apply(lambda x: x['Strike Rate'] if x['Balls'] > 0 else 0, axis=1)
 
+        # Add the comp column with modified competition names
+        def transform_competition(row):
+            # Define trophy mapping based on teams
+            test_trophies = {
+                ('Australia', 'England'): 'The Ashes',
+                ('England', 'Australia'): 'The Ashes',
+                ('India', 'Australia'): 'Border-Gavaskar Trophy',
+                ('Australia', 'India'): 'Border-Gavaskar Trophy',
+                ('West Indies', 'Australia'): 'Frank Worrell Trophy',
+                ('Australia', 'West Indies'): 'Frank Worrell Trophy',
+                ('South Africa', 'England'): "Basil D'Oliveira Trophy",
+                ('England', 'South Africa'): "Basil D'Oliveira Trophy",
+                ('England', 'India'): 'Pataudi Trophy',
+                ('India', 'England'): 'Anthony de Mello Trophy',
+                ('West Indies', 'Sri Lanka'): 'Sobers-Tissera Trophy',
+                ('Sri Lanka', 'West Indies'): 'Sobers-Tissera Trophy',
+                ('England', 'West Indies'): 'Wisden Trophy',
+                ('West Indies', 'England'): 'Wisden Trophy',
+                ('Australia', 'New Zealand'): 'Trans-Tasman Trophy',
+                ('New Zealand', 'Australia'): 'Trans-Tasman Trophy',
+                ('Australia', 'Sri Lanka'): 'Warne-Muralitharan Trophy',
+                ('Sri Lanka', 'Australia'): 'Warne-Muralitharan Trophy',
+                ('India', 'South Africa'): 'Freedom Trophy',
+                ('South Africa', 'India'): 'Freedom Trophy'
+            }
+
+            comp = row['Competition']
+            if 'Test Match' in comp:
+                team_pair = (row['Home Team'], row['Away Team'])
+                if team_pair in test_trophies:
+                    return test_trophies[team_pair]
+                return 'Test Match'
+            elif comp.startswith('World Cup 20'):
+                return 'T20 World Cup'
+            elif comp.startswith('World Cup'):
+                return 'ODI World Cup'
+            elif comp.startswith('Champions Cup'):
+                return 'Champions Cup'
+            elif comp.startswith('Asia Trophy ODI'):
+                return 'ODI Asia Cup'
+            elif comp.startswith('Asia Trophy 20'):
+                return 'T20 Asia Cup'
+            elif 'One Day International' in comp:
+                return 'ODI'
+            elif '20 Over International' in comp:
+                return 'T20I'
+            elif 'Australian League' in comp:
+                return 'Sheffield Shield'
+            elif 'English FC League - D2' in comp:
+                return 'County Championship Division 2'
+            elif 'English FC League - D1' in comp:
+                return 'County Championship Division 1'    
+            elif 'Challenge Trophy' in comp:
+                return 'Royal London Cup'         
+            else:
+                return comp
+
+        # Apply transformation with full row context
+        bat_df['comp'] = bat_df.apply(transform_competition, axis=1)
+
         return bat_df  # Return the modified DataFrame
     except Exception as e:
         print("An error occurred:", e)
