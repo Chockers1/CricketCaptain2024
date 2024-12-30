@@ -94,7 +94,8 @@ def display_bat_view():
                 'name': ['All'],
                 'bat_team': ['All'],
                 'bowl_team': ['All'],
-                'match_format': ['All']
+                'match_format': ['All'],
+                'comp': ['All']  # Added key for competition
             }
         
         # Create filters at the top of the page
@@ -102,14 +103,15 @@ def display_bat_view():
             'Name': st.session_state.filter_state['name'],
             'Bat_Team_y': st.session_state.filter_state['bat_team'],
             'Bowl_Team_y': st.session_state.filter_state['bowl_team'],
-            'Match_Format': st.session_state.filter_state['match_format']
+            'Match_Format': st.session_state.filter_state['match_format'],
+            'comp': st.session_state.filter_state['comp']  # Include "comp" in selected filters
         }
 
         # Get years for the year filter - add this before using 'years'
         years = sorted(bat_df['Year'].astype(int).unique().tolist())
 
         # Create filters at the top of the page
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)  # Expanded to five columns
         
         with col1:
             available_names = get_filtered_options(bat_df, 'Name', 
@@ -150,6 +152,16 @@ def display_bat_view():
             if match_format_choice != st.session_state.filter_state['match_format']:
                 st.session_state.filter_state['match_format'] = match_format_choice
                 st.rerun()
+
+        with col5:
+            available_comp = get_filtered_options(bat_df, 'comp', 
+                {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            comp_choice = st.multiselect('Competition:', 
+                                       available_comp,
+                                       default=[c for c in st.session_state.filter_state['comp'] if c in available_comp])
+            if comp_choice != st.session_state.filter_state['comp']:
+                st.session_state.filter_state['comp'] = comp_choice
+                st.rerun()  # Add this line to trigger rerun when competition filter changes
 
         # Calculate career statistics
         career_stats = bat_df.groupby('Name').agg({
@@ -272,7 +284,8 @@ def display_bat_view():
             'avg_range': avg_range,
             'sr_range': sr_range,
             'p_avg_range': p_avg_range,
-            'p_sr_range': p_sr_range
+            'p_sr_range': p_sr_range,
+            'comp': comp_choice  # Add comp to filters
         }
         cache_key = generate_cache_key(filters)
 
@@ -292,6 +305,8 @@ def display_bat_view():
                 filtered_df = filtered_df[filtered_df['Bowl_Team_y'].isin(bowl_team_choice)]
             if match_format_choice and 'All' not in match_format_choice:
                 filtered_df = filtered_df[filtered_df['Match_Format'].isin(match_format_choice)]
+            if comp_choice and 'All' not in comp_choice:
+                filtered_df = filtered_df[filtered_df['comp'].isin(comp_choice)]
 
             filtered_df = filtered_df[filtered_df['Year'].between(year_choice[0], year_choice[1])]
             filtered_df = filtered_df[filtered_df['Position'].between(position_choice[0], position_choice[1])]
@@ -1742,8 +1757,8 @@ def display_bat_view():
             # Flatten the column names after aggregation
             block_stats_df.columns = ['Name', 'Match_Format', 'Match_Range', 'Range_Start',
                                     'Matches', 'Outs', 'Not_Outs', 'Balls', 'Runs', 
-                                    'Fours', 'Sixes', 'Fifties', 'Hundreds', 
-                                    'Double_Hundreds', 'First_Date', 'Last_Date']
+                                    '4s', '6s', '50s', '100s', 
+                                    '200s', 'First_Date', 'Last_Date']
 
             # Format dates
             block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
@@ -1764,8 +1779,8 @@ def display_bat_view():
             final_columns = [
                 'Name', 'Match_Format', 'Match_Range', 'Date_Range', 
                 'Matches', 'Innings', 'Runs', 'Balls',
-                'Batting_Average', 'Strike_Rate', 'Fours', 'Sixes',
-                'Fifties', 'Hundreds', 'Double_Hundreds', 'Not_Outs'
+                'Batting_Average', 'Strike_Rate', '4s', '6s',
+                '50s', '100s', '200s', 'Not_Outs'
             ]
             block_stats_df = block_stats_df[final_columns]
 
