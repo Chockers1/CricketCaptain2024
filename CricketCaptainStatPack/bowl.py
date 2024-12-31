@@ -172,6 +172,64 @@ def process_bowl_stats(directory_path, game_df, match_df):
         # Calculate Average (runs per wicket)
         bowl_df['Average'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Wkts'].replace(0, 1)  # Avoid division by zero
 
+        # Add the comp column with modified competition names
+        def transform_competition(row):
+            test_trophies = {
+                ('Australia', 'England'): 'The Ashes',
+                ('England', 'Australia'): 'The Ashes',
+                ('India', 'Australia'): 'Border-Gavaskar Trophy',
+                ('Australia', 'India'): 'Border-Gavaskar Trophy',
+                ('West Indies', 'Australia'): 'Frank Worrell Trophy',
+                ('Australia', 'West Indies'): 'Frank Worrell Trophy',
+                ('South Africa', 'England'): "Basil D'Oliveira Trophy",
+                ('England', 'South Africa'): "Basil D'Oliveira Trophy",
+                ('England', 'India'): 'Pataudi Trophy',
+                ('India', 'England'): 'Anthony de Mello Trophy',
+                ('West Indies', 'Sri Lanka'): 'Sobers-Tissera Trophy',
+                ('Sri Lanka', 'West Indies'): 'Sobers-Tissera Trophy',
+                ('England', 'West Indies'): 'Wisden Trophy',
+                ('West Indies', 'England'): 'Wisden Trophy',
+                ('Australia', 'New Zealand'): 'Trans-Tasman Trophy',
+                ('New Zealand', 'Australia'): 'Trans-Tasman Trophy',
+                ('Australia', 'Sri Lanka'): 'Warne-Muralitharan Trophy',
+                ('Sri Lanka', 'Australia'): 'Warne-Muralitharan Trophy',
+                ('India', 'South Africa'): 'Freedom Trophy',
+                ('South Africa', 'India'): 'Freedom Trophy'
+            }
+
+            comp = row['Competition']
+            if 'Test Match' in comp:
+                team_pair = (row['Home_Team'], row['Away_Team'])
+                if team_pair in test_trophies:
+                    return test_trophies[team_pair]
+                return 'Test Match'
+            elif comp.startswith('World Cup 20'):
+                return 'T20 World Cup'
+            elif comp.startswith('World Cup'):
+                return 'ODI World Cup'
+            elif comp.startswith('Champions Cup'):
+                return 'Champions Cup'
+            elif comp.startswith('Asia Trophy ODI'):
+                return 'ODI Asia Cup'
+            elif comp.startswith('Asia Trophy 20'):
+                return 'T20 Asia Cup'
+            elif 'One Day International' in comp:
+                return 'ODI'
+            elif '20 Over International' in comp:
+                return 'T20I'
+            else:
+                return comp
+
+        try:
+            bowl_df['comp'] = bowl_df.apply(transform_competition, axis=1)
+        except Exception as e:
+            print(f"Error creating comp column: {e}")
+            bowl_df['comp'] = bowl_df['Competition']
+
+        if 'comp' not in bowl_df.columns:
+            print("Warning: comp column not created, using Competition instead")
+            bowl_df['comp'] = bowl_df['Competition']
+
         print("Bowl stats processing completed successfully")
         print(f"Final bowl_df shape: {bowl_df.shape}")
         print(f"Final bowl_df columns: {bowl_df.columns}")
@@ -220,4 +278,4 @@ if os.path.exists(game_csv_path) and os.path.exists(match_csv_path):
     bowl_df = process_bowl_stats(directory_path, game_df, match_df)
 else:
     print("game_data.csv or match_data.csv not found. Please run match.py and game.py first.")
-    bowl_df = None     
+    bowl_df = None
