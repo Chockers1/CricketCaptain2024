@@ -52,7 +52,8 @@ def display_bowl_view():
                 'name': ['All'],
                 'bowl_team': ['All'],
                 'bat_team': ['All'],
-                'match_format': ['All']
+                'match_format': ['All'],
+                'comp': ['All']  # Initialize 'comp' filter
             }
             st.session_state.prev_bowl_teams = current_bowl_teams
 
@@ -65,7 +66,8 @@ def display_bowl_view():
                 'name': ['All'],
                 'bowl_team': ['All'],
                 'bat_team': ['All'],
-                'match_format': ['All']
+                'match_format': ['All'],
+                'comp': ['All']  # Initialize 'comp' filter
             }
         
         # Create filters at the top of the page
@@ -73,7 +75,8 @@ def display_bowl_view():
             'Name': st.session_state.bowl_filter_state['name'],
             'Bowl_Team': st.session_state.bowl_filter_state['bowl_team'],
             'Bat_Team': st.session_state.bowl_filter_state['bat_team'],
-            'Match_Format': st.session_state.bowl_filter_state['match_format']
+            'Match_Format': st.session_state.bowl_filter_state['match_format'],
+            'comp': st.session_state.bowl_filter_state['comp']
         }
 
         # Create filter lists
@@ -89,8 +92,8 @@ def display_bowl_view():
         # Get list of years before creating the slider
         years = sorted(bowl_df['Year'].unique().tolist())
 
-        # Create four columns for filters
-        col1, col2, col3, col4 = st.columns(4)
+        # Create five columns for filters
+        col1, col2, col3, col4, col5 = st.columns(5)  # Add fifth column for comp
         
         with col1:
             name_choice = st.multiselect('Name:', 
@@ -122,6 +125,22 @@ def display_bowl_view():
                                                default=st.session_state.bowl_filter_state['match_format'])
             if match_format_choice != st.session_state.bowl_filter_state['match_format']:
                 st.session_state.bowl_filter_state['match_format'] = match_format_choice
+                st.rerun()
+
+        with col5:
+            try:
+                available_comp = get_filtered_options(bowl_df, 'comp',
+                    {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            except KeyError:
+                print("Error accessing comp column, using Competition instead")
+                available_comp = get_filtered_options(bowl_df, 'Competition',
+                    {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            
+            comp_choice = st.multiselect('Competition:',
+                                       available_comp,
+                                       default=[c for c in st.session_state.bowl_filter_state['comp'] if c in available_comp])
+            if comp_choice != st.session_state.bowl_filter_state['comp']:
+                st.session_state.bowl_filter_state['comp'] = comp_choice
                 st.rerun()
 
         # Get individual players and create color mapping
@@ -225,6 +244,8 @@ def display_bowl_view():
             filtered_df = filtered_df[filtered_df['Bat_Team'].isin(bat_team_choice)]
         if match_format_choice and 'All' not in match_format_choice:
             filtered_df = filtered_df[filtered_df['Match_Format'].isin(match_format_choice)]
+        if comp_choice and 'All' not in comp_choice:
+            filtered_df = filtered_df[filtered_df['comp'].isin(comp_choice)]
 
         # Apply year filter
         filtered_df = filtered_df[filtered_df['Year'].between(year_choice[0], year_choice[1])]
@@ -1339,4 +1360,3 @@ def display_bowl_view():
 
 # Display the bowling view
 display_bowl_view()
-######END
