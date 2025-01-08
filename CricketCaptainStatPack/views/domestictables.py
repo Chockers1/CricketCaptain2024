@@ -745,8 +745,10 @@ if not st.session_state.historical_data.empty:
     history_all_df = filtered_df.copy()
 
     # Create helper columns for titles and runner-ups
-    history_all_df['Titles'] = (history_all_df['Final Position'] == 'Winner').astype(int)
-    history_all_df['Runner_Ups'] = (history_all_df['Final Position'] == 'Runner Up').astype(int)
+    history_all_df['Titles'] = history_all_df['Final Position'].isin(["Winner", "D1 Winner", "D2 Winner"]).astype(int)
+    history_all_df['Runner_Ups'] = history_all_df['Final Position'].isin(["Runner Up", "D1 Runner Up", "D2 Runner Up"]).astype(int)
+
+
 
     # Create helper column for wooden spoons
     max_positions = history_all_df.groupby(['Year', 'Competition'])['Position'].transform('max')
@@ -799,8 +801,47 @@ if not st.session_state.historical_data.empty:
     summary_df = summary_df[columns_order]
 
     # Display summary statistics
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Format</h3>", unsafe_allow_html=True)
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    summary_by_team_df = history_all_df.groupby(['Team']).agg({
+        'P': 'sum',
+        'W': 'sum',
+        'L': 'sum',
+        'D': 'sum',
+        'Bat BP': 'sum',
+        'Bowl BP': 'sum',
+        'Points': 'sum',
+        'Titles': 'sum',
+        'Runner_Ups': 'sum',
+        'Wooden_Spoons': 'sum'
+    }).reset_index()
+
+    summary_by_team_df['Win %'] = (summary_by_team_df['W'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df['Loss %'] = (summary_by_team_df['L'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df['Draw %'] = (summary_by_team_df['D'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df = summary_by_team_df.round(2).rename(columns={
+        'P': 'Played',
+        'W': 'Wins',
+        'L': 'Losses',
+        'D': 'Draws',
+        'Bat BP': 'Batting Points',
+        'Bowl BP': 'Bowling Points',
+        'Points': 'Total Points',
+        'Runner_Ups': 'Runner Ups',
+        'Wooden_Spoons': 'Wooden Spoons'
+    })
+
+    columns_order_team = [
+        'Team', 'Played', 'Wins', 'Losses', 'Draws',
+        'Win %', 'Loss %', 'Draw %',
+        'Batting Points', 'Bowling Points', 'Total Points',
+        'Titles', 'Runner Ups', 'Wooden Spoons'
+    ]
+    summary_by_team_df = summary_by_team_df[columns_order_team]
+
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Team (All Formats)</h3>", unsafe_allow_html=True)
+    st.dataframe(summary_by_team_df, use_container_width=True, hide_index=True)
 
 #############################
 
@@ -1095,6 +1136,10 @@ if not st.session_state.historical_data.empty:
                         }
                     )
                     st.plotly_chart(fig_movement, use_container_width=True)
+                else:
+                    # Provide a fallback to avoid 'NoneType' issues
+                    movement_df = pd.DataFrame()
+                    most_improved = "N/A"
 
             # Add a summary metrics section
             st.markdown("<h4 style='color:#f04f53; text-align: center;'>Key Statistics</h4>", unsafe_allow_html=True)
@@ -1106,7 +1151,10 @@ if not st.session_state.historical_data.empty:
                          f"{top_team['Total Weighted Points']:.1f} pts")
             
             with metric_col2:
-                most_improved = movement_df[movement_df['Change'] > 0].index[0] if len(movement_df[movement_df['Change'] > 0]) > 0 else "N/A"
+                if 'Change' in movement_df.columns:
+                    most_improved = movement_df[movement_df['Change'] > 0].index[0] if len(movement_df[movement_df['Change'] > 0]) > 0 else "N/A"
+                else:
+                    most_improved = "N/A"
                 max_improvement = movement_df['Change'].max() if len(movement_df) > 0 else 0
                 st.metric("Most Improved", most_improved, 
                          f"↑ {max_improvement:.1f} positions" if max_improvement > 0 else "N/A")
