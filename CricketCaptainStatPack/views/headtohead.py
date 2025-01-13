@@ -251,14 +251,11 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
     st.markdown(form_styles, unsafe_allow_html=True)
 
     for team in team_choice:
-        # Use the same filtered matches dataframe
+        # "All Format" row (unchanged logic)
         team_matches = raw_matches[
             (raw_matches['Home Team'] == team) | 
             (raw_matches['Away Team'] == team)
-        ].copy()
-
-        # Take only the last 20 matches
-        team_matches = team_matches.head(20)
+        ].copy().head(20)
 
         # Create form indicators
         form_indicators = []
@@ -291,6 +288,47 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
             </div>
             """
             st.markdown(form_html, unsafe_allow_html=True)
+
+        # Add a row per format
+        for fm in format_choice:
+            if fm != 'All':
+                sub_matches = raw_matches[
+                    ((raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)) &
+                    (raw_matches['Format'] == fm)
+                ].copy().head(20)
+
+                # Create form indicators for sub_matches
+                form_indicators = []
+                for _, match in sub_matches.iterrows():
+                    margin = match['Margin']
+                    is_home = match['Home Team'] == team
+                    
+                    # Get the date for the tooltip
+                    date = match['Date'].strftime('%Y-%m-%d')
+                    opponent = match['Away Team'] if is_home else match['Home Team']
+                    tooltip = f"{date} vs {opponent}"
+                    
+                    if 'won by' in margin:
+                        winning_team = margin.split(' won')[0]
+                        if winning_team == team:
+                            form_indicators.append(f'<div class="form-indicator win" title="{tooltip}">W</div>')
+                        else:
+                            form_indicators.append(f'<div class="form-indicator loss" title="{tooltip}">L</div>')
+                    else:
+                        form_indicators.append(f'<div class="form-indicator draw" title="{tooltip}">D</div>')
+
+                # Display team name and form for the specific format
+                if form_indicators:  # Only display if there are matches
+                    form_html = f"""
+                    <div class="form-container">
+                        <span class="team-name">{team} ({fm})</span>
+                        <div class="form-indicators-container">
+                            {''.join(reversed(form_indicators))}
+                        </div>
+                    </div>
+                    """
+                    st.markdown(form_html, unsafe_allow_html=True)
+
 else:
     if 'match_df' in st.session_state:
         st.info("Select a team in the filter to see their form guide.")
@@ -758,5 +796,35 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
                 </div>
                 """
                 st.markdown(html_block, unsafe_allow_html=True)
+
+            # Add per-format rows
+            for fm in format_choice:
+                if fm != 'All':
+                    sub_data = team_data[
+                        (team_data['Format'] == fm) & mask
+                    ].sort_values('Date', ascending=False).head(20)
+                    
+                    if not sub_data.empty:
+                        outings = []
+                        w_count, l_count, d_count = 0, 0, 0
+                        for _, mtch in sub_data.iterrows():
+                            margin = mtch['Margin'].lower()
+                            if margin.startswith(team.lower()):
+                                outings.append("<div class='outing-indicator win'>W</div>")
+                                w_count += 1
+                            elif 'drawn' in margin:
+                                outings.append("<div class='outing-indicator draw'>D</div>")
+                                d_count += 1
+                            else:
+                                outings.append("<div class='outing-indicator loss'>L</div>")
+                                l_count += 1
+                        
+                        html_block = f"""
+                        <div class="opponent-form-container">
+                            <div class="opponent-name">Opponent: {opponent} ({fm}) (W {w_count}, L {l_count}, D {d_count})</div>
+                            <div class="outings-container">{''.join(reversed(outings))}</div>
+                        </div>
+                        """
+                        st.markdown(html_block, unsafe_allow_html=True)
 
 
