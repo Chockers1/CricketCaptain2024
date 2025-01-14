@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import datetime
 
 def calculate_batter_rating_per_match(df):
     """Calculate batting rating with bonuses"""
@@ -938,6 +939,10 @@ def display_ar_view():
 
     def extract_date(text):
         """Extract date from match description string"""
+        # If already a timestamp/datetime, return as is
+        if isinstance(text, (pd.Timestamp, datetime.datetime)):
+            return text
+            
         if pd.isna(text):
             return pd.NaT
         
