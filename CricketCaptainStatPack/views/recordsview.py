@@ -4,6 +4,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import gc
+import sys
 
 # Section 2: Helper Functions and Page Setup
 ###############################################################################
@@ -36,35 +38,51 @@ def parse_date(date_str):
         # If all parsing attempts fail, return NaT (Not a Time)
         return pd.NaT
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, max_entries=20)
 def process_dataframes():
-    """Process all dataframes with improved caching"""
+    """Process all dataframes with improved memory management"""
     def safe_parse_dates(df):
-        if df is not None and 'Date' in df.columns:
-            try:
-                # Create a copy to avoid modifying the original dataframe
-                df = df.copy()
-                # First try automatic parsing
+        if df is None:
+            return None
+        
+        try:
+            # Make a copy to avoid modifying original
+            df = df.copy()
+            
+            # Convert to smaller dtypes where possible
+            for col in df.select_dtypes(include=['int64']).columns:
+                df[col] = pd.to_numeric(df[col], downcast='integer')
+            for col in df.select_dtypes(include=['float64']).columns:
+                df[col] = pd.to_numeric(df[col], downcast='float')
+            
+            # Parse dates
+            if 'Date' in df.columns:
                 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-                
-                # If we have any NaT values, try manual parsing
-                if df['Date'].isna().any():
-                    df['Date'] = df['Date'].apply(parse_date)
-                
-                # Drop any rows where date parsing failed
                 df = df.dropna(subset=['Date'])
-            except Exception as e:
-                st.error(f"Error parsing dates: {str(e)}")
-                return None
-        return df
+            
+            # Free memory
+            gc.collect()
+            
+            return df
+        except Exception as e:
+            st.error(f"Error processing dataframe: {str(e)}")
+            return None
 
-    # Process each dataframe
-    bat_df = safe_parse_dates(st.session_state.get('bat_df'))
-    bowl_df = safe_parse_dates(st.session_state.get('bowl_df'))
-    match_df = safe_parse_dates(st.session_state.get('match_df'))
-    game_df = safe_parse_dates(st.session_state.get('game_df'))
+    try:
+        # Process each dataframe
+        bat_df = safe_parse_dates(st.session_state.get('bat_df'))
+        gc.collect()
+        bowl_df = safe_parse_dates(st.session_state.get('bowl_df'))
+        gc.collect()
+        match_df = safe_parse_dates(st.session_state.get('match_df'))
+        gc.collect()
+        game_df = safe_parse_dates(st.session_state.get('game_df'))
+        gc.collect()
 
-    return bat_df, bowl_df, match_df, game_df
+        return bat_df, bowl_df, match_df, game_df
+    except Exception as e:
+        st.error(f"Error in process_dataframes: {str(e)}")
+        return None, None, None, None
 
 @st.cache_data(ttl=3600)
 def filter_by_format(df, format_choice):
@@ -113,45 +131,81 @@ def init_page():
     """, unsafe_allow_html=True)
 
 def initialize_data():
-    """Initialize main data and format filter with improved error handling"""
+    """Initialize main data with improved memory management"""
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized = False
+        
     try:
-        bat_df, bowl_df, match_df, game_df = process_dataframes()
-        formats = get_formats()
-        format_choice = st.multiselect('Format:', formats, default=['All'])
-        
-        if not format_choice:
-            format_choice = ['All']
-        
-        # Add error handling for filtering
-        try:
-            filtered_bat_df = filter_by_format(bat_df, format_choice)
-        except Exception as e:
-            st.error(f"Error filtering batting data: {str(e)}")
-            filtered_bat_df = None
-
-        try:
-            filtered_bowl_df = filter_by_format(bowl_df, format_choice)
-        except Exception as e:
-            st.error(f"Error filtering bowling data: {str(e)}")
-            filtered_bowl_df = None
-
-        try:
-            filtered_match_df = filter_by_format(match_df, format_choice)
-        except Exception as e:
-            st.error(f"Error filtering match data: {str(e)}")
-            filtered_match_df = None
-
-        try:
-            filtered_game_df = filter_by_format(game_df, format_choice)
-        except Exception as e:
-            st.error(f"Error filtering game data: {str(e)}")
-            filtered_game_df = None
-        
+        if not st.session_state.initialized:
+            # Clear memory before processing
+            gc.collect()
+            
+            # Process dataframes
+            bat_df, bowl_df, match_df, game_df = process_dataframes()
+            
+            # Store in session state
+            st.session_state.filtered_bat_df = bat_df
+            st.session_state.filtered_bowl_df = bowl_df
+            st.session_state.filtered_match_df = match_df
+            st.session_state.filtered_game_df = game_df
+            st.session_state.initialized = True
+            
+            # Get formats and filter choice
+            formats = get_formats()
+            format_choice = st.multiselect('Format:', formats, default=['All'])
+            
+            if not format_choice:
+                format_choice = ['All']
+            
+            # Apply filters with memory management
+            try:
+                filtered_bat_df = filter_by_format(st.session_state.filtered_bat_df, format_choice)
+                gc.collect()
+                filtered_bowl_df = filter_by_format(st.session_state.filtered_bowl_df, format_choice)
+                gc.collect()
+                filtered_match_df = filter_by_format(st.session_state.filtered_match_df, format_choice)
+                gc.collect()
+                filtered_game_df = filter_by_format(st.session_state.filtered_game_df, format_choice)
+                gc.collect()
+            except Exception as e:
+                st.error(f"Error filtering data: {str(e)}")
+                return None, None, None, None
+        else:
+            # Use cached data from session state
+            filtered_bat_df = st.session_state.filtered_bat_df
+            filtered_bowl_df = st.session_state.filtered_bowl_df
+            filtered_match_df = st.session_state.filtered_match_df
+            filtered_game_df = st.session_state.filtered_game_df
+            
         return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
-    
+        
     except Exception as e:
         st.error(f"Error initializing data: {str(e)}")
+        st.error(f"Memory usage: {sys.getsizeof(st.session_state) / (1024 * 1024):.2f} MB")
         return None, None, None, None
+
+@st.cache_data(ttl=3600, max_entries=10)
+def process_data_chunk(func, df, *args, **kwargs):
+    """Process data in smaller chunks to manage memory"""
+    if df is None or df.empty:
+        return pd.DataFrame()
+        
+    try:
+        # Process in chunks if dataframe is large
+        if len(df) > 1000:
+            chunk_size = 1000
+            chunks = []
+            for start in range(0, len(df), chunk_size):
+                end = start + chunk_size
+                chunk = func(df[start:end], *args, **kwargs)
+                chunks.append(chunk)
+                gc.collect()
+            return pd.concat(chunks, ignore_index=True)
+        else:
+            return func(df, *args, **kwargs)
+    except Exception as e:
+        st.error(f"Error processing data chunk: {str(e)}")
+        return pd.DataFrame()
 
 # Section 3: Batting Records Functions
 ###############################################################################
@@ -1100,3 +1154,19 @@ if __name__ == "__main__":
         filtered_bowl_df = st.session_state.get('filtered_bowl_df')
         filtered_match_df = st.session_state.get('filtered_match_df')
         filtered_game_df = st.session_state.get('filtered_game_df')
+    try:
+        # Initialize page
+        init_page()
+        
+        # Initialize data with memory management
+        filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
+        
+        # Clear memory
+        gc.collect()
+        
+        # Rest of your code...
+        # ...existing code...
+        
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        st.error(f"Current memory usage: {sys.getsizeof(st.session_state) / (1024 * 1024):.2f} MB")
