@@ -6,10 +6,21 @@ import numpy as np
 import plotly.graph_objects as go
 import gc
 import sys
+from datetime import datetime
 
 # Section 2: Helper Functions and Page Setup
 ###############################################################################
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
+def get_data_hash():
+    """Generate a hash of the current data state"""
+    hash_components = []
+    for df_name in ['bat_df', 'bowl_df', 'match_df', 'game_df']:
+        df = st.session_state.get(df_name)
+        if df is not None and not df.empty:
+            hash_components.append(str(df.shape))
+            hash_components.append(str(df.index.values[-1] if not df.empty else ''))
+    return hash(''.join(hash_components))
+
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
     if pd.isna(date_str):
@@ -38,9 +49,17 @@ def parse_date(date_str):
         # If all parsing attempts fail, return NaT (Not a Time)
         return pd.NaT
 
-@st.cache_data(ttl=3600, max_entries=20)
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def process_dataframes():
     """Process all dataframes with improved memory management"""
+    # Get current data hash
+    current_hash = get_data_hash()
+    
+    # Clear cache if data hash changed
+    if 'last_data_hash' not in st.session_state or st.session_state.last_data_hash != current_hash:
+        st.cache_data.clear()
+        st.session_state.last_data_hash = current_hash
+
     def safe_parse_dates(df):
         if df is None:
             return None
@@ -84,7 +103,7 @@ def process_dataframes():
         st.error(f"Error in process_dataframes: {str(e)}")
         return None, None, None, None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def filter_by_format(df, format_choice):
     """Filter dataframe by format with caching"""
     if df is not None and df.empty:
@@ -93,7 +112,7 @@ def filter_by_format(df, format_choice):
         return df[df['Match_Format'].isin(format_choice)].copy()
     return df.copy() if df is not None else df
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def get_formats():
     """Get unique formats from all dataframes with caching"""
     all_formats = set(['All'])
@@ -131,60 +150,31 @@ def init_page():
     """, unsafe_allow_html=True)
 
 def initialize_data():
-    """Initialize main data with improved memory management"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = False
-        
+    """Initialize data without reload button"""
     try:
-        if not st.session_state.initialized:
-            # Clear memory before processing
-            gc.collect()
-            
-            # Process dataframes
-            bat_df, bowl_df, match_df, game_df = process_dataframes()
-            
-            # Store in session state
-            st.session_state.filtered_bat_df = bat_df
-            st.session_state.filtered_bowl_df = bowl_df
-            st.session_state.filtered_match_df = match_df
-            st.session_state.filtered_game_df = game_df
-            st.session_state.initialized = True
-            
-            # Get formats and filter choice
-            formats = get_formats()
-            format_choice = st.multiselect('Format:', formats, default=['All'])
-            
-            if not format_choice:
-                format_choice = ['All']
-            
-            # Apply filters with memory management
-            try:
-                filtered_bat_df = filter_by_format(st.session_state.filtered_bat_df, format_choice)
-                gc.collect()
-                filtered_bowl_df = filter_by_format(st.session_state.filtered_bowl_df, format_choice)
-                gc.collect()
-                filtered_match_df = filter_by_format(st.session_state.filtered_match_df, format_choice)
-                gc.collect()
-                filtered_game_df = filter_by_format(st.session_state.filtered_game_df, format_choice)
-                gc.collect()
-            except Exception as e:
-                st.error(f"Error filtering data: {str(e)}")
-                return None, None, None, None
-        else:
-            # Use cached data from session state
-            filtered_bat_df = st.session_state.filtered_bat_df
-            filtered_bowl_df = st.session_state.filtered_bowl_df
-            filtered_match_df = st.session_state.filtered_match_df
-            filtered_game_df = st.session_state.filtered_game_df
-            
+        # Process dataframes
+        bat_df, bowl_df, match_df, game_df = process_dataframes()
+        
+        # Get formats and filter choice
+        formats = get_formats()
+        format_choice = st.multiselect('Format:', formats, default=['All'])
+        
+        if not format_choice:
+            format_choice = ['All']
+        
+        # Apply filters
+        filtered_bat_df = filter_by_format(bat_df, format_choice)
+        filtered_bowl_df = filter_by_format(bowl_df, format_choice)
+        filtered_match_df = filter_by_format(match_df, format_choice)
+        filtered_game_df = filter_by_format(game_df, format_choice)
+        
         return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
         
     except Exception as e:
         st.error(f"Error initializing data: {str(e)}")
-        st.error(f"Memory usage: {sys.getsizeof(st.session_state) / (1024 * 1024):.2f} MB")
         return None, None, None, None
 
-@st.cache_data(ttl=3600, max_entries=10)
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def process_data_chunk(func, df, *args, **kwargs):
     """Process data in smaller chunks to manage memory"""
     if df is None or df.empty:
@@ -749,7 +739,7 @@ with tabs[1]:
 ###############################################################################
 def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     """Process wins data by type and margin"""
-    if filtered_match_df is None or filtered_match_df.empty:
+    if filtered_match_df is None or filtered_match_df is empty:
         return pd.DataFrame()
     
     # Set conditions based on win type
@@ -1137,30 +1127,16 @@ with tabs[3]:
 
 # Add this at the end of the file
 if __name__ == "__main__":
-    # Ensure session state is initialized
-    if 'data_initialized' not in st.session_state:
-        st.session_state.data_initialized = False
-    
-    # Initialize the application
+    # Initialize page
     init_page()
     
-    # Initialize data only if not already done
-    if not st.session_state.data_initialized:
-        filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
-        st.session_state.data_initialized = True
-    else:
-        # Use cached data
-        filtered_bat_df = st.session_state.get('filtered_bat_df')
-        filtered_bowl_df = st.session_state.get('filtered_bowl_df')
-        filtered_match_df = st.session_state.get('filtered_match_df')
-        filtered_game_df = st.session_state.get('filtered_game_df')
+    # Add timestamp for debugging
+    st.sidebar.text(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
+    
+    # Initialize data
+    filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
+    
     try:
-        # Initialize page
-        init_page()
-        
-        # Initialize data with memory management
-        filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
-        
         # Clear memory
         gc.collect()
         
