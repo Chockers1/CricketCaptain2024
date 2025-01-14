@@ -358,9 +358,26 @@ def display_bat_view():
             if REDIS_AVAILABLE:
                 cache_dataframe(cache_key, filtered_df)
 
-######---------------------------------------CAREER STATS TAB-------------------------------
+        ######---------------------------------------CAREER STATS TAB-------------------------------
+        # First, calculate file-level statistics
+        file_stats = filtered_df.groupby('File Name').agg({
+            'Runs': 'sum',
+            'Team Balls': 'sum',
+            'Wickets': 'sum',
+            'Total_Runs': 'sum'
+        }).reset_index()
 
-        # Calculate milestone innings based on run ranges with caching
+        # Calculate match-level metrics
+        file_stats['Match_Avg'] = file_stats['Runs'] / file_stats['Wickets'].replace(0, np.inf)
+        file_stats['Match_SR'] = (file_stats['Runs'] / file_stats['Team Balls'].replace(0, np.inf)) * 100
+
+        # Calculate average match metrics
+        avg_match_stats = {
+            'Match_Avg': file_stats['Match_Avg'].mean(),
+            'Match_SR': file_stats['Match_SR'].mean()
+        }
+
+        # Now proceed with career stats calculation
         career_cache_key = f"{cache_key}_career_stats"
         bat_career_df = get_cached_dataframe(career_cache_key)
         
@@ -397,11 +414,34 @@ def display_bat_view():
                 'Team Balls': 'sum'
             }).reset_index()
 
+            # Add filename-level aggregations
+            filename_stats = filtered_df.groupby('File Name').agg({
+                'Runs': 'sum',
+                'Out': 'sum', 
+                'Balls': 'sum'
+            }).reset_index()
+
+            # Calculate match-level averages
+            filename_stats['Match_Avg'] = (filename_stats['Runs'] / filename_stats['Out']).fillna(0)
+            filename_stats['Match_SR'] = (filename_stats['Runs'] / filename_stats['Balls'] * 100).fillna(0)
+
+            # Calculate average match metrics across all files
+            avg_match_avg = filename_stats['Match_Avg'].mean()
+            avg_match_sr = filename_stats['Match_SR'].mean()
+
+            # Add filename sums to bat_career_df
+            bat_career_df['Filename_Runs'] = filename_stats['Runs'].sum()
+            bat_career_df['Filename_Out'] = filename_stats['Out'].sum()
+            bat_career_df['Filename_Balls'] = filename_stats['Balls'].sum()
+
             # Flatten multi-level columns
-            bat_career_df.columns = ['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-                                     'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
-                                     '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-                                     'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+            bat_career_df.columns = [
+                'Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
+                '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                'Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Match_Runs', 
+                'Match_Out', 'Match_Balls'
+            ]
 
             # Calculate average runs per out, strike rate, and balls per out
             bat_career_df['Avg'] = (bat_career_df['Runs'] / bat_career_df['Out']).round(2).fillna(0)
@@ -413,8 +453,12 @@ def display_bat_view():
             bat_career_df['Team SR'] = (bat_career_df['Team Runs'] / bat_career_df['Team Balls'] * 100).round(2).fillna(0)
 
             # Calculate P+ Avg and P+ SR
-            bat_career_df['P+ Avg'] = (bat_career_df['Avg'] / bat_career_df['Team Avg'] * 100).round(2).fillna(0)
-            bat_career_df['P+ SR'] = (bat_career_df['SR'] / bat_career_df['Team SR'] * 100).round(2).fillna(0)
+            bat_career_df['Team+ Avg'] = (bat_career_df['Avg'] / bat_career_df['Team Avg'] * 100).round(2).fillna(0)
+            bat_career_df['Team+ SR'] = (bat_career_df['SR'] / bat_career_df['Team SR'] * 100).round(2).fillna(0)
+
+            # Calculate match comparison metrics
+            bat_career_df['Match+ Avg'] = (bat_career_df['Avg'] / avg_match_avg * 100).round(2)
+            bat_career_df['Match+ SR'] = (bat_career_df['SR'] / avg_match_sr * 100).round(2)
 
             # Calculate BPB (Balls Per Boundary)
             bat_career_df['BPB'] = (bat_career_df['Balls'] / (bat_career_df['4s'] + bat_career_df['6s']).replace(0, 1)).round(2)
@@ -447,10 +491,12 @@ def display_bat_view():
 
 
             # Reorder columns and drop Team Avg and Team SR
-            bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
-                                       'Avg', 'BPO', 'SR', '4s', '6s', 'BPB','Boundary%','RPM', '<25&Out', '50s', '100s', '150s', '200s','Conversion Rate',
-                                       '<25&OutPI', '50+PI', '100PI', '150PI', '200PI', 'P+ Avg', 'P+ SR', 
-                                       'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%', 'POM','POM Per Match']]
+            bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                           'Runs', 'HS', 'Avg', 'BPO', 'SR', '4s', '6s', 'BPB',
+                                           'Boundary%', 'RPM', '<25&Out', '50s', '100s', '150s', '200s',
+                                           'Conversion Rate', '<25&OutPI', '50+PI', '100PI', '150PI', '200PI',
+                                           'Match+ Avg', 'Match+ SR', 'Team+ Avg', 'Team+ SR', 'Caught%', 'Bowled%', 'LBW%', 
+                                           'Run Out%', 'Stumped%', 'Not Out%', 'POM', 'POM Per Match']]
             
             # Sort the DataFrame by 'Runs' in descending order
             bat_career_df = bat_career_df.sort_values(by='Runs', ascending=False)
