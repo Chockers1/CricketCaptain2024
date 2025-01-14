@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 
 # Section 2: Helper Functions and Page Setup
 ###############################################################################
+@st.cache_data(ttl=3600)  # Cache data for 1 hour
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
     if pd.isna(date_str):
@@ -35,11 +36,14 @@ def parse_date(date_str):
         # If all parsing attempts fail, return NaT (Not a Time)
         return pd.NaT
 
+@st.cache_data(ttl=3600)
 def process_dataframes():
-    """Process all dataframes"""
+    """Process all dataframes with improved caching"""
     def safe_parse_dates(df):
         if df is not None and 'Date' in df.columns:
             try:
+                # Create a copy to avoid modifying the original dataframe
+                df = df.copy()
                 # First try automatic parsing
                 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
                 
@@ -50,32 +54,36 @@ def process_dataframes():
                 # Drop any rows where date parsing failed
                 df = df.dropna(subset=['Date'])
             except Exception as e:
-                print(f"Error parsing dates: {str(e)}")
+                st.error(f"Error parsing dates: {str(e)}")
                 return None
         return df
 
     # Process each dataframe
-    bat_df = safe_parse_dates(st.session_state.get('bat_df', None))
-    bowl_df = safe_parse_dates(st.session_state.get('bowl_df', None))
-    match_df = safe_parse_dates(st.session_state.get('match_df', None))
-    game_df = safe_parse_dates(st.session_state.get('game_df', None))
+    bat_df = safe_parse_dates(st.session_state.get('bat_df'))
+    bowl_df = safe_parse_dates(st.session_state.get('bowl_df'))
+    match_df = safe_parse_dates(st.session_state.get('match_df'))
+    game_df = safe_parse_dates(st.session_state.get('game_df'))
 
     return bat_df, bowl_df, match_df, game_df
 
+@st.cache_data(ttl=3600)
 def filter_by_format(df, format_choice):
-    """Filter dataframe by format"""
+    """Filter dataframe by format with caching"""
+    if df is not None and df.empty:
+        return df
     if df is not None and 'All' not in format_choice:
-        return df[df['Match_Format'].isin(format_choice)]
-    return df
+        return df[df['Match_Format'].isin(format_choice)].copy()
+    return df.copy() if df is not None else df
 
+@st.cache_data(ttl=3600)
 def get_formats():
-    """Get unique formats from all dataframes"""
+    """Get unique formats from all dataframes with caching"""
     all_formats = set(['All'])
     
     for df_name in ['game_df', 'bat_df', 'bowl_df', 'match_df']:
-        if df_name in st.session_state:
+        if df_name in st.session_state and st.session_state[df_name] is not None:
             df = st.session_state[df_name]
-            if 'Match_Format' in df.columns:
+            if not df.empty and 'Match_Format' in df.columns:
                 all_formats.update(df['Match_Format'].unique())
     
     return sorted(list(all_formats))
@@ -105,20 +113,45 @@ def init_page():
     """, unsafe_allow_html=True)
 
 def initialize_data():
-    """Initialize main data and format filter"""
-    bat_df, bowl_df, match_df, game_df = process_dataframes()
-    formats = get_formats()
-    format_choice = st.multiselect('Format:', formats, default=['All'])
+    """Initialize main data and format filter with improved error handling"""
+    try:
+        bat_df, bowl_df, match_df, game_df = process_dataframes()
+        formats = get_formats()
+        format_choice = st.multiselect('Format:', formats, default=['All'])
+        
+        if not format_choice:
+            format_choice = ['All']
+        
+        # Add error handling for filtering
+        try:
+            filtered_bat_df = filter_by_format(bat_df, format_choice)
+        except Exception as e:
+            st.error(f"Error filtering batting data: {str(e)}")
+            filtered_bat_df = None
+
+        try:
+            filtered_bowl_df = filter_by_format(bowl_df, format_choice)
+        except Exception as e:
+            st.error(f"Error filtering bowling data: {str(e)}")
+            filtered_bowl_df = None
+
+        try:
+            filtered_match_df = filter_by_format(match_df, format_choice)
+        except Exception as e:
+            st.error(f"Error filtering match data: {str(e)}")
+            filtered_match_df = None
+
+        try:
+            filtered_game_df = filter_by_format(game_df, format_choice)
+        except Exception as e:
+            st.error(f"Error filtering game data: {str(e)}")
+            filtered_game_df = None
+        
+        return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
     
-    if not format_choice:
-        format_choice = ['All']
-    
-    filtered_bat_df = filter_by_format(bat_df, format_choice)
-    filtered_bowl_df = filter_by_format(bowl_df, format_choice)
-    filtered_match_df = filter_by_format(match_df, format_choice)
-    filtered_game_df = filter_by_format(game_df, format_choice)
-    
-    return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
+    except Exception as e:
+        st.error(f"Error initializing data: {str(e)}")
+        return None, None, None, None
 
 # Section 3: Batting Records Functions
 ###############################################################################
@@ -1047,3 +1080,23 @@ with tabs[3]:
             st.error(f"Error processing records: {str(e)}")
     else:
         st.info("No game or match records available.")
+
+# Add this at the end of the file
+if __name__ == "__main__":
+    # Ensure session state is initialized
+    if 'data_initialized' not in st.session_state:
+        st.session_state.data_initialized = False
+    
+    # Initialize the application
+    init_page()
+    
+    # Initialize data only if not already done
+    if not st.session_state.data_initialized:
+        filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
+        st.session_state.data_initialized = True
+    else:
+        # Use cached data
+        filtered_bat_df = st.session_state.get('filtered_bat_df')
+        filtered_bowl_df = st.session_state.get('filtered_bowl_df')
+        filtered_match_df = st.session_state.get('filtered_match_df')
+        filtered_game_df = st.session_state.get('filtered_game_df')
