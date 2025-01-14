@@ -739,16 +739,6 @@ with tabs[1]:
 ###############################################################################
 def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     """Process wins data by type and margin"""
-    # Add debugging info
-    st.write("Debugging match_df:")
-    st.write(f"Type: {type(filtered_match_df)}")
-    if filtered_match_df is not None:
-        st.write(f"Shape: {filtered_match_df.shape}")
-        st.write(f"Columns: {filtered_match_df.columns}")
-        st.write("First few rows:")
-        st.write(filtered_match_df.head())
-    
-    # Fix the empty check
     if filtered_match_df is None or filtered_match_df.empty:
         return pd.DataFrame()
     
@@ -887,12 +877,6 @@ def process_innings_wins(filtered_match_df):
 
 # Near the Match Records Tab section, add debugging for the input data
 with tabs[2]:
-    st.write("Debug Info:")
-    st.write(f"filtered_match_df is None: {filtered_match_df is None}")
-    if filtered_match_df is not None:
-        st.write(f"filtered_match_df is empty: {filtered_match_df.empty}")
-        st.write(f"filtered_match_df shape: {filtered_match_df.shape}")
-    
     if filtered_match_df is not None and not filtered_match_df.empty:
         # Biggest Wins (Runs)
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Biggest Wins (Runs)</h3>", 
