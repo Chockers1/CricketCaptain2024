@@ -9,41 +9,56 @@ import plotly.graph_objects as go
 ###############################################################################
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
+    if pd.isna(date_str):
+        return pd.NaT
+    
     try:
-        for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
+        # Try common formats
+        formats = [
+            '%d/%m/%Y',
+            '%Y-%m-%d',
+            '%d-%m-%Y',
+            '%m/%d/%Y',
+            '%d %b %Y',
+            '%Y%m%d'
+        ]
+        
+        for fmt in formats:
             try:
                 return pd.to_datetime(date_str, format=fmt)
             except ValueError:
                 continue
+        
+        # If no format works, try pandas default parser
         return pd.to_datetime(date_str)
     except Exception:
+        # If all parsing attempts fail, return NaT (Not a Time)
         return pd.NaT
 
 def process_dataframes():
     """Process all dataframes"""
-    if 'bat_df' in st.session_state:
-        bat_df = st.session_state['bat_df'].copy()
-        bat_df['Date'] = pd.to_datetime(bat_df['Date'])
-    else:
-        bat_df = None
+    def safe_parse_dates(df):
+        if df is not None and 'Date' in df.columns:
+            try:
+                # First try automatic parsing
+                df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+                
+                # If we have any NaT values, try manual parsing
+                if df['Date'].isna().any():
+                    df['Date'] = df['Date'].apply(parse_date)
+                
+                # Drop any rows where date parsing failed
+                df = df.dropna(subset=['Date'])
+            except Exception as e:
+                print(f"Error parsing dates: {str(e)}")
+                return None
+        return df
 
-    if 'bowl_df' in st.session_state:
-        bowl_df = st.session_state['bowl_df'].copy()
-        bowl_df['Date'] = pd.to_datetime(bowl_df['Date'])
-    else:
-        bowl_df = None
-
-    if 'match_df' in st.session_state:
-        match_df = st.session_state['match_df'].copy()
-        match_df['Date'] = pd.to_datetime(match_df['Date'])
-    else:
-        match_df = None
-
-    if 'game_df' in st.session_state:
-        game_df = st.session_state['game_df'].copy()
-        game_df['Date'] = pd.to_datetime(game_df['Date'])
-    else:
-        game_df = None
+    # Process each dataframe
+    bat_df = safe_parse_dates(st.session_state.get('bat_df', None))
+    bowl_df = safe_parse_dates(st.session_state.get('bowl_df', None))
+    match_df = safe_parse_dates(st.session_state.get('match_df', None))
+    game_df = safe_parse_dates(st.session_state.get('game_df', None))
 
     return bat_df, bowl_df, match_df, game_df
 
