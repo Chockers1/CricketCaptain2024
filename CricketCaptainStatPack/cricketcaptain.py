@@ -127,7 +127,11 @@ versions_page = st.Page(
     title="Versions",
     icon="📖",
 )
-
+watch_page = st.Page(
+    "views/watch.py",
+    title="Videos",
+    icon="📺",
+)
 
 # -------------------- NAVIGATION SETUP ------------------------
 pg = st.navigation(
@@ -147,6 +151,7 @@ pg = st.navigation(
             elorating_page,
             scorecard_page,
             versions_page,
+            watch_page
         ],
     }
 )
