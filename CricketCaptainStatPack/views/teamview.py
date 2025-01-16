@@ -336,7 +336,29 @@ def display_team_view():
 
         # Display the filtered and aggregated team career statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Career Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_team_career_df, use_container_width=True, hide_index=True)
+        st.markdown(
+            """
+            <style>
+            /* Make the first column of any table sticky */
+            .stDataFrame table tbody tr :first-child, 
+            .stDataFrame table thead tr :first-child {
+                position: sticky;
+                left: 0;
+                background: white;
+                z-index: 1;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.dataframe(
+            bat_team_career_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
     ######################_--------------scatter-----------------#######################
 ######################_--------------scatter-----------------#######################
 
@@ -449,7 +471,14 @@ def display_team_view():
 
         # Display Season Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_team_season_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            bat_team_season_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
 
         # Create a new figure for the scatter plot
         scatter_fig = go.Figure()
@@ -544,7 +573,14 @@ def display_team_view():
 
         # Display Opponents Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_team_opponent_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            bat_team_opponent_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
         st.plotly_chart(fig)
 
 ##############----------------------LOCATION STATS----------------###############
@@ -609,7 +645,14 @@ def display_team_view():
 
         # Display Location Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_team_location_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            bat_team_location_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
 
         # Calculate location-based team averages
         location_stats_df = bat_team_location_df.groupby('Location').agg({
@@ -701,7 +744,14 @@ def display_team_view():
 
         # Display Position Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_team_position_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            bat_team_position_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
 
 
 ###-------------------------------------BOWLING STATS-------------------------------------###
@@ -949,7 +999,14 @@ def display_team_view():
         ]]
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bowl_team_opponent_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            bowl_team_opponent_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
 
         # Extract unique teams from bat_team_position_df
         team_choice = bat_team_position_df['Team'].unique().tolist()
@@ -1081,7 +1138,14 @@ def display_team_view():
         ]]
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(location_summary, use_container_width=True, hide_index=True)
+        st.dataframe(
+            location_summary,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Team": st.column_config.Column("Team", pinned=True)
+            }
+        )
 
         # Create location averages graph
         fig = go.Figure()
