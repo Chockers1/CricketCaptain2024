@@ -5,6 +5,16 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
+import os
+
+# Determine if we're running locally or on Streamlit Cloud
+IS_LOCAL = os.path.exists("assets/images")  # Check if local assets folder exists
+
+# Helper function to get correct image path
+def get_image_path(filename):
+    if IS_LOCAL:
+        return f"assets/images/{filename}"
+    return f"CricketCaptainStatPack/assets/images/{filename}"
 
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Version History</h1>", unsafe_allow_html=True)
 
@@ -15,7 +25,7 @@ versions_data = [
         "description": ("Enhanced table navigation with a fixed first column that stays in view while scrolling horizontally through data. "
                        "This user-friendly improvement keeps player names or key identifiers visible at all times, making it easier to track and compare statistics across multiple columns without losing context of who you're analyzing.\n\n"
                        "This simple yet effective enhancement significantly improves the way you navigate through statistical tables and player comparisons."),
-        "screenshot": "CricketCaptainStatPack/assets/images/v1.17_fixed_column.png"  # Note the ./ prefix
+        "screenshot": get_image_path("v1.17_fixed_column.png")
     },
     {
         "version": "1.16, 2025-01-13",
@@ -26,11 +36,11 @@ versions_data = [
                        "This new feature empowers users to better understand performance patterns and make strategic decisions based on format-specific form trends."),
         "screenshots": [
             {
-                "path": "CricketCaptainStatPack/assets/images/v1.16_form_guide_1.png",  # Note the ./ prefix
+                "path": get_image_path("v1.16_form_guide_1.png"),
                 "caption": "Add the formats you want to see in the form guide, by default All is selected and it doesn't breakdown by format"
             },
             {
-                "path": "CricketCaptainStatPack/assets/images/v1.16_form_guide_2.png",  # Note the ./ prefix
+                "path": get_image_path("v1.16_form_guide_2.png"),
                 "caption": "Format Filter Options"
             }
         ]
@@ -46,13 +56,13 @@ versions_data = [
                        "• Track player achievements and memorable moments from past matches\n"
                        "• Analyze match trends and team performances across your career\n"
                        "• Browse through your cricket journey with an easy-to-navigate interface"),
-        "screenshot": "CricketCaptainStatPack/assets/images/v1.15_scorecard_tab.png"  # Note the ./ prefix
+        "screenshot": get_image_path("v1.15_scorecard_tab.png")
     },
     {
         "version": "1.14, 2024-12-26",
         "title": "Compare Players Tab",
         "description": "Introducing the Compare Players feature - a powerful new tool that lets you make data-driven selection decisions by directly comparing any two players across their complete performance metrics.",
-        "screenshot": "CricketCaptainStatPack/assets/images/v1.14_compare_players.png"  # Note the ./ prefix
+        "screenshot": get_image_path("v1.14_compare_players.png")
     },
     {
         "version": "1.13, 2024-12-25",
@@ -63,7 +73,7 @@ versions_data = [
                        "• L (Loss): Represented in red circles\n"
                        "• D (Draw): Represented in yellow circles\n\n"
                        "Each section includes a concise win-loss-draw summary for added context (e.g., \"W 8, L 9, D 0\")."),
-        "screenshot": "CricketCaptainStatPack/assets/images/v1.13_head_to_head.png"  # Note the ./ prefix
+        "screenshot": get_image_path("v1.13_head_to_head.png")
     },
     {
         "version": "1.12, 2024-12-24",
@@ -77,7 +87,7 @@ versions_data = [
                        "• SR Percentile: Showcases players with high strike rates, valuable for aggressive gameplay.\n"
                        "• 50+ and 100+ Scoring Percentiles: Highlights players capable of producing impactful innings.\n\n"
                        "The Total Score and Total Percentile aggregate these metrics to provide an overall assessment of each player's contributions."),
-        "screenshot": "CricketCaptainStatPack/assets/images/v1.12_batting_percentile.png"  # Note the ./ prefix
+        "screenshot": get_image_path("v1.12_batting_percentile.png")
     }
 ]
 
