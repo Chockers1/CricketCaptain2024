@@ -160,7 +160,7 @@ pg = st.navigation(
 st.sidebar.markdown("""
     <div class="logo-container">
         <a href="https://www.youtube.com/@RobTaylor1985" target="_blank" class="logo-link">
-            <img src="https://yt3.googleusercontent.com/584JjRp5QMuKbyduM_2k5RlXFqHJtQ0qLIPZpwbUjMJmgzZngHcam5JMuZQxyzGMV5ljwJRl0Q=s176-c-k-c0x00ffffff-no-rj"
+            <img src="https://cdn3.iconfinder.com/data/icons/social-network-30/512/social-06-512.png"
                   alt="YouTube Logo">
         </a>
         <a href="https://www.buymeacoffee.com/leadingedgepod" target="_blank" class="logo-link">
