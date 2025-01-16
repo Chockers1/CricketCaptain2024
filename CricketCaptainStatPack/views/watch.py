@@ -104,6 +104,19 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Channel link at the bottom
+st.markdown("""
+<div style='text-align: center; margin-top: 20px;'>
+    <a href='https://www.youtube.com/@RobTaylor1985' target='_blank' 
+    style='background-color: #f04f53; color: white; padding: 10px 20px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold;'>
+    Visit YouTube Channel</a>
+</div>
+""", unsafe_allow_html=True)
+
+
+
+
 # Career Rebuilds Section - Two columns with fixed height
 st.markdown("<h2 class='section-header' style='margin-top: 30px; color:#f04f53;'>Career Rebuilds</h2>", unsafe_allow_html=True)
 col1, col2 = st.columns(2)
