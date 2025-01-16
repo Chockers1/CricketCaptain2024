@@ -506,7 +506,7 @@ def display_bat_view():
 
         # Display the filtered and aggregated career statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(bat_career_df, use_container_width=True, hide_index=True)
+        st.dataframe(bat_career_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
         
 #################----------------SCATTER CHART----------------------------##########################
 
@@ -737,7 +737,7 @@ def display_bat_view():
 
         # Display the filtered and aggregated format statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
-        st.dataframe(df_format, use_container_width=True, hide_index=True)
+        st.dataframe(df_format, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
 
  
@@ -821,7 +821,7 @@ def display_bat_view():
 
         # Display the Season Stats
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(season_stats_df, use_container_width=True, hide_index=True)
+        st.dataframe(season_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
 # Create a bar chart for Runs per Year
         fig = go.Figure()
@@ -1200,7 +1200,7 @@ def display_bat_view():
         col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
         with col1:
-            st.dataframe(opponents_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
+            st.dataframe(opponents_stats_df.head(12), use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})  # Show 12 rows
 
         with col2:
             # Cache key for location averages
@@ -1366,7 +1366,7 @@ def display_bat_view():
         col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
         with col1:
-            st.dataframe(innings_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
+            st.dataframe(innings_stats_df.head(12), use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})  # Show 12 rows
 
         with col2:
             # Cache key for average runs across innings
@@ -1539,7 +1539,7 @@ def display_bat_view():
         col1, col2 = st.columns([1, 1.5])  # Adjust column width ratio
 
         with col1:
-            st.dataframe(position_stats_df.head(12), use_container_width=True, hide_index=True)  # Show 12 rows
+            st.dataframe(position_stats_df.head(12), use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})  # Show 12 rows
 
         with col2:
             # Cache key for position averages
@@ -1713,7 +1713,7 @@ def display_bat_view():
 
         # Display the cumulative statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Statistics</h3>", unsafe_allow_html=True)
-        st.dataframe(cumulative_stats_df, use_container_width=True, hide_index=True)
+        st.dataframe(cumulative_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
         # Function to generate a random hex color
         def random_color():
@@ -1852,7 +1852,7 @@ def display_bat_view():
 
         # Display the block statistics
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
-        st.dataframe(df_blocks, use_container_width=True, hide_index=True)
+        st.dataframe(df_blocks, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
         # Cache key for batting average chart
         batting_avg_chart_cache_key = f"{cache_key}_batting_avg_chart"
@@ -2239,7 +2239,7 @@ def display_bat_view():
             percentile_df = percentile_df[display_columns].sort_values(['Match_Format', 'Total_Percentile'], ascending=[True, False])
             
             # Display the percentile analysis
-            st.dataframe(percentile_df, use_container_width=True, hide_index=True)
+            st.dataframe(percentile_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
 # Call the function to display the batting view
 display_bat_view()
