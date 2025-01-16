@@ -134,7 +134,18 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
+
 )
+
+# Channel link at the bottom
+st.markdown("""
+<div style='text-align: center; margin-top: 20px;'>
+    <a href='https://www.youtube.com/@RobTaylor1985' target='_blank' 
+    style='background-color: #f04f53; color: white; padding: 10px 20px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold;'>
+    Watch My Cricket Captain 2024 Saves</a>
+</div>
+""", unsafe_allow_html=True)
 
 # File uploader with a custom label
 uploaded_files = st.file_uploader("Upload your scorecard files", 
