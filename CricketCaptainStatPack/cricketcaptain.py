@@ -122,6 +122,11 @@ elorating_page = st.Page(
     title="Elo Rating",
     icon="♟️",
 )
+versions_page = st.Page(
+    "views/versions.py",
+    title="Versions",
+    icon="📖",
+)
 
 
 # -------------------- NAVIGATION SETUP ------------------------
@@ -141,6 +146,7 @@ pg = st.navigation(
             domestictables_page,
             elorating_page,
             scorecard_page,
+            versions_page,
         ],
     }
 )
