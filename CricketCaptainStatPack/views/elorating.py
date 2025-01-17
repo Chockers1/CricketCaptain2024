@@ -322,7 +322,7 @@ team_colors = {
     'USA': '#B22234',
     'Uganda': '#FFCC00',
     'West Indies': '#800000',
-    'Zimbabwe': '#FFD700'
+    'Zimbabwe': '#EF3340'
 }
 
 # Filter and display current ELO ratings
