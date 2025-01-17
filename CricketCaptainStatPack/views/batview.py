@@ -1047,6 +1047,36 @@ def display_bat_view():
         # Display the dataframe
         st.dataframe(styled_df, height=735, use_container_width=True, hide_index=True)
 
+        # Ensure 'Date' column is in datetime format
+        filtered_df['Date'] = pd.to_datetime(filtered_df['Date'], format='%d %b %Y')
+
+        # Calculate the last 20 innings for each player
+        last_20_innings_all_players = filtered_df.groupby('Name').apply(lambda x: x.nlargest(20, 'Date')).reset_index(drop=True)
+
+        # Display a dataframe with Name, Match_Format, and calculated metrics
+        metrics_df = last_20_innings_all_players.groupby(['Name', 'Match_Format']).agg({
+            'Date': 'nunique',
+            'Innings': 'count',
+            'Out': 'sum',
+            'Runs': 'sum',
+            'Balls': 'sum'
+        }).reset_index()
+
+        # Now calculate '50s' and '100s' after the aggregation
+        metrics_df['50s'] = last_20_innings_all_players.groupby(['Name', 'Match_Format'])['Runs'].apply(lambda x: ((x >= 50) & (x <= 99)).sum()).reset_index(drop=True)
+        metrics_df['100s'] = last_20_innings_all_players.groupby(['Name', 'Match_Format'])['Runs'].apply(lambda x: (x >= 100).sum()).reset_index(drop=True)
+
+        # Calculate Average and Strike Rate
+        metrics_df['Average'] = metrics_df['Runs'] / metrics_df['Out']
+        metrics_df['Strike Rate'] = (metrics_df['Runs'] / metrics_df['Balls']) * 100
+
+        # Rename columns for clarity
+        metrics_df.columns = ['Name', 'Match_Format', 'Matches', 'Innings', 'Outs', 'Runs', 'Balls', '50s', '100s', 'Average', 'Strike Rate']
+
+        # Display the dataframe
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Summary Metrics</h3>", unsafe_allow_html=True)
+        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+
 ###---------------------------------------------OPPONENTS STATS-------------------------------------------------------------------###
         
         # Cache key for opponents statistics
