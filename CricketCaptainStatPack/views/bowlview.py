@@ -450,77 +450,101 @@ def display_bowl_view():
         st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
 
         ###-------------------------------------GRAPHS----------------------------------------###
-        # Create subplots for Bowling Average and Strike Rate
-        fig = make_subplots(rows=1, cols=2, subplot_titles=("Bowling Average", "Bowling Strike Rate"))
+        # Create subplots for Bowling Average, Strike Rate, and Economy Rate
+        fig = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Bowling Strike Rate", "Bowling Economy Rate"))
 
         # Handle 'All' selection
         if 'All' in name_choice:
             all_players_stats = filtered_df.groupby('Year').agg({
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'Bowler_Balls': 'sum'
+            'Bowler_Runs': 'sum',
+            'Bowler_Wkts': 'sum',
+            'Bowler_Balls': 'sum'
             }).reset_index()
 
             all_players_stats['Avg'] = (all_players_stats['Bowler_Runs'] / all_players_stats['Bowler_Wkts']).round(2).fillna(0)
             all_players_stats['SR'] = (all_players_stats['Bowler_Balls'] / all_players_stats['Bowler_Wkts']).round(2).fillna(0)
+            all_players_stats['Overs'] = (all_players_stats['Bowler_Balls'] // 6) + (all_players_stats['Bowler_Balls'] % 6) / 10
+            all_players_stats['Econ'] = (all_players_stats['Bowler_Runs'] / all_players_stats['Overs']).round(2).fillna(0)
 
             # Use streamlit red if only 'All' selected, black if names also selected
             all_color = '#f84e4e' if not individual_players else 'black'
 
             # Add traces for 'All'
             fig.add_trace(go.Scatter(
-                x=all_players_stats['Year'], 
-                y=all_players_stats['Avg'], 
-                mode='lines+markers', 
-                name='All Players',
-                legendgroup='All',
-                marker=dict(color=all_color, size=8)
+            x=all_players_stats['Year'], 
+            y=all_players_stats['Avg'], 
+            mode='lines+markers', 
+            name='All Players',
+            legendgroup='All',
+            marker=dict(color=all_color, size=8)
             ), row=1, col=1)
 
             fig.add_trace(go.Scatter(
-                x=all_players_stats['Year'], 
-                y=all_players_stats['SR'], 
-                mode='lines+markers', 
-                name='All Players',
-                legendgroup='All',
-                marker=dict(color=all_color, size=8),
-                showlegend=False
+            x=all_players_stats['Year'], 
+            y=all_players_stats['SR'], 
+            mode='lines+markers', 
+            name='All Players',
+            legendgroup='All',
+            marker=dict(color=all_color, size=8),
+            showlegend=False
             ), row=1, col=2)
+
+            fig.add_trace(go.Scatter(
+            x=all_players_stats['Year'], 
+            y=all_players_stats['Econ'], 
+            mode='lines+markers', 
+            name='All Players',
+            legendgroup='All',
+            marker=dict(color=all_color, size=8),
+            showlegend=False
+            ), row=1, col=3)
 
         # Add individual player traces
         for i, name in enumerate(individual_players):
             player_stats = filtered_df[filtered_df['Name'] == name]
             player_yearly_stats = player_stats.groupby('Year').agg({
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'Bowler_Balls': 'sum'
+            'Bowler_Runs': 'sum',
+            'Bowler_Wkts': 'sum',
+            'Bowler_Balls': 'sum'
             }).reset_index()
 
             player_yearly_stats['Avg'] = (player_yearly_stats['Bowler_Runs'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
             player_yearly_stats['SR'] = (player_yearly_stats['Bowler_Balls'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
+            player_yearly_stats['Overs'] = (player_yearly_stats['Bowler_Balls'] // 6) + (player_yearly_stats['Bowler_Balls'] % 6) / 10
+            player_yearly_stats['Econ'] = (player_yearly_stats['Bowler_Runs'] / player_yearly_stats['Overs']).round(2).fillna(0)
 
             # First player gets streamlit red, others get random colors
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
 
             # Add bowling average trace
             fig.add_trace(go.Bar(
-                x=player_yearly_stats['Year'], 
-                y=player_yearly_stats['Avg'], 
-                name=name,
-                legendgroup=name,
-                marker_color=color,
-                showlegend=True
+            x=player_yearly_stats['Year'], 
+            y=player_yearly_stats['Avg'], 
+            name=name,
+            legendgroup=name,
+            marker_color=color,
+            showlegend=True
             ), row=1, col=1)
 
             # Add strike rate trace
             fig.add_trace(go.Bar(
-                x=player_yearly_stats['Year'], 
-                y=player_yearly_stats['SR'], 
-                name=name,
-                legendgroup=name,
-                marker_color=color,
-                showlegend=False
+            x=player_yearly_stats['Year'], 
+            y=player_yearly_stats['SR'], 
+            name=name,
+            legendgroup=name,
+            marker_color=color,
+            showlegend=False
             ), row=1, col=2)
+
+            # Add economy rate trace
+            fig.add_trace(go.Bar(
+            x=player_yearly_stats['Year'], 
+            y=player_yearly_stats['Econ'], 
+            name=name,
+            legendgroup=name,
+            marker_color=color,
+            showlegend=False
+            ), row=1, col=3)
 
         # Update layout
         fig.update_layout(
@@ -528,6 +552,7 @@ def display_bowl_view():
             title_text=None,
             yaxis_title="Average (Runs/Wicket)",
             yaxis2_title="Strike Rate (Balls/Wicket)",
+            yaxis3_title="Economy Rate (Runs/Over)",
             height=500,
             font=dict(size=12),
             paper_bgcolor='rgba(0,0,0,0)',
@@ -539,7 +564,7 @@ def display_bowl_view():
 
         st.plotly_chart(fig)
 
-# Create wickets per year chart
+        # Create wickets per year chart
         fig = go.Figure()
         
         # Add wickets per year for 'All' if selected
@@ -548,12 +573,12 @@ def display_bowl_view():
             all_color = '#f84e4e' if not individual_players else 'black'
             
             fig.add_trace(
-                go.Bar(
-                    x=wickets_all['Year'], 
-                    y=wickets_all['Bowler_Wkts'],
-                    name='All Players',
-                    marker_color=all_color
-                )
+            go.Bar(
+                x=wickets_all['Year'], 
+                y=wickets_all['Bowler_Wkts'],
+                name='All Players',
+                marker_color=all_color
+            )
             )
 
         # Add individual player wickets
@@ -562,12 +587,12 @@ def display_bowl_view():
             color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
             
             fig.add_trace(
-                go.Bar(
-                    x=player_wickets['Year'], 
-                    y=player_wickets['Bowler_Wkts'],
-                    name=name,
-                    marker_color=color
-                )
+            go.Bar(
+                x=player_wickets['Year'], 
+                y=player_wickets['Bowler_Wkts'],
+                name=name,
+                marker_color=color
+            )
             )
 
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year</h3>", unsafe_allow_html=True)
