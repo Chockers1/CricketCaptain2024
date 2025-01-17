@@ -11,6 +11,16 @@ import pickle
 from datetime import timedelta
 from functools import wraps
 
+# Check if seaborn is installed, if not, install it
+try:
+    import seaborn as sns
+except ImportError:
+    import subprocess
+    subprocess.check_call(["python", "-m", "pip", "install", "seaborn"])
+    import seaborn as sns
+
+import matplotlib.pyplot as plt
+
 # Global flag to track Redis availability
 REDIS_AVAILABLE = False
 
@@ -942,7 +952,7 @@ def display_bat_view():
         latest_inns_df = get_cached_dataframe(latest_inns_cache_key)
 
         if latest_inns_df is None:
- # Create the latest_inns_df by grouping by 'Name', 'Match_Format', 'Date', and 'Innings'
+            # Create the latest_inns_df by grouping by 'Name', 'Match_Format', 'Date', and 'Innings'
             latest_inns_df = filtered_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
                 'Bat_Team_y': 'first',
                 'Bowl_Team_y': 'first',
@@ -963,7 +973,7 @@ def display_bat_view():
             latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'], format='%d %b %Y')
 
             # Sort by Date in descending order (newest to oldest)
-            latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(15)
+            latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(20)
 
             # Convert Date format to 'dd/mm/yyyy' for display
             latest_inns_df['Date'] = latest_inns_df['Date'].dt.strftime('%d/%m/%Y')
@@ -974,6 +984,50 @@ def display_bat_view():
             
             # Cache the latest innings data
             cache_dataframe(latest_inns_cache_key, latest_inns_df)
+
+        # Calculate the 'Out' column based on 'How Out'
+        latest_inns_df['Out'] = latest_inns_df['How Out'].apply(lambda x: 1 if x not in ['not out', 'did not bat', ''] else 0)
+
+        # Calculate summary statistics for the last 20 innings
+        last_20_stats = latest_inns_df.agg({
+            'Runs': 'sum',
+            'Balls': 'sum',
+            '4s': 'sum',
+            '6s': 'sum',
+            'Innings': 'count',
+            'Out': 'sum'
+        }).to_dict()
+
+        last_20_stats['Matches'] = latest_inns_df['Date'].nunique()
+        last_20_stats['50s'] = latest_inns_df[(latest_inns_df['Runs'] >= 50) & (latest_inns_df['Runs'] <= 99)].shape[0]
+        last_20_stats['100s'] = latest_inns_df[latest_inns_df['Runs'] >= 100].shape[0]
+        last_20_stats['Average'] = last_20_stats['Runs'] / last_20_stats['Out'] if last_20_stats['Out'] > 0 else 0
+        last_20_stats['Strike Rate'] = (last_20_stats['Runs'] / last_20_stats['Balls']) * 100 if last_20_stats['Balls'] > 0 else 0
+        last_20_stats['Balls Per Out'] = last_20_stats['Balls'] / last_20_stats['Out'] if last_20_stats['Out'] > 0 else 0
+
+        # Display summary cards
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 20 Innings</h3>", unsafe_allow_html=True)
+        col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
+
+
+        with col1:
+            st.metric("Matches", last_20_stats['Matches'], border=True)
+        with col2:
+            st.metric("Innings", last_20_stats['Innings'], border=True)
+        with col3:
+            st.metric("Outs", last_20_stats['Out'], border=True)
+        with col4:
+            st.metric("Runs", last_20_stats['Runs'], border=True)
+        with col5:
+            st.metric("Balls", last_20_stats['Balls'], border=True)
+        with col6:
+            st.metric("50s", last_20_stats['50s'], border=True)
+        with col7:
+            st.metric("100s", last_20_stats['100s'], border=True)
+        with col8:
+            st.metric("Average", f"{last_20_stats['Average']:.2f}", border=True)
+        with col9:
+            st.metric("Strike Rate", f"{last_20_stats['Strike Rate']:.2f}", border=True)
 
         # Function to apply background color based on Runs
         def color_runs(value):
@@ -990,14 +1044,9 @@ def display_bat_view():
         # Apply conditional formatting to the 'Runs' column
         styled_df = latest_inns_df.style.applymap(color_runs, subset=['Runs'])
 
-        # Display the Latest Innings Stats with conditional formatting
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 15 Innings</h3>", unsafe_allow_html=True)
-
         # Display the dataframe
-        st.dataframe(styled_df, height=575, use_container_width=True, hide_index=True)
-   
+        st.dataframe(styled_df, height=735, use_container_width=True, hide_index=True)
 
-###---------------------------------------------OPPONENTS STATS-------------------------------------------------------------------###
 ###---------------------------------------------OPPONENTS STATS-------------------------------------------------------------------###
         
         # Cache key for opponents statistics
