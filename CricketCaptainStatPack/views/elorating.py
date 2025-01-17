@@ -291,11 +291,33 @@ if 'match_df' in st.session_state:
 
     # Display the filtered ELO Ratings Dataset
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Elo Ratings Match by Match</h3>", unsafe_allow_html=True)
+    filtered_elo_df['Diff'] = filtered_elo_df['Team_Elo_Start'] - filtered_elo_df['Opponent_Elo_Start']
+
+    # Sort the DataFrame first
+    sorted_filtered_elo_df = filtered_elo_df.sort_values(['Match_Format', 'Date', 'Match_Number'])
+
+    # Select the columns to display
+    display_df = sorted_filtered_elo_df[['Date', 'Match_Format', 'Team', 'Opponent', 
+                                         'Location', 'Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change',
+                                         'Team_Elo_End', 'Opponent_Elo_End', 
+                                         'Format_Number', 'Margin']]
+
+    # Apply conditional formatting with softer colors
+    def color_elo_change(val):
+        color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else '#fff3cd'
+        return f'background-color: {color}'
+
+    styled_display_df = display_df.style.applymap(color_elo_change, subset=['Elo_Change', 'Diff']).format({
+        'Team_Elo_Start': '{:.2f}',
+        'Opponent_Elo_Start': '{:.2f}',
+        'Diff': '{:.2f}',
+        'Elo_Change': '{:.2f}',
+        'Team_Elo_End': '{:.2f}',
+        'Opponent_Elo_End': '{:.2f}'
+    })
+
     st.dataframe(
-        filtered_elo_df.sort_values(['Match_Format', 'Date', 'Match_Number'])[['Date', 'Match_Format', 'Team', 'Opponent', 
-                                                                            'Location', 'Team_Elo_Start', 'Team_Elo_End',
-                                                                            'Elo_Change', 'Opponent_Elo_Start', 'Opponent_Elo_End', 
-                                                                            'Format_Number', 'Match_Number', 'Margin']],
+        styled_display_df,
         hide_index=True,
         use_container_width=True
     )
