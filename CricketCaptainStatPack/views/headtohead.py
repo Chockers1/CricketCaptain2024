@@ -219,6 +219,39 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
         margin: 0 4px;
         font-size: 16px;
         flex-shrink: 0;
+        position: relative;
+    }
+    .form-indicator:hover .tooltip {
+        visibility: visible;
+        opacity: 1;
+    }
+    .tooltip {
+        visibility: hidden;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%; /* Position above the indicator */
+        left: 50%;
+        margin-left: -75px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        width: 150px;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+    .tooltip::after {
+        content: "";
+        position: absolute;
+        top: 100%; /* Arrow at the bottom */
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: rgba(0, 0, 0, 0.75) transparent transparent transparent;
     }
     .form-indicators-container {
         display: flex;
@@ -266,16 +299,16 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
             # Get the date for the tooltip
             date = match['Date'].strftime('%Y-%m-%d')
             opponent = match['Away Team'] if is_home else match['Home Team']
-            tooltip = f"{date} vs {opponent}"
+            tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}"
             
             if 'won by' in margin:
                 winning_team = margin.split(' won')[0]
                 if winning_team == team:
-                    form_indicators.append(f'<div class="form-indicator win" title="{tooltip}">W</div>')
+                    form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
                 else:
-                    form_indicators.append(f'<div class="form-indicator loss" title="{tooltip}">L</div>')
+                    form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
             else:
-                form_indicators.append(f'<div class="form-indicator draw" title="{tooltip}">D</div>')
+                form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
 
         # Display team name and form
         if form_indicators:  # Only display if there are matches
@@ -307,16 +340,16 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
                         # Get the date for the tooltip
                         date = match['Date'].strftime('%Y-%m-%d')
                         opponent = match['Away Team'] if is_home else match['Home Team']
-                        tooltip = f"{date} vs {opponent}"
+                        tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}"
                         
                         if 'won by' in margin:
                             winning_team = margin.split(' won')[0]
                             if winning_team == team:
-                                form_indicators.append(f'<div class="form-indicator win" title="{tooltip}">W</div>')
+                                form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
                             else:
-                                form_indicators.append(f'<div class="form-indicator loss" title="{tooltip}">L</div>')
+                                form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
                         else:
-                            form_indicators.append(f'<div class="form-indicator draw" title="{tooltip}">D</div>')
+                            form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
 
                     # Display team name and form for the specific format
                     if form_indicators:  # Only display if there are matches
@@ -746,6 +779,39 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
         display: flex;
         align-items: center;
         justify-content: center;
+        position: relative;
+    }
+    .outing-indicator:hover .tooltip {
+        visibility: visible;
+        opacity: 1;
+    }
+    .tooltip {
+        visibility: hidden;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%; /* Position above the indicator */
+        left: 50%;
+        margin-left: -75px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        width: 150px;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+    .tooltip::after {
+        content: "";
+        position: absolute;
+        top: 100%; /* Arrow at the bottom */
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: rgba(0, 0, 0, 0.75) transparent transparent transparent;
     }
     .win { background-color: #28a745; }
     .draw { background-color: #ffc107; color: black; }
@@ -780,14 +846,17 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
                 w_count, l_count, d_count = 0, 0, 0
                 for _, mtch in last_ten.iterrows():
                     margin = mtch['Margin'].lower()
+                    date = mtch['Date'].strftime('%Y-%m-%d')
+                    format = mtch['Format']
+                    tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
                     if margin.startswith(team.lower()):
-                        outings.append("<div class='outing-indicator win'>W</div>")
+                        outings.append(f"<div class='outing-indicator win'><span class='tooltip'>{tooltip}</span>W</div>")
                         w_count += 1
                     elif 'drawn' in margin:
-                        outings.append("<div class='outing-indicator draw'>D</div>")
+                        outings.append(f"<div class='outing-indicator draw'><span class='tooltip'>{tooltip}</span>D</div>")
                         d_count += 1
                     else:
-                        outings.append("<div class='outing-indicator loss'>L</div>")
+                        outings.append(f"<div class='outing-indicator loss'><span class='tooltip'>{tooltip}</span>L</div>")
                         l_count += 1
                 
                 html_block = f"""
@@ -810,14 +879,17 @@ if 'match_df' in st.session_state and 'All' not in team_choice:
                         w_count, l_count, d_count = 0, 0, 0
                         for _, mtch in sub_data.iterrows():
                             margin = mtch['Margin'].lower()
+                            date = mtch['Date'].strftime('%Y-%m-%d')
+                            format = mtch['Format']
+                            tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
                             if margin.startswith(team.lower()):
-                                outings.append("<div class='outing-indicator win'>W</div>")
+                                outings.append(f"<div class='outing-indicator win'><span class='tooltip'>{tooltip}</span>W</div>")
                                 w_count += 1
                             elif 'drawn' in margin:
-                                outings.append("<div class='outing-indicator draw'>D</div>")
+                                outings.append(f"<div class='outing-indicator draw'><span class='tooltip'>{tooltip}</span>D</div>")
                                 d_count += 1
                             else:
-                                outings.append("<div class='outing-indicator loss'>L</div>")
+                                outings.append(f"<div class='outing-indicator loss'><span class='tooltip'>{tooltip}</span>L</div>")
                                 l_count += 1
                         
                         html_block = f"""
