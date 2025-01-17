@@ -589,12 +589,16 @@ def display_bowl_view():
 
         st.plotly_chart(fig)
 
-###-------------------------------------LATEST 15 INNINGS-------------------------------------###
+        # Display the filtered dataframe
+        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Filtered DataFrame</h3>", unsafe_allow_html=True)
+        #st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+
+###-------------------------------------LATEST 20 INNINGS-------------------------------------###
         # Create latest innings dataframe
         latest_inns_df = filtered_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
             'Bowl_Team': 'first',
             'Bat_Team': 'first',
-            'Overs': 'sum',
+            'Bowler_Overs': 'sum',
             'Maidens': 'sum',
             'Bowler_Runs': 'sum',
             'Bowler_Wkts': 'sum'
@@ -611,16 +615,16 @@ def display_bowl_view():
 
         # Process and sort dates
         latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'])
-        latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(15)
+        latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(20)
         latest_inns_df['Date'] = latest_inns_df['Date'].dt.strftime('%d/%m/%Y')
 
         # Format Overs to 1 decimal place
-        latest_inns_df['Overs'] = latest_inns_df['Overs'].apply(lambda x: f"{x:.1f}")
+        latest_inns_df['Bowler_Overs'] = latest_inns_df['Bowler_Overs'].apply(lambda x: f"{x:.1f}")
 
         # Reorder columns
         latest_inns_df = latest_inns_df[[
             'Name', 'Format', 'Date', 'Innings', 'Team', 'Opponent',
-            'Overs', 'Maidens', 'Runs', 'Wickets'
+            'Bowler_Overs', 'Maidens', 'Runs', 'Wickets'
         ]]
 
         # Apply conditional formatting
@@ -637,9 +641,72 @@ def display_bowl_view():
         # Style the dataframe
         styled_df = latest_inns_df.style.applymap(color_wickets, subset=['Wickets'])
 
+        # Convert overs to balls
+        latest_inns_df['Balls'] = (latest_inns_df['Bowler_Overs'].apply(lambda x: int(float(x)) * 6 + int((float(x) % 1) * 10))).astype(int)
+
+        # Calculate summary statistics for the last 20 innings
+        last_20_stats = latest_inns_df.agg({
+            'Balls': 'sum',
+            'Runs': 'sum',
+            'Wickets': 'sum',
+            'Maidens': 'sum'
+        }).to_dict()
+        last_20_stats['Overs'] = (last_20_stats['Balls'] // 6) + (last_20_stats['Balls'] % 6) / 10
+
+        last_20_stats['Average'] = last_20_stats['Runs'] / last_20_stats['Wickets'] if last_20_stats['Wickets'] > 0 else 0
+        last_20_stats['Strike Rate'] = last_20_stats['Balls'] / last_20_stats['Wickets'] if last_20_stats['Wickets'] > 0 else 0
+        last_20_stats['Economy Rate'] = last_20_stats['Runs'] / (last_20_stats['Overs']) if last_20_stats['Balls'] > 0 else 0
+
+        # Display summary cards
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 20 Bowling Innings</h3>", unsafe_allow_html=True)
+        col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+
+        with col1:
+            st.metric("Overs", f"{last_20_stats['Overs']:.1f}", border=True)
+        with col2:
+            st.metric("Maidens", last_20_stats['Maidens'], border=True)
+        with col3:
+            st.metric("Runs", last_20_stats['Runs'], border=True)
+        with col4:
+            st.metric("Wickets", last_20_stats['Wickets'], border=True)
+        with col5:
+            st.metric("Average", f"{last_20_stats['Average']:.2f}", border=True)
+        with col6:
+            st.metric("Strike Rate", f"{last_20_stats['Strike Rate']:.2f}", border=True)
+        with col7:
+            st.metric("Economy Rate", f"{last_20_stats['Economy Rate']:.2f}", border=True)
+
         # Display section header and dataframe
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 15 Bowling Innings</h3>", unsafe_allow_html=True)
         st.dataframe(styled_df, height=575, use_container_width=True, hide_index=True)
+
+        # Ensure 'Date' column is in datetime format
+        filtered_df['Date'] = pd.to_datetime(filtered_df['Date'], format='%d %b %Y')
+
+        # Calculate the last 20 innings for each player per format
+        last_20_innings_per_format = filtered_df.groupby(['Name', 'Match_Format']).apply(lambda x: x.nlargest(20, 'Date')).reset_index(drop=True)
+
+        # Display a dataframe with Name, Match_Format, and calculated metrics
+        metrics_df = last_20_innings_per_format.groupby(['Name', 'Match_Format']).agg({
+            'Bowler_Balls': 'sum',
+            'Bowler_Runs': 'sum',
+            'Bowler_Wkts': 'sum',
+            'Maidens': 'sum'
+        }).reset_index()
+
+        # Calculate Average, Strike Rate, and Economy Rate
+        metrics_df['Average'] = (metrics_df['Bowler_Runs'] / metrics_df['Bowler_Wkts']).round(2)
+        metrics_df['Strike Rate'] = (metrics_df['Bowler_Balls'] / metrics_df['Bowler_Wkts']).round(2)
+        metrics_df['Economy Rate'] = (metrics_df['Bowler_Runs'] / (metrics_df['Bowler_Balls'] / 6)).round(2)
+
+        # Calculate Overs from Balls
+        metrics_df['Overs'] = (metrics_df['Bowler_Balls'] // 6) + (metrics_df['Bowler_Balls'] % 6) / 10
+
+        # Rename columns for clarity
+        metrics_df.columns = ['Name', 'Match_Format', 'Balls', 'Runs', 'Wickets', 'Maidens', 'Average', 'Strike Rate', 'Economy Rate', 'Overs']
+
+        # Display the dataframe
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Summary Metrics</h3>", unsafe_allow_html=True)
+        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
 
 ###-------------------------------------OPPONENT STATS-------------------------------------###
         # Calculate statistics dataframe for opponents
