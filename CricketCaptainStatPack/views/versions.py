@@ -17,8 +17,13 @@ def get_image_path(filename):
     return f"CricketCaptainStatPack/assets/images/{filename}"
 
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Version History</h1>", unsafe_allow_html=True)
-
 versions_data = [
+    {
+        "version": "1.18, 2025-01-18",
+        "title": "Brand New Series Head-to-Head Visuals",
+        "description": "Explore cricket like never before with our new Series Head-to-Head visuals! Dive into detailed series history, trends, and team form across multiple formats with intuitive and interactive graphics. These visuals make it easy to analyze matchups, identify patterns, and compare performance across Test, ODI, and T20I formats. Gain valuable insights and make informed decisions with our latest feature.",
+        "screenshot": get_image_path("v1.18_series_headtohead.png")
+    },
     {
         "version": "1.17, 2025-01-17",
         "title": "Fixed Column Navigation Enhancement",
