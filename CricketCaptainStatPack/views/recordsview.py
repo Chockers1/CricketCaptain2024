@@ -228,56 +228,58 @@ def process_consecutive_scores(filtered_bat_df, threshold):
     if filtered_bat_df is None or filtered_bat_df.empty:
         return pd.DataFrame()
     
-    # Sort by date and name
-    df = filtered_bat_df.sort_values(['Name', 'Date'])
+    # Sort by name, format and date
+    df = filtered_bat_df.sort_values(['Name', 'Match_Format', 'Date'])
     
     # Initialize variables for tracking streaks
-    current_streaks = {}
+    current_streaks = {}  # Will use (name, format) as key
     best_streaks = {}
     streak_dates = {}
     
     for _, row in df.iterrows():
         name = row['Name']
+        match_format = row['Match_Format']
+        key = (name, match_format)  # Composite key
         runs = row['Runs']
         date = row['Date']
         
-        if name not in current_streaks:
-            current_streaks[name] = 0
-            best_streaks[name] = 0
-            streak_dates[name] = {'start': None, 'end': None, 'current_start': None}
+        if key not in current_streaks:
+            current_streaks[key] = 0
+            best_streaks[key] = 0
+            streak_dates[key] = {'start': None, 'end': None, 'current_start': None}
         
         if runs >= threshold:
-            if current_streaks[name] == 0:
-                streak_dates[name]['current_start'] = date
+            if current_streaks[key] == 0:
+                streak_dates[key]['current_start'] = date
             
-            current_streaks[name] += 1
+            current_streaks[key] += 1
             
-            if current_streaks[name] > best_streaks[name]:
-                best_streaks[name] = current_streaks[name]
-                streak_dates[name]['start'] = streak_dates[name]['current_start']
-                streak_dates[name]['end'] = date
+            if current_streaks[key] > best_streaks[key]:
+                best_streaks[key] = current_streaks[key]
+                streak_dates[key]['start'] = streak_dates[key]['current_start']
+                streak_dates[key]['end'] = date
         else:
-            current_streaks[name] = 0
-            streak_dates[name]['current_start'] = None
+            current_streaks[key] = 0
+            streak_dates[key]['current_start'] = None
     
     # Create DataFrame from streak data
     streak_records = []
-    for name in best_streaks:
-        if best_streaks[name] >= 2:  # Only include streaks of 2 or more matches
+    for (name, match_format) in best_streaks:
+        if best_streaks[(name, match_format)] >= 2:  # Only include streaks of 2 or more matches
             streak_info = {
                 'Name': name,
-                'Consecutive Matches': best_streaks[name],
-                'Start Date': streak_dates[name]['start'].strftime('%d/%m/%Y'),
-                'End Date': streak_dates[name]['end'].strftime('%d/%m/%Y')
+                'Match_Format': match_format,
+                'Consecutive Matches': best_streaks[(name, match_format)],
+                'Start Date': streak_dates[(name, match_format)]['start'].strftime('%d/%m/%Y'),
+                'End Date': streak_dates[(name, match_format)]['end'].strftime('%d/%m/%Y')
             }
             streak_records.append(streak_info)
     
     # If no streaks found, return empty DataFrame with correct columns
     if not streak_records:
-        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
+        return pd.DataFrame(columns=['Name', 'Match_Format', 'Consecutive Matches', 'Start Date', 'End Date'])
     
     return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
-
 
 def process_not_out_99s(filtered_bat_df):
     """Process 99 not out data"""
@@ -309,8 +311,8 @@ def process_carrying_bat(filtered_bat_df):
         return pd.DataFrame()
         
     columns_to_drop = [
-        'Bat_Team_x', 'Bowl_Team_x', 'File Name', 'Total_Runs', 
-        'Overs', 'Wickets', 'Competition', 'Batted', 'Out',
+        'Bat_Team_x', 'Bowl_Team_x', 'File Name', 
+        'Overs', 'Competition', 'Batted', 'Out',
         'Not Out', '50s', '100s', '200s', '<25&Out', 
         'Caught', 'Bowled', 'LBW', 'Stumped', 'Run Out',
         'Boundary Runs', 'Team Balls', 'Year', 'Player_of_the_Match'
@@ -324,8 +326,14 @@ def process_carrying_bat(filtered_bat_df):
         .sort_values(by='Runs', ascending=False)
         .rename(columns={
             'Bat_Team_y': 'Bat Team',
-            'Bowl_Team_y': 'Bowl Team'
+            'Bowl_Team_y': 'Bowl Team',
+            'Total_Runs': 'Team Total',
+            'Wickets': 'Team Wickets'
         }))
+    
+    # Reorder columns to show desired information
+    df = df[['Name', 'Bat Team', 'Bowl Team', 'Runs', 'Team Total', 'Team Wickets', 
+             'Balls', '4s', '6s', 'Match_Format', 'Date']]
     
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
@@ -450,6 +458,8 @@ with tabs[0]:
         highest_scores_df = process_highest_scores(filtered_bat_df)
         if not highest_scores_df.empty:
             st.dataframe(highest_scores_df, use_container_width=True, hide_index=True)
+
+       
 
         # Consecutive 50+ Scores
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 50+ Scores</h3>", 
@@ -739,7 +749,7 @@ with tabs[1]:
 ###############################################################################
 def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     """Process wins data by type and margin"""
-    if filtered_match_df is None or filtered_match_df.empty:
+    if filtered_match_df is None or filtered_match_df is None or filtered_match_df.empty:
         return pd.DataFrame()
     
     # Rest of the function remains the same
@@ -1141,9 +1151,7 @@ if __name__ == "__main__":
         # Clear memory
         gc.collect()
         
-        # Rest of your code...
-        # ...existing code...
-        
+
     except Exception as e:
         st.error(f"Application error: {str(e)}")
         st.error(f"Current memory usage: {sys.getsizeof(st.session_state) / (1024 * 1024):.2f} MB")
