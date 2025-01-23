@@ -87,40 +87,59 @@ def calculate_peak_ratings(rankings_df):
 
 def display_number_one_rankings(bat_df, bowl_df):
     """Display #1 Rankings tab content"""
+    # Add format filter at the top
+    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Format Filter</h3>", unsafe_allow_html=True)
+    
+    # Get all unique formats from both dataframes
+    all_formats = sorted(set(bat_df['Match_Format'].unique()) | set(bowl_df['Match_Format'].unique()))
+    selected_format = st.multiselect(
+        "Filter by Format",
+        options=all_formats,
+        key="no1_formats"
+    )
+
+    # Filter dataframes by format if selected
+    filtered_bat_df = bat_df.copy()
+    filtered_bowl_df = bowl_df.copy()
+    
+    if selected_format:
+        filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(selected_format)]
+        filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(selected_format)]
+
     # Original yearly best performers section
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Yearly Best Performers</h3>", unsafe_allow_html=True)
     
-    # Calculate yearly bests (existing code remains the same)
-    batting_by_player = bat_df.groupby(['Year', 'Name'])['Batting_Rating'].sum().reset_index()
-    best_batting = batting_by_player.groupby('Year').apply(
+    # Calculate yearly bests using filtered data
+    batting_by_player = filtered_bat_df.groupby(['Year', 'Match_Format', 'Name'])['Batting_Rating'].sum().reset_index()
+    best_batting = batting_by_player.groupby(['Year', 'Match_Format']).apply(
         lambda x: f"{x.loc[x['Batting_Rating'].idxmax(), 'Name']} - {x['Batting_Rating'].max():.0f}" 
         if x['Batting_Rating'].max() > 0 else "-"
     ).reset_index(name='Best_Batting')
 
-    bowling_by_player = bowl_df.groupby(['Year', 'Name'])['Bowling_Rating'].sum().reset_index()
-    best_bowling = bowling_by_player.groupby('Year').apply(
+    bowling_by_player = filtered_bowl_df.groupby(['Year', 'Match_Format', 'Name'])['Bowling_Rating'].sum().reset_index()
+    best_bowling = bowling_by_player.groupby(['Year', 'Match_Format']).apply(
         lambda x: f"{x.loc[x['Bowling_Rating'].idxmax(), 'Name']} - {x['Bowling_Rating'].max():.0f}" 
         if x['Bowling_Rating'].max() > 0 else "-"
     ).reset_index(name='Best_Bowling')
 
-    # Calculate AR ratings
+    # Calculate AR ratings with Match_Format
     yearly_ar = pd.merge(
         batting_by_player,
         bowling_by_player,
-        on=['Year', 'Name'],
+        on=['Year', 'Match_Format', 'Name'],
         how='outer'
     ).fillna(0)
     
     yearly_ar['AR_Rating'] = yearly_ar['Batting_Rating'] + yearly_ar['Bowling_Rating']
-    best_ar = yearly_ar.groupby('Year').apply(
+    best_ar = yearly_ar.groupby(['Year', 'Match_Format']).apply(
         lambda x: f"{x.loc[x['AR_Rating'].idxmax(), 'Name']} - {x['AR_Rating'].max():.0f}" 
         if x['AR_Rating'].max() > 0 else "-"
     ).reset_index(name='Best_AllRounder')
 
     # Combine summaries
-    yearly_summary = pd.merge(best_batting, best_bowling, on='Year', how='outer')
-    yearly_summary = pd.merge(yearly_summary, best_ar, on='Year', how='outer')
-    yearly_summary = yearly_summary.sort_values('Year', ascending=False)
+    yearly_summary = pd.merge(best_batting, best_bowling, on=['Year', 'Match_Format'], how='outer')
+    yearly_summary = pd.merge(yearly_summary, best_ar, on=['Year', 'Match_Format'], how='outer')
+    yearly_summary = yearly_summary.sort_values(['Year', 'Match_Format'], ascending=[False, True])
 
     # Display yearly summary
     st.dataframe(
@@ -130,27 +149,26 @@ def display_number_one_rankings(bat_df, bowl_df):
         height=(len(yearly_summary) + 1) * 35,
         column_config={
             "Year": st.column_config.NumberColumn(format="%d"),
+            "Match_Format": "Format",
             "Best_Batting": "Batting",
             "Best_Bowling": "Bowling",
             "Best_AllRounder": "All-Rounder"
         }
     )
 
-
-
     # Peak Achievements
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Peak Rating Achievements</h3>", unsafe_allow_html=True)
     
-    # Calculate peak ratings
-    batting_peaks = batting_by_player.groupby('Name')['Batting_Rating'].max().reset_index()
-    bowling_peaks = bowling_by_player.groupby('Name')['Bowling_Rating'].max().reset_index()
-    ar_peaks = yearly_ar.groupby('Name')['AR_Rating'].max().reset_index()
+    # Calculate peak ratings by format
+    batting_peaks = batting_by_player.groupby(['Name', 'Match_Format'])['Batting_Rating'].max().reset_index()
+    bowling_peaks = bowling_by_player.groupby(['Name', 'Match_Format'])['Bowling_Rating'].max().reset_index()
+    ar_peaks = yearly_ar.groupby(['Name', 'Match_Format'])['AR_Rating'].max().reset_index()
 
     # Combine peak ratings
-    peaks = pd.merge(batting_peaks, bowling_peaks, on='Name', how='outer', suffixes=('_Bat', '_Bowl'))
-    peaks = pd.merge(peaks, ar_peaks, on='Name', how='outer')
+    peaks = pd.merge(batting_peaks, bowling_peaks, on=['Name', 'Match_Format'], how='outer', suffixes=('_Bat', '_Bowl'))
+    peaks = pd.merge(peaks, ar_peaks, on=['Name', 'Match_Format'], how='outer')
     peaks = peaks.fillna(0)
-    peaks = peaks.sort_values('AR_Rating', ascending=False)
+    peaks = peaks.sort_values(['Match_Format', 'AR_Rating'], ascending=[True, False])
 
     st.dataframe(
         peaks,
@@ -159,6 +177,7 @@ def display_number_one_rankings(bat_df, bowl_df):
         height=400,
         column_config={
             "Name": "Player",
+            "Match_Format": "Format",
             "Batting_Rating_Bat": "Peak Batting Rating",
             "Bowling_Rating_Bowl": "Peak Bowling Rating",
             "AR_Rating": "Peak All-Rounder Rating"
@@ -168,26 +187,26 @@ def display_number_one_rankings(bat_df, bowl_df):
     # Number of times ranked #1
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Number of Times Ranked #1</h3>", unsafe_allow_html=True)
     
-    # Calculate #1 rankings
+    # Calculate #1 rankings by format
     batting_tops = batting_by_player.copy()
-    batting_tops['Rank'] = batting_tops.groupby('Year')['Batting_Rating'].rank(method='min', ascending=False)
-    batting_no1 = batting_tops[batting_tops['Rank'] == 1].groupby('Name').size().reset_index(name='Batting_#1')
+    batting_tops['Rank'] = batting_tops.groupby(['Year', 'Match_Format'])['Batting_Rating'].rank(method='min', ascending=False)
+    batting_no1 = batting_tops[batting_tops['Rank'] == 1].groupby(['Name', 'Match_Format']).size().reset_index(name='Batting_#1')
 
     bowling_tops = bowling_by_player.copy()
-    bowling_tops['Rank'] = bowling_tops.groupby('Year')['Bowling_Rating'].rank(method='min', ascending=False)
-    bowling_no1 = bowling_tops[bowling_tops['Rank'] == 1].groupby('Name').size().reset_index(name='Bowling_#1')
+    bowling_tops['Rank'] = bowling_tops.groupby(['Year', 'Match_Format'])['Bowling_Rating'].rank(method='min', ascending=False)
+    bowling_no1 = bowling_tops[bowling_tops['Rank'] == 1].groupby(['Name', 'Match_Format']).size().reset_index(name='Bowling_#1')
 
     ar_tops = yearly_ar.copy()
-    ar_tops['Rank'] = ar_tops.groupby('Year')['AR_Rating'].rank(method='min', ascending=False)
-    ar_no1 = ar_tops[ar_tops['Rank'] == 1].groupby('Name').size().reset_index(name='AllRounder_#1')
+    ar_tops['Rank'] = ar_tops.groupby(['Year', 'Match_Format'])['AR_Rating'].rank(method='min', ascending=False)
+    ar_no1 = ar_tops[ar_tops['Rank'] == 1].groupby(['Name', 'Match_Format']).size().reset_index(name='AllRounder_#1')
 
     # Combine all #1 rankings
-    all_no1 = pd.merge(batting_no1, bowling_no1, on='Name', how='outer')
-    all_no1 = pd.merge(all_no1, ar_no1, on='Name', how='outer')
+    all_no1 = pd.merge(batting_no1, bowling_no1, on=['Name', 'Match_Format'], how='outer')
+    all_no1 = pd.merge(all_no1, ar_no1, on=['Name', 'Match_Format'], how='outer')
     all_no1 = all_no1.fillna(0)
     all_no1[['Batting_#1', 'Bowling_#1', 'AllRounder_#1']] = all_no1[['Batting_#1', 'Bowling_#1', 'AllRounder_#1']].astype(int)
     all_no1['Total_#1'] = all_no1['Batting_#1'] + all_no1['Bowling_#1'] + all_no1['AllRounder_#1']
-    all_no1 = all_no1.sort_values('Total_#1', ascending=False)
+    all_no1 = all_no1.sort_values(['Match_Format', 'Total_#1'], ascending=[True, False])
 
     st.dataframe(
         all_no1,
@@ -196,6 +215,7 @@ def display_number_one_rankings(bat_df, bowl_df):
         height=400,
         column_config={
             "Name": "Player",
+            "Match_Format": "Format",
             "Batting_#1": "Batting #1",
             "Bowling_#1": "Bowling #1",
             "AllRounder_#1": "All-Rounder #1",
@@ -260,7 +280,7 @@ def display_batting_rankings(bat_df):
     bat_df['Centuries'] = bat_df['Runs'].apply(lambda x: 1 if x >= 100 else 0)
     bat_df['Double_Centuries'] = bat_df['Runs'].apply(lambda x: 1 if x >= 200 else 0)
 
-    batting_rankings = bat_df.groupby(['Year', 'Name', 'Team']).agg({
+    batting_rankings = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
         'File Name': 'nunique',
         'Batting_Rating': 'sum',
         'Runs': 'sum',
@@ -288,7 +308,7 @@ def display_batting_rankings(bat_df):
 
     # Filters section
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Filters</h3>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         selected_names = st.multiselect(
@@ -303,8 +323,15 @@ def display_batting_rankings(bat_df):
             options=sorted(batting_rankings['Team'].unique()),
             key="batting_teams"
         )
-        
+    
     with col3:
+        selected_formats = st.multiselect(
+            "Filter by Format",
+            options=sorted(batting_rankings['Match_Format'].unique()),
+            key="batting_formats"
+        )
+        
+    with col4:
         min_matches = st.number_input(
             "Minimum Season Matches",
             min_value=1,
@@ -317,13 +344,15 @@ def display_batting_rankings(bat_df):
         filtered_batting = filtered_batting[filtered_batting['Name'].isin(selected_names)]
     if selected_teams:
         filtered_batting = filtered_batting[filtered_batting['Team'].isin(selected_teams)]
+    if selected_formats:
+        filtered_batting = filtered_batting[filtered_batting['Match_Format'].isin(selected_formats)]
     filtered_batting = filtered_batting[filtered_batting['Matches'] >= min_matches]
     filtered_batting = filtered_batting.sort_values(['Year', 'Rank'], ascending=[False, True])
 
-    # Career Statistics Summary
+    # Career Statistics Summary - Modified to include total Rating
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Career Statistics</h3>", unsafe_allow_html=True)
     
-    career_stats = filtered_batting.groupby('Name').agg({
+    career_stats = filtered_batting.groupby(['Name', 'Match_Format']).agg({
         'Matches': 'sum',
         'Total_Runs': 'sum',
         'Average': 'mean',
@@ -332,19 +361,27 @@ def display_batting_rankings(bat_df):
         'Double_Centuries': 'sum',
         '4s': 'sum',
         '6s': 'sum',
-        'Rating': 'mean'
+        'Rating': ['sum', 'mean']  # Now calculating both sum and mean
     }).round(2)
     
-    career_stats = career_stats.sort_values('Rating', ascending=False)
+    # Flatten the column names
+    career_stats.columns = ['Matches', 'Total_Runs', 'Average', 'Strike_Rate', 
+                          'Centuries', 'Double_Centuries', '4s', '6s', 
+                          'Total_Rating', 'Avg_Rating']
+    
+    career_stats = career_stats.sort_values(['Name', 'Match_Format'])
+    career_stats = career_stats.reset_index()
     
     st.dataframe(
         career_stats,
         use_container_width=True,
-        hide_index=False,
+        hide_index=True,
         height=400,
         column_config={
             "Name": "Player",
-            "Rating": "Average Season Rating",
+            "Match_Format": "Format",
+            "Total_Rating": "Total Rating Points",
+            "Avg_Rating": "Average Season Rating",
             "Total_Runs": "Career Runs",
             "Average": "Batting Average",
             "Strike_Rate": "Strike Rate",
@@ -493,7 +530,7 @@ def display_bowling_rankings(bowl_df):
     bowl_df['Ten_Wickets'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 10 else 0)
 
     # Create bowling rankings
-    bowling_rankings = bowl_df.groupby(['Year', 'Name', 'Team']).agg({
+    bowling_rankings = bowl_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
         'File Name': 'nunique',
         'Bowling_Rating': 'sum',
         'Bowler_Wkts': 'sum',
@@ -519,7 +556,7 @@ def display_bowling_rankings(bowl_df):
 
     # Filters section
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Filters</h3>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         selected_names = st.multiselect(
@@ -534,8 +571,15 @@ def display_bowling_rankings(bowl_df):
             options=sorted(bowling_rankings['Team'].unique()),
             key="bowling_teams"
         )
-        
+    
     with col3:
+        selected_formats = st.multiselect(
+            "Filter by Format",
+            options=sorted(bowling_rankings['Match_Format'].unique()),
+            key="bowling_formats"
+        )
+        
+    with col4:
         min_matches = st.number_input(
             "Minimum Matches",
             min_value=1,
@@ -549,13 +593,15 @@ def display_bowling_rankings(bowl_df):
         filtered_bowling = filtered_bowling[filtered_bowling['Name'].isin(selected_names)]
     if selected_teams:
         filtered_bowling = filtered_bowling[filtered_bowling['Team'].isin(selected_teams)]
+    if selected_formats:
+        filtered_bowling = filtered_bowling[filtered_bowling['Match_Format'].isin(selected_formats)]
     filtered_bowling = filtered_bowling[filtered_bowling['Matches'] >= min_matches]
     filtered_bowling = filtered_bowling.sort_values(['Year', 'Rank'], ascending=[False, True])
 
-    # Career Statistics Summary
+    # Career Statistics Summary - Modified to include total Rating
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Career Statistics</h3>", unsafe_allow_html=True)
     
-    career_stats = filtered_bowling.groupby('Name').agg({
+    career_stats = filtered_bowling.groupby(['Name', 'Match_Format']).agg({
         'Matches': 'sum',
         'Total_Wickets': 'sum',
         'Average': 'mean',
@@ -564,19 +610,27 @@ def display_bowling_rankings(bowl_df):
         'Five_Wickets': 'sum',
         'Ten_Wickets': 'sum',
         'Maidens': 'sum',
-        'Rating': 'mean'
+        'Rating': ['sum', 'mean']  # Now calculating both sum and mean
     }).round(2)
     
-    career_stats = career_stats.sort_values('Rating', ascending=False)
+    # Flatten the column names
+    career_stats.columns = ['Matches', 'Total_Wickets', 'Average', 'Strike_Rate',
+                          'Economy', 'Five_Wickets', 'Ten_Wickets', 'Maidens',
+                          'Total_Rating', 'Avg_Rating']
+    
+    career_stats = career_stats.sort_values(['Name', 'Match_Format'])
+    career_stats = career_stats.reset_index()
     
     st.dataframe(
         career_stats,
         use_container_width=True,
-        hide_index=False,
+        hide_index=True,
         height=400,
         column_config={
             "Name": "Player",
-            "Rating": "Average Season Rating",
+            "Match_Format": "Format",
+            "Total_Rating": "Total Rating Points",
+            "Avg_Rating": "Average Season Rating",
             "Total_Wickets": "Career Wickets",
             "Average": "Bowling Average",
             "Strike_Rate": "Strike Rate",
@@ -697,22 +751,23 @@ def display_bowling_rankings(bowl_df):
 def display_allrounder_rankings(bat_df, bowl_df):
     """Display All-Rounder Rankings tab content"""
     # Create all-rounder rankings
-    all_rounder_rankings = bat_df.groupby(['Year', 'Name', 'Team']).agg({
+    all_rounder_rankings = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
         'File Name': 'nunique',
         'Batting_Rating': 'sum',
         'Runs': 'sum'
     }).reset_index()
 
     # Merge bowling stats
-    bowling_stats = bowl_df.groupby(['Year', 'Name']).agg({
+    bowling_stats = bowl_df.groupby(['Year', 'Name', 'Match_Format']).agg({
         'Bowling_Rating': 'sum',
         'Bowler_Wkts': 'sum'
     }).reset_index()
 
+    # Modify the merge to include Match_Format
     all_rounder_rankings = pd.merge(
         all_rounder_rankings,
         bowling_stats,
-        on=['Year', 'Name'],
+        on=['Year', 'Name', 'Match_Format'],
         how='outer'
     )
 
@@ -739,28 +794,35 @@ def display_allrounder_rankings(bat_df, bowl_df):
 
     # Add filters
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>Filters</h3>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        years = sorted(qualified_rankings['Year'].unique(), reverse=True)
-        selected_years = st.multiselect(
-            "Filter by Year",
-            options=years,
-            key="ar_years"
-        )
-
-    with col2:
         selected_names = st.multiselect(
             "Filter by Player Name",
             options=sorted(qualified_rankings['Name'].unique()),
             key="ar_names"
         )
 
-    with col3:
+    with col2:
         selected_teams = st.multiselect(
             "Filter by Team",
             options=sorted(qualified_rankings['Team'].unique()),
             key="ar_teams"
+        )
+    
+    with col3:
+        selected_formats = st.multiselect(
+            "Filter by Format",
+            options=sorted(qualified_rankings['Match_Format'].unique()),
+            key="ar_formats"
+        )
+
+    with col4:
+        years = sorted(qualified_rankings['Year'].unique(), reverse=True)
+        selected_years = st.multiselect(
+            "Filter by Year",
+            options=years,
+            key="ar_years"
         )
 
     # Apply filters
@@ -772,11 +834,48 @@ def display_allrounder_rankings(bat_df, bowl_df):
         filtered_ar = filtered_ar[filtered_ar['Name'].isin(selected_names)]
     if selected_teams:
         filtered_ar = filtered_ar[filtered_ar['Team'].isin(selected_teams)]
+    if selected_formats:
+        filtered_ar = filtered_ar[filtered_ar['Match_Format'].isin(selected_formats)]
 
     filtered_ar = filtered_ar.sort_values(['Year', 'Rank'], ascending=[False, True])
 
-    # Display rankings
+    # Display rankings - Modified to include Format in grouping
     st.markdown("<h3 style='text-align: center; color:#f04f53;'>All-Rounder Rankings</h3>", unsafe_allow_html=True)
+    
+    # First calculate career stats by format
+    career_stats = filtered_ar.groupby(['Name', 'Match_Format']).agg({
+        'File Name': 'sum',
+        'Runs': 'sum',
+        'Bowler_Wkts': 'sum',
+        'Batting_RPG': 'mean',
+        'Bowling_RPG': 'mean',
+        'AR_RPG': 'mean',
+        'AR_Rating': 'mean'
+    }).round(2)
+    
+    career_stats = career_stats.sort_values(['Name', 'Match_Format'])
+    career_stats = career_stats.reset_index()
+    
+    st.dataframe(
+        career_stats,
+        use_container_width=True,
+        hide_index=True,
+        height=400,
+        column_config={
+            "Name": "Player",
+            "Match_Format": "Format",
+            "File Name": "Total Matches",
+            "Runs": "Career Runs",
+            "Bowler_Wkts": "Career Wickets",
+            "Batting_RPG": "Avg Batting RPG",
+            "Bowling_RPG": "Avg Bowling RPG",
+            "AR_RPG": "Avg AR RPG",
+            "AR_Rating": "Average AR Rating"
+        }
+    )
+
+    # Then display the regular rankings table
+    st.markdown("<h3 style='text-align: center; color:#f04f53;'>Yearly Rankings</h3>", unsafe_allow_html=True)
     
     display_columns = [
         'Year', 'Rank', 'Name', 'Team', 'File Name', 
@@ -893,6 +992,7 @@ def display_allrounder_rankings(bat_df, bowl_df):
 def display_ar_view():
     """Main function to display all rankings views"""
     st.markdown("<h1 style='color:#f04f53; text-align: center;'>Player Rankings</h1>", unsafe_allow_html=True)
+
     
     # Add styling
     st.markdown("""<style>
@@ -926,7 +1026,7 @@ def display_ar_view():
     }
     </style>""", unsafe_allow_html=True)
     
-    # Rest of the function remains the same...
+    # Rest of the function remains the same... 
 
     
     if 'bat_df' not in st.session_state or 'bowl_df' not in st.session_state:
