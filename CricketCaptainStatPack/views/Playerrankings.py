@@ -234,7 +234,7 @@ def display_number_one_rankings(bat_df, bowl_df):
         score += row['AllRounder_#1'] * 15
         return score
 
-    # Calculate Hall of Fame scores
+    # Calculate Hall of Fame scores with Match_Format
     hof_data = all_no1.copy()
     hof_data['HOF_Score'] = hof_data.apply(calculate_hof_score, axis=1)
     
@@ -246,20 +246,22 @@ def display_number_one_rankings(bat_df, bowl_df):
             return f"{score}% to HOF"
             
     hof_data['HOF_Status'] = hof_data['HOF_Score'].apply(get_hof_status)
-    hof_data = hof_data.sort_values('HOF_Score', ascending=False)
+    hof_data = hof_data.sort_values(['Match_Format', 'HOF_Score'], ascending=[True, False])
 
     st.dataframe(
-        hof_data[['Name', 'HOF_Score', 'HOF_Status']],
+        hof_data[['Name', 'Match_Format', 'HOF_Score', 'HOF_Status']],
         use_container_width=True,
         hide_index=True,
         height=400,
         column_config={
             "Name": "Player",
+            "Match_Format": "Format",
             "HOF_Score": "Hall of Fame Score",
             "HOF_Status": "Status"
         }
     )
 
+    # ...rest of the function remains unchanged...
 
 def display_batting_rankings(bat_df):
     """Display Batting Rankings tab content"""
