@@ -519,22 +519,30 @@ def process_best_bowling(filtered_bowl_df):
     if filtered_bowl_df is None or filtered_bowl_df.empty:
         return pd.DataFrame()
     
-    df = (filtered_bowl_df[filtered_bowl_df['Bowler_Wkts'] >= 5]
-          .sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], 
-                      ascending=[False, True])
-          [['Innings', 'Position', 'Name', 'Bowler_Overs', 'Maidens', 
-            'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Econ', 'Bat_Team',
-            'Bowl_Team', 'Home_Team', 'Match_Format', 'Date']]
-          .rename(columns={
-              'Bowler_Overs': 'Overs',
-              'Bowler_Runs': 'Runs',
-              'Bowler_Wkts': 'Wickets',
-              'Bowler_Econ': 'Econ',
-              'Bat_Team': 'Bat Team',
-              'Bowl_Team': 'Bowl Team',
-              'Home_Team': 'Country',
-              'Match_Format': 'Format'
-          }))
+    df = (
+        filtered_bowl_df[filtered_bowl_df['Bowler_Wkts'] >= 5]
+        .sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True])
+        [
+            [
+                'Innings', 'Position', 'Name', 'Bowler_Overs', 'Maidens', 'Bowler_Runs',
+                'Bowler_Wkts', 'Bowler_Econ', 'Bat_Team', 'Bowl_Team', 'Home_Team',
+                'Match_Format', 'Date', 'comp'
+            ]
+        ]
+        .rename(
+            columns={
+                'Bowler_Overs': 'Overs',
+                'Bowler_Runs': 'Runs',
+                'Bowler_Wkts': 'Wickets',
+                'Bowler_Econ': 'Econ',
+                'Bat_Team': 'Bat Team',
+                'Bowl_Team': 'Bowl Team',
+                'Home_Team': 'Country',
+                'Match_Format': 'Format',
+                'comp': 'Competition'
+            }
+        )
+    )
     
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
@@ -542,59 +550,79 @@ def process_best_bowling(filtered_bowl_df):
 def process_consecutive_five_wickets(filtered_bowl_df):
     """Process consecutive matches with 5+ wickets"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
-        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
+        return pd.DataFrame(columns=['Name', 'Match_Format', 'Bowl_Team',
+                                   'Consecutive Matches', 'Start Date', 'End Date'])
     
-    # Sort by date and name
-    df = filtered_bowl_df.sort_values(['Name', 'Date'])
+    # Sort by name, format and date
+    df = filtered_bowl_df.sort_values(['Name', 'Match_Format', 'Date'])
     
-    # Initialize variables for tracking streaks
-    current_streaks = {}
+    # Initialize tracking dicts
+    current_streaks = {}  # Key: (name, format)
     best_streaks = {}
-    streak_dates = {}
+    streak_data = {}
     
     for _, row in df.iterrows():
         name = row['Name']
+        match_format = row['Match_Format']
+        key = (name, match_format)
         wickets = row['Bowler_Wkts']
         date = row['Date']
+        bowl_team = row['Bowl_Team']
         
-        if name not in current_streaks:
-            current_streaks[name] = 0
-            best_streaks[name] = 0
-            streak_dates[name] = {'start': None, 'end': None, 'current_start': None}
+        if key not in current_streaks:
+            current_streaks[key] = 0
+            best_streaks[key] = 0
+            streak_data[key] = {
+                'start': None,
+                'end': None,
+                'current_start': None,
+                'bowl_team': None,
+                'dates': []
+            }
         
         if wickets >= 5:
-            if current_streaks[name] == 0:
-                streak_dates[name]['current_start'] = date
+            if current_streaks[key] == 0:
+                streak_data[key]['current_start'] = date
+                streak_data[key]['bowl_team'] = bowl_team
             
-            current_streaks[name] += 1
+            current_streaks[key] += 1
+            streak_data[key]['dates'].append(date)
             
-            if current_streaks[name] > best_streaks[name]:
-                best_streaks[name] = current_streaks[name]
-                streak_dates[name]['start'] = streak_dates[name]['current_start']
-                streak_dates[name]['end'] = date
+            if current_streaks[key] > best_streaks[key]:
+                best_streaks[key] = current_streaks[key]
+                streak_data[key]['start'] = streak_data[key]['current_start']
+                streak_data[key]['end'] = date
         else:
-            current_streaks[name] = 0
-            streak_dates[name]['current_start'] = None
+            current_streaks[key] = 0
+            streak_data[key]['current_start'] = None
+            streak_data[key]['dates'] = []
     
     # Create DataFrame from streak data
     streak_records = []
-    for name in best_streaks:
-        if best_streaks[name] >= 2:  # Only include streaks of 2 or more matches
+    for (name, match_format) in best_streaks:
+        if best_streaks[(name, match_format)] >= 2:  # Only include streaks of 2 or more matches
+            # Get the Bowl_Team from the first match in the streak
+            streak_start = streak_data[(name, match_format)]['start']
+            streak_bowl_team = (df[(df['Name'] == name) & 
+                                 (df['Match_Format'] == match_format) & 
+                                 (df['Date'] == streak_start)]['Bowl_Team'].iloc[0])
+            
             streak_info = {
                 'Name': name,
-                'Consecutive Matches': best_streaks[name],
-                'Start Date': streak_dates[name]['start'].strftime('%d/%m/%Y'),
-                'End Date': streak_dates[name]['end'].strftime('%d/%m/%Y')
+                'Match_Format': match_format,
+                'Bowl_Team': streak_bowl_team,
+                'Consecutive Matches': best_streaks[(name, match_format)],
+                'Start Date': streak_data[(name, match_format)]['start'].strftime('%d/%m/%Y'),
+                'End Date': streak_data[(name, match_format)]['end'].strftime('%d/%m/%Y')
             }
             streak_records.append(streak_info)
     
     # If no streaks found, return empty DataFrame with correct columns
     if not streak_records:
-        return pd.DataFrame(columns=['Name', 'Consecutive Matches', 'Start Date', 'End Date'])
+        return pd.DataFrame(columns=['Name', 'Match_Format', 'Bowl_Team',
+                                   'Consecutive Matches', 'Start Date', 'End Date'])
     
     return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
-
-
 
 def process_five_wickets_both(filtered_bowl_df):
     """Process 5+ wickets in both innings data"""
@@ -720,6 +748,9 @@ with tabs[1]:
         best_bowling_df = process_best_bowling(filtered_bowl_df)
         if not best_bowling_df.empty:
             st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
+
+       
+        st.dataframe(filtered_bowl_df, use_container_width=True, hide_index=True)
 
         # Consecutive 5-Wicket Hauls
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 5+ Wickets</h3>", 
