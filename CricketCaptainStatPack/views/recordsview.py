@@ -750,7 +750,6 @@ with tabs[1]:
             st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
 
        
-        st.dataframe(filtered_bowl_df, use_container_width=True, hide_index=True)
 
         # Consecutive 5-Wicket Hauls
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 5+ Wickets</h3>", 
