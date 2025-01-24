@@ -406,6 +406,13 @@ with tabs[0]:
 with tabs[1]:
     st.markdown("### Current Rankings")
     
+    # Merge update_df into rankings_data to ensure it reflects the latest updates
+    if not st.session_state.update_df.empty:
+        st.session_state.rankings_data = pd.concat([st.session_state.rankings_data, st.session_state.update_df], ignore_index=True)
+        st.session_state.rankings_data = st.session_state.rankings_data.drop_duplicates(
+            subset=['Year', 'Format', 'Position', 'Team'], keep='last'
+        ).sort_values(by=['Year', 'Position'])
+    
     # Add a refresh button to manually refresh the data
     if st.button("Refresh Data"):
         st.rerun()
