@@ -406,6 +406,10 @@ with tabs[0]:
 with tabs[1]:
     st.markdown("### Current Rankings")
     
+    # Add a refresh button to manually refresh the data
+    if st.button("Refresh Data"):
+        st.rerun()
+    
     if not st.session_state.rankings_data.empty:
         # Add format filter
         format_filter = st.selectbox(
