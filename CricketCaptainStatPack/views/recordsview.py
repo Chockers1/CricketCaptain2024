@@ -1077,12 +1077,9 @@ def get_highest_chases(processed_game_df, filtered_match_df):
             how='left'
         )
         
-        # Check if 'comp' column exists
-        if 'comp' not in merged_df.columns:
-            st.error("Column 'comp' not found in the merged DataFrame.")
-            st.error(f"Available columns: {merged_df.columns.tolist()}")
-            return pd.DataFrame()
-
+        # Determine the correct column name for 'Competition'
+        competition_col = 'Competition_x' if 'Competition_x' in merged_df.columns else 'Competition_y'
+        
         # Filter for successful chases where:
         # - Test/First Class: 4th innings
         # - Other formats: 2nd innings 
@@ -1100,7 +1097,7 @@ def get_highest_chases(processed_game_df, filtered_match_df):
 
         # Select and rename columns
         chase_df = chase_df[['Bat_Team', 'Bowl_Team', 'Innings', 'Total_Runs', 'Wickets', 'Overs', 
-                            'Run_Rate', 'comp', 'Match_Format_x', 'Date', 'Margin_y']]
+                            'Run_Rate', competition_col, 'Match_Format_x', 'Date', 'Margin_y']]
         chase_df.columns = ['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs',
                            'Run Rate', 'Competition', 'Format', 'Date', 'Margin']
 
