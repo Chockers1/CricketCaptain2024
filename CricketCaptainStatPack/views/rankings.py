@@ -427,7 +427,7 @@ with tabs[1]:
             filtered_df = filtered_df.drop('Last Updated', axis=1)
         
         # Display the rankings table with sorted by Year (desc) and Position (asc)
-        display_df = filtered_df.sort_values(by=['Year', 'Format', 'Position'], ascending=[True, True, False])
+        display_df = filtered_df.sort_values(by=['Year', 'Format', 'Position'], ascending=[False, True, True])
         st.dataframe(
             display_df,
             use_container_width=True,
