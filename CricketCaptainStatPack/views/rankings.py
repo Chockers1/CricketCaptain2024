@@ -370,7 +370,7 @@ with tabs[0]:
                     }
                 
                 # Force refresh to show new data
-                st.experimental_rerun()
+                st.rerun()
 
     # Add Current Session Updates display before the Clear button
     st.markdown("### Current Session Updates")
@@ -398,7 +398,7 @@ with tabs[0]:
         with col2:
             if st.button("Clear Session Updates", key="clear_session_btn"):
                 st.session_state.update_df = pd.DataFrame(columns=['Year', 'Format', 'Position', 'Team', 'Rating'])
-                st.experimental_rerun()
+                st.rerun()
     else:
         st.info("No rankings have been saved in this session yet.")
 
