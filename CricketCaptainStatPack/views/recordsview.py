@@ -1077,19 +1077,23 @@ def get_highest_chases(processed_game_df, filtered_match_df):
             how='left'
         )
         
+        # Check if 'comp' column exists
+        if 'comp' not in merged_df.columns:
+            st.error("Column 'comp' not found in the merged DataFrame.")
+            st.error(f"Available columns: {merged_df.columns.tolist()}")
+            return pd.DataFrame()
+
         # Filter for successful chases where:
         # - Test/First Class: 4th innings
         # - Other formats: 2nd innings 
         # - Won by wickets
-        successful_chases = merged_df[
-            (
+        successful_chases = merged_df[(
             ((merged_df['Match_Format_x'].isin(['Test Match', 'First Class']) & (merged_df['Innings'] == 4)) |
             (~merged_df['Match_Format_x'].isin(['Test Match', 'First Class']) & (merged_df['Innings'] == 2))) &
             (merged_df['Margin_y'].str.contains('wickets|wicket', case=False, na=False)) &
             (merged_df.apply(lambda x: x['Bat_Team'].lower() in x['Margin_y'].lower() 
                        if pd.notnull(x['Margin_y']) else False, axis=1))
-            )
-        ]
+        )]
 
         # Sort by total runs descending
         chase_df = successful_chases.sort_values('Total_Runs', ascending=False)
