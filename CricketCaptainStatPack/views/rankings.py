@@ -2,25 +2,57 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import plotly.graph_objects as go
-import plotly.express as px
-import io
+from tkinter import filedialog
+import tkinter as tk
 
-# Add file upload option
-st.markdown("### Upload Previous Rankings (Optional) this is the rankings.csv from the Scorecard folder")
-uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'], key="rankings_file_uploader")
+# Add CSS styling
+st.markdown("""
+    <style>
+    /* Table styling */
+    table { 
+        color: black; 
+        width: 100%; 
+    }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    tbody tr:nth-child(even) { background-color: #f0f2f6; }
+    tbody tr:nth-child(odd) { background-color: white; }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        gap: 0px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+        padding: 1rem 0.5rem;
+        background-color: #f0f2f6;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e0e2e6;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    
+    /* DataFrame styling */
+    .dataframe {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Load data from uploaded file if it exists
-if uploaded_file is not None:
-    try:
-        uploaded_df = pd.read_csv(uploaded_file)
-        st.session_state.rankings_data = uploaded_df
-        st.success("Rankings loaded successfully!")
-    except Exception as e:
-        st.error(f"Error loading file: {str(e)}")
-
-# Initialize rankings_data in session state if it doesn't exist
+# Initialize all session state variables at the top
 if 'rankings_data' not in st.session_state:
-    st.session_state.rankings_data = pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Last Updated'])
+    st.session_state.rankings_data = pd.DataFrame(columns=['Position', 'Team', 'Rating', 'Year', 'Format', 'Last Updated'])
+
+if 'update_df' not in st.session_state:
+    st.session_state.update_df = pd.DataFrame(columns=['Year', 'Format', 'Position', 'Team', 'Rating'])
 
 # Remove local save path and define teams and positions
 TEAMS = [
@@ -29,22 +61,88 @@ TEAMS = [
 ]
 POSITIONS = list(range(1, 13))  # 1 to 12
 
-def save_data(df, append=True):
-    """Convert DataFrame to CSV and provide download link"""
+TEAM_COLORS = {
+    "Australia": "#fdcd3c",       # Yellow
+    "Bangladesh": "#006a4e",      # Dark Green
+    "England": "#1e22aa",         # Royal Blue
+    "India": "#0033FF",          # Blue
+    "Ireland": "#169b62",        # Green
+    "New Zealand": "#000000",    # Black
+    "Pakistan": "#00894c",       # Pakistan Green
+    "South Africa": "#007b2e",   # Green
+    "Sri Lanka": "#003478",      # Deep Blue
+    "West Indies": "#7b0041",    # Maroon
+    "Zimbabwe": "#d40000",       # Red
+    "Afghanistan": "#0066FF"     # Light Blue
+        }
+
+
+def save_data(df):
+    """Save DataFrame to CSV using Streamlit download button"""
     try:
-        # Convert DataFrame to CSV
         csv = df.to_csv(index=False)
-        
-        # Create download button
         st.download_button(
-            label="Download Rankings CSV",
+            label="Download CSV",
             data=csv,
             file_name=f"rankings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime='text/csv'
         )
         return True
     except Exception as e:
-        st.error(f"Error preparing data: {str(e)}")
+        st.error(f"Error saving data: {str(e)}")
+        return False
+
+def save_session_updates(df):
+    """Save session updates to CSV"""
+    try:
+        save_type = st.radio(
+            "Select save option:",
+            ["Create new file", "Append to existing file"],
+            key="save_type_radio"
+        )
+        
+        if save_type == "Create new file":
+            # Use Streamlit download button for new file
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"session_updates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime='text/csv',
+                key="download_new_btn"
+            )
+        else:  # Append to existing file
+            # Create a hidden tkinter root window
+            root = tk.Tk()
+            root.withdraw()
+            
+            # Open file dialog for selecting file to append to
+            file_path = filedialog.askopenfilename(
+                filetypes=[("CSV files", "*.csv")],
+                title="Select CSV file to append to"
+            )
+            
+            if file_path:  # If user selected a file
+                try:
+                    # Read existing CSV
+                    existing_df = pd.read_csv(file_path)
+                    # Append new data
+                    combined_df = pd.concat([existing_df, df], ignore_index=True)
+                    # Remove duplicates and sort
+                    combined_df = combined_df.drop_duplicates(
+                        subset=['Year', 'Format', 'Position', 'Team'], 
+                        keep='last'
+                    ).sort_values(by=['Year', 'Position'])
+                    # Save back to the same file
+                    combined_df.to_csv(file_path, index=False)
+                    st.success(f"Successfully appended data to {file_path}")
+                    return True
+                except Exception as e:
+                    st.error(f"Error appending to file: {str(e)}")
+                    return False
+        return True
+    except Exception as e:
+        st.error(f"Error saving session updates: {str(e)}")
         return False
 
 def clear_rankings():
@@ -70,124 +168,182 @@ def load_existing_data():
 # Title
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Rankings</h1>", unsafe_allow_html=True)
 
-# Year input at top
-st.markdown("### Insert Year")
-selected_year = st.number_input(
-    "Year",
-    min_value=1900,
-    max_value=2100,
-    value=datetime.now().year,
-    step=1,
-    key="year_input"  # Changed from global_year to year_input
-)
+# Create tabs using list approach
+tab_names = ["📊 Update Rankings", "📋 Current Rankings"]
+tabs = st.tabs(tab_names)
 
-# Initialize session state
-if 'current_rankings' not in st.session_state:
-    st.session_state.current_rankings = {}
-    existing_data = load_existing_data()
-    if not existing_data.empty:
-        for _, row in existing_data.iterrows():
-            st.session_state.current_rankings[row['Position']] = {
-                'team': row['Team'],
-                'rating': row['Rating'],
-                'year': selected_year
-            }
-    else:
-        for pos in POSITIONS:
-            st.session_state.current_rankings[pos] = {
-                'team': '',
-                'rating': 0,
-                'year': selected_year
-            }
-
-# Column headers
-col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    st.markdown("**Position**")
-with col2:
-    st.markdown("**Team**")
-with col3:
-    st.markdown("**Rating**")
-
-# Track used teams
-used_teams = [st.session_state.current_rankings[pos]['team'] for pos in POSITIONS 
-              if st.session_state.current_rankings[pos]['team'] and 
-              st.session_state.current_rankings[pos]['team'] != '']
-
-# Create rows for each position
-for pos in POSITIONS:
-    col1, col2, col3 = st.columns([1, 2, 1])
+# Use tabs[0] for Update Rankings content
+with tabs[0]:
+    # Add file upload option
+    st.markdown("### Step 1- Upload Previous Rankings or Insert Year, Format, Teams and Rating below")
+    uploaded_file = st.file_uploader("Upload your rankings CSV file", type=['csv'], key="rankings_file_uploader")
     
+    # Load data from uploaded file if it exists
+    if uploaded_file is not None:
+        try:
+            uploaded_df = pd.read_csv(uploaded_file)
+            # Ensure 'Format' column exists
+            if 'Format' not in uploaded_df.columns:
+                uploaded_df['Format'] = 'Test Match'
+            # Update rankings_data
+            st.session_state.rankings_data = uploaded_df
+            
+            # Create update_df data from uploaded file
+            update_data = {
+                'Year': [], 'Format': [], 'Position': [], 'Team': [], 'Rating': []
+            }
+            
+            # Extract data from uploaded file
+            for _, row in uploaded_df.iterrows():
+                update_data['Year'].append(row['Year'])
+                update_data['Format'].append(row['Format'])
+                update_data['Position'].append(row['Position'])
+                update_data['Team'].append(row['Team'])
+                update_data['Rating'].append(row['Rating'])
+            
+            # Create DataFrame and update session state
+            temp_df = pd.DataFrame(update_data)
+            if 'update_df' not in st.session_state:
+                st.session_state.update_df = temp_df
+            else:
+                st.session_state.update_df = pd.concat([st.session_state.update_df, temp_df], ignore_index=True)
+                st.session_state.update_df = st.session_state.update_df.drop_duplicates(
+                    subset=['Year', 'Format', 'Position', 'Team'], keep='last'
+                ).sort_values(by=['Year', 'Position'])
+                
+            st.success("Rankings loaded successfully and added to Current Session Updates (duplicates removed)!")
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
+
+    # Add the year and format inputs
+    col1, col2 = st.columns(2)
     with col1:
-        st.write(f"{pos}")
+        st.markdown("### Insert Year")
+        selected_year = st.number_input(
+            "Year", min_value=1900, max_value=2100, value=datetime.now().year, step=1, key="year_input"
+        )
     
     with col2:
-        current_team = st.session_state.current_rankings[pos]['team']
-        available_teams = [team for team in TEAMS if team not in used_teams or team == current_team]
-        available_teams.sort()
-        display_options = [''] + available_teams
-        
-        current_index = 0
-        if current_team and current_team in available_teams:
-            current_index = available_teams.index(current_team) + 1
-            
-        selected_team = st.selectbox(
-            f"Select team for position {pos}",
-            options=display_options,
-            index=current_index,
-            key=f"team_{pos}",
-            label_visibility='collapsed'
+        st.markdown("### Format")
+        selected_format = st.selectbox(
+            "Select Format", ["Test Match", "ODI", "T20I"], index=0, key="format_select"
         )
-        
-        if selected_team != st.session_state.current_rankings[pos]['team']:
-            st.session_state.current_rankings[pos]['team'] = selected_team
-            used_teams = [st.session_state.current_rankings[p]['team'] for p in POSITIONS 
-                         if st.session_state.current_rankings[p]['team'] and 
-                         st.session_state.current_rankings[p]['team'] != '']
     
-    with col3:
-        current_rating = st.session_state.current_rankings[pos]['rating']
-        rating = st.number_input(
-            f"Rating for position {pos}",
-            min_value=0,
-            max_value=1000,
-            value=int(current_rating),
-            step=1,
-            key=f"rating_{pos}",
-            label_visibility='collapsed'
-        )
-        st.session_state.current_rankings[pos]['rating'] = rating
-        st.session_state.current_rankings[pos]['year'] = selected_year
-
-def reset_form():
-    """Reset the form to default values"""
-    for pos in POSITIONS:
-        st.session_state.current_rankings[pos] = {
-            'team': '',
-            'rating': 0,
-            'year': selected_year
-        }
-
-# Create a row for the buttons - modify to have three equal columns
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("Save Rankings"):
-        if not any(st.session_state.current_rankings[pos]['team'] for pos in POSITIONS):
-            st.warning("No rankings to save. Please select teams and add ratings.")
+    # Initialize session state
+    if 'current_rankings' not in st.session_state:
+        st.session_state.current_rankings = {}
+        existing_data = load_existing_data()
+        if not existing_data.empty:
+            for _, row in existing_data.iterrows():
+                st.session_state.current_rankings[row['Position']] = {
+                    'team': row['Team'], 'rating': row['Rating'], 'year': selected_year
+                }
         else:
-            # Check for year duplicates
-            existing_data = load_existing_data()
-            if not existing_data.empty and selected_year in existing_data['Year'].unique():
-                st.warning(f"Data already exists for year {selected_year}. Please choose a different year or clear historical rankings.")
+            for pos in POSITIONS:
+                st.session_state.current_rankings[pos] = {
+                    'team': '', 'rating': 0, 'year': selected_year
+                }
+
+    # Column headers
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        st.markdown("**Position**")
+    with col2:
+        st.markdown("**Team**")
+    with col3:
+        st.markdown("**Rating**")
+
+    # Track used teams
+    used_teams = [st.session_state.current_rankings[pos]['team'] for pos in POSITIONS 
+                  if st.session_state.current_rankings[pos]['team'] and 
+                  st.session_state.current_rankings[pos]['team'] != '']
+
+    # Create rows for each position
+    for pos in POSITIONS:
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col1:
+            st.write(f"{pos}")
+        
+        with col2:
+            current_team = st.session_state.current_rankings[pos]['team']
+            available_teams = [team for team in TEAMS if team not in used_teams or team == current_team]
+            available_teams.sort()
+            display_options = [''] + available_teams
+            
+            current_index = 0
+            if current_team and current_team in available_teams:
+                current_index = available_teams.index(current_team) + 1
+                
+            selected_team = st.selectbox(
+                f"Select team for position {pos}",
+                options=display_options,
+                index=current_index,
+                key=f"team_{pos}",
+                label_visibility='collapsed'
+            )
+            
+            if selected_team != st.session_state.current_rankings[pos]['team']:
+                st.session_state.current_rankings[pos]['team'] = selected_team
+                used_teams = [st.session_state.current_rankings[p]['team'] for p in POSITIONS 
+                             if st.session_state.current_rankings[p]['team'] and 
+                             st.session_state.current_rankings[p]['team'] != '']
+        
+        with col3:
+            current_rating = st.session_state.current_rankings[pos]['rating']
+            rating = st.number_input(
+                f"Rating for position {pos}",
+                min_value=0,
+                max_value=1000,
+                value=int(current_rating),
+                step=1,
+                key=f"rating_{pos}",
+                label_visibility='collapsed'
+            )
+            st.session_state.current_rankings[pos]['rating'] = rating
+            st.session_state.current_rankings[pos]['year'] = selected_year
+
+    def reset_form():
+        """Reset the form to default values"""
+        for pos in POSITIONS:
+            st.session_state.current_rankings[pos] = {
+                'team': '', 'rating': 0, 'year': selected_year
+            }
+
+    # Create a row for the buttons - modify to have three equal columns
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("Step 2 - Click here to Save Rankings to Current State"):
+            if not any(st.session_state.current_rankings[pos]['team'] for pos in POSITIONS):
+                st.warning("No rankings to save. Please select teams and add ratings.")
             else:
-                # Create the rankings data
+                # Create the rankings data for update_df
+                update_data = {
+                    'Year': [], 'Format': [], 'Position': [], 'Team': [], 'Rating': []
+                }
+                
+                for pos in POSITIONS:
+                    if st.session_state.current_rankings[pos]['team'] and st.session_state.current_rankings[pos]['team'] != '':
+                        update_data['Year'].append(selected_year)
+                        update_data['Format'].append(selected_format)
+                        update_data['Position'].append(pos)
+                        update_data['Team'].append(st.session_state.current_rankings[pos]['team'])
+                        update_data['Rating'].append(int(st.session_state.current_rankings[pos]['rating']))
+                
+                # Create temporary DataFrame and concatenate with existing update_df
+                temp_df = pd.DataFrame(update_data)
+                if 'update_df' not in st.session_state:
+                    st.session_state.update_df = temp_df
+                else:
+                    st.session_state.update_df = pd.concat([st.session_state.update_df, temp_df], ignore_index=True)
+                    st.session_state.update_df = st.session_state.update_df.drop_duplicates(
+                        subset=['Year', 'Format', 'Position', 'Team'], keep='last'
+                    ).sort_values(by=['Year', 'Position'])
+                
+                # Create the rankings data for file saving
                 rankings_data = {
-                    'Position': [],
-                    'Team': [],
-                    'Rating': [],
-                    'Year': [],
-                    'Last Updated': []
+                    'Position': [], 'Team': [], 'Rating': [], 'Year': [], 'Format': [], 'Last Updated': []
                 }
                 
                 for pos in POSITIONS:
@@ -196,6 +352,7 @@ with col1:
                         rankings_data['Team'].append(st.session_state.current_rankings[pos]['team'])
                         rankings_data['Rating'].append(int(st.session_state.current_rankings[pos]['rating']))
                         rankings_data['Year'].append(selected_year)
+                        rankings_data['Format'].append(selected_format)
                         rankings_data['Last Updated'].append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                 
                 rankings_df = pd.DataFrame(rankings_data)
@@ -206,867 +363,808 @@ with col1:
                 else:
                     st.session_state.rankings_data = rankings_df
                 
-                # Save to CSV for download
+                # Save the data using Streamlit download button
                 save_data(st.session_state.rankings_data)
-                st.success("Rankings saved successfully!")
+                
+                # Clear the input tables
+                for pos in POSITIONS:
+                    st.session_state.current_rankings[pos] = {
+                        'team': '', 'rating': 0, 'year': selected_year
+                    }
                 
                 # Force refresh to show new data
                 st.rerun()
 
-# Reset Form button
-with col2:
-    if st.button("Enter Another Year"):
-        reset_form()
-        st.rerun()
-
-# Clear Historical Rankings button
-with col3:
-    if st.button("Clear Historical Rankings"):
-        if clear_rankings():
-            st.success("Historical rankings cleared successfully!")
-            st.rerun()
-
-# Load the existing data without modifying it directly
-existing_data = load_existing_data()
-if not existing_data.empty:
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Current Rankings</h3>", unsafe_allow_html=True)
-    
-    # Create a new DataFrame to manipulate, keeping existing_data unaltered
-    current_rating_df = (existing_data
-                         .sort_values(by=['Year', 'Position'], ascending=[False, True])
-                         .drop(columns=['Last Updated'])
-                         .head(12))
-
-    # Display the manipulated DataFrame with adjusted height
-    st.dataframe(current_rating_df, use_container_width=True, hide_index=True, height=455)
-
-ranking_per_year = existing_data
-
-# Define team colors
-TEAM_COLORS = {
-    "Australia": "#fdcd3c",       # Yellow
-    "Bangladesh": "#006a4e",      # Dark Green
-    "England": "#1e22aa",         # Royal Blue
-    "India": "#0033FF",          # Blue
-    "Ireland": "#169b62",        # Green
-    "New Zealand": "#000000",    # Black
-    "Pakistan": "#00894c",       # Pakistan Green
-    "South Africa": "#007b2e",   # Green
-    "Sri Lanka": "#003478",      # Deep Blue
-    "West Indies": "#7b0041",    # Maroon
-    "Zimbabwe": "#d40000",       # Red
-    "Afghanistan": "#0066FF"     # Light Blue
-}
-
-# Add Rating Distribution and Gap Analysis
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rating Distribution and Gap Analysis</h3>", unsafe_allow_html=True)
-
-# Get the most recent year's data and sort by rating
-latest_year = ranking_per_year['Year'].max()
-latest_data = ranking_per_year[ranking_per_year['Year'] == latest_year].sort_values('Rating', ascending=False)
-
-# Calculate rating gaps and percentage differences
-latest_data['Rating_Gap'] = latest_data['Rating'].diff().abs()
-latest_data['Percentage_Diff'] = (latest_data['Rating_Gap'] / latest_data['Rating'].shift()) * 100
-
-# Create visualization with just the bars and annotations
-fig_dist = go.Figure()
-
-# Add bars for ratings
-fig_dist.add_trace(go.Bar(
-    x=latest_data['Team'],
-    y=latest_data['Rating'],
-    name='Rating',
-    marker_color=[TEAM_COLORS[team] for team in latest_data['Team']],
-    text=latest_data['Rating'].round(1),
-    textposition='auto',
-))
-
-# Add annotations for gaps between bars
-for idx in range(1, len(latest_data)):
-    fig_dist.add_annotation(
-        x=latest_data['Team'].iloc[idx],
-        y=latest_data['Rating'].iloc[idx-1],
-        text=f'↓ {latest_data["Rating_Gap"].iloc[idx]:.1f}<br>({latest_data["Percentage_Diff"].iloc[idx]:.1f}%)',
-        showarrow=True,
-        arrowhead=2,
-        arrowsize=1,
-        arrowwidth=2,
-        arrowcolor='rgba(255, 0, 0, 0.5)',
-        ax=0,
-        ay=30
-    )
-
-fig_dist.update_layout(
-    height=500,
-    xaxis_title="Team",
-    yaxis_title="Rating",
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    showlegend=False,
-    yaxis=dict(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey',
-        range=[0, max(latest_data['Rating']) * 1.2]
-    ),
-    bargap=0.2,
-    margin=dict(t=50, b=50, l=50, r=50)
-)
-
-st.plotly_chart(fig_dist, use_container_width=True)
-
-# Year-over-Year Analysis
-st.markdown(f"<h3 style='color:#f04f53; text-align: center;'>Year-over-Year Rating Changes</h3>", unsafe_allow_html=True)
-
-# Get previous year's data
-prev_year = latest_year - 1
-prev_data = ranking_per_year[ranking_per_year['Year'] == prev_year]
-
-if not prev_data.empty:
-    # Merge current and previous year data
-    yoy_data = latest_data.merge(
-        prev_data[['Team', 'Rating']], 
-        on='Team', 
-        suffixes=('_current', '_prev')
-    )
-    
-    yoy_data['Rating_Change'] = yoy_data['Rating_current'] - yoy_data['Rating_prev']
-    
-    # Create YoY change visualization
-    fig_yoy = go.Figure()
-    
-    # Add bars with custom hover text
-    fig_yoy.add_trace(go.Bar(
-        x=yoy_data['Team'],
-        y=yoy_data['Rating_Change'],
-        marker_color=[TEAM_COLORS[team] for team in yoy_data['Team']],
-        text=yoy_data['Rating_Change'].apply(lambda x: f"+{x:.1f}" if x > 0 else f"{x:.1f}"),
-        textposition='auto',
-        hovertemplate=(
-            "<b>%{x}</b><br>" +
-            f"{latest_year} Rating: %{{customdata[0]:.1f}}<br>" +
-            f"{prev_year} Rating: %{{customdata[1]:.1f}}<br>" +
-            "Change: %{text}<br>" +
-            "<extra></extra>"
-        ),
-        customdata=yoy_data[['Rating_current', 'Rating_prev']].values
-    ))
-    
-    fig_yoy.update_layout(
-        height=400,
-        xaxis_title="Team",
-        yaxis_title="Rating Change",
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis=dict(
-            showgrid=True,
-            gridwidth=1,
-            gridcolor='LightGrey',
-            zeroline=True,
-            zerolinewidth=2,
-            zerolinecolor='black'
-        ),
-        title=dict(
-            text=f"Rating Changes from {prev_year} to {latest_year}",
-            y=0.95,
-            x=0.5,
-            xanchor='center',
-            yanchor='top'
+    # Add Current Session Updates display before the Clear button
+    st.markdown("### Current Session Updates")
+    if not st.session_state.update_df.empty:
+        st.dataframe(
+            st.session_state.update_df.sort_values(by=['Year', 'Position']), 
+            use_container_width=True,
+            hide_index=True
         )
-    )
-    
-    st.plotly_chart(fig_yoy, use_container_width=True)
-
-# Best Ratings Ever Section
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Ratings Ever</h3>", unsafe_allow_html=True)
-
-# Get all ratings sorted by value
-best_ratings = ranking_per_year.sort_values('Rating', ascending=False)
-
-# Keep top 20 ratings overall
-best_ratings_table = best_ratings[['Team', 'Rating', 'Position', 'Year']].head(20)
-best_ratings_table.columns = ['Team', 'Rating', 'Rank', 'Year']
-
-# Display the table
-st.dataframe(best_ratings_table.round(1), use_container_width=True, hide_index=True)
-
-# Create enhanced scatter plot visualization
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>All-Time Ratings & Rankings Distribution</h3>", unsafe_allow_html=True)
-
-fig_scatter = go.Figure()
-
-# Add scatter points for each team
-for team in TEAMS:
-    team_data = ranking_per_year[ranking_per_year['Team'] == team]
-    
-    fig_scatter.add_trace(go.Scatter(
-        x=team_data['Year'],
-        y=team_data['Rating'],
-        name=team,
-        mode='markers',
-        marker=dict(
-            color=TEAM_COLORS[team],
-            size=10,
-            symbol='circle',
-        ),
-        hovertemplate=(
-            f"<b>{team}</b><br>" +
-            "Year: %{x}<br>" +
-            "Rating: %{y:.1f}<br>" +
-            "Rank: %{customdata}<br>" +
-            "<extra></extra>"
-        ),
-        customdata=team_data['Position']
-    ))
-
-    # Add connecting lines between points
-    fig_scatter.add_trace(go.Scatter(
-        x=team_data['Year'],
-        y=team_data['Rating'],
-        name=team + " (line)",
-        mode='lines',
-        line=dict(
-            color=TEAM_COLORS[team],
-            width=1,
-            dash='dot'
-        ),
-        showlegend=False,
-        hoverinfo='skip'
-    ))
-
-# Update layout
-fig_scatter.update_layout(
-    height=600,
-    xaxis_title="Year",
-    yaxis_title="Rating",
-    showlegend=True,
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    xaxis=dict(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey',
-        zeroline=False
-    ),
-    yaxis=dict(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey',
-        zeroline=False
-    ),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ),
-    margin=dict(l=10, r=10, t=50, b=10)
-)
-
-# Add a horizontal line for the overall mean rating
-mean_rating = ranking_per_year['Rating'].mean()
-fig_scatter.add_hline(
-    y=mean_rating, 
-    line_dash="dash", 
-    line_color="grey",
-    annotation_text=f"Overall Mean Rating ({mean_rating:.1f})",
-    annotation_position="bottom right"
-)
-
-# Display the plot
-st.plotly_chart(fig_scatter, use_container_width=True)
-
-# Add a second visualization for rankings distribution
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rankings Movement Over Time</h3>", unsafe_allow_html=True)
-
-fig_rankings = go.Figure()
-
-# Add traces for each team's ranking
-for team in TEAMS:
-    team_data = ranking_per_year[ranking_per_year['Team'] == team]
-    
-    fig_rankings.add_trace(go.Scatter(
-        x=team_data['Year'],
-        y=team_data['Position'],
-        name=team,
-        mode='lines+markers',
-        line=dict(
-            color=TEAM_COLORS[team],
-            width=2
-        ),
-        marker=dict(
-            size=8,
-            symbol='circle'
-        ),
-        hovertemplate=(
-            f"<b>{team}</b><br>" +
-            "Year: %{x}<br>" +
-            "Rank: %{y}<br>" +
-            "Rating: %{customdata:.1f}<br>" +
-            "<extra></extra>"
-        ),
-        customdata=team_data['Rating']
-    ))
-
-# Update layout for rankings
-fig_rankings.update_layout(
-    height=600,
-    xaxis_title="Year",
-    yaxis_title="Ranking",
-    showlegend=True,
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    xaxis=dict(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey',
-        zeroline=False
-    ),
-    yaxis=dict(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor='LightGrey',
-        zeroline=False,
-        autorange="reversed",  # Reverse y-axis so rank 1 is at the top
-        dtick=1  # Show every rank
-    ),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ),
-    margin=dict(l=10, r=10, t=50, b=10)
-)
-
-# Display the rankings plot
-st.plotly_chart(fig_rankings, use_container_width=True)
-
-###########################################
-
-# Box Plot Analysis
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Distribution Analysis</h3>", unsafe_allow_html=True)
-
-# Create two columns for the box plots
-col1, col2 = st.columns(2)
-
-
-# Ratings Box Plot
-with col1:
-    fig_box_ratings = go.Figure()
-    
-    for team in TEAMS:
-        team_data = ranking_per_year[ranking_per_year['Team'] == team]
         
-        fig_box_ratings.add_trace(go.Box(
+        # Add Save button
+        col1, col2 = st.columns(2)
+        with col1:
+            # Create new file with download button
+            csv = st.session_state.update_df.to_csv(index=False)
+            current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+            st.download_button(
+            label="Step 3 - Download Latest Rankings with your updates to use next time",
+            data=csv,
+            file_name=f"rankings_{current_date}.csv",
+            mime='text/csv',
+            key="download_new_btn"
+            )
+        
+        with col2:
+            if st.button("Clear Session Updates", key="clear_session_btn"):
+                st.session_state.update_df = pd.DataFrame(columns=['Year', 'Format', 'Position', 'Team', 'Rating'])
+                st.rerun()
+    else:
+        st.info("No rankings have been saved in this session yet.")
+
+# Use tabs[1] for Current Rankings content
+with tabs[1]:
+    st.markdown("### Current Rankings")
+    
+    if not st.session_state.rankings_data.empty:
+        # Add format filter
+        format_filter = st.selectbox(
+            "Select Format",
+            ["All"] + st.session_state.rankings_data['Format'].unique().tolist(),
+            key="rankings_format_filter"
+        )
+        
+        # Filter data based on format
+        filtered_df = st.session_state.rankings_data
+        if format_filter != "All":
+            filtered_df = filtered_df[filtered_df['Format'] == format_filter]
+        
+        # Ensure year is displayed as a full year without commas
+        filtered_df['Year'] = filtered_df['Year'].astype(str)
+            
+        # Display the rankings table with Last Updated removed and sorted by Year (desc) and Position (asc)
+        display_df = filtered_df.drop('Last Updated', axis=1)
+        display_df = display_df.sort_values(by=['Year', 'Format',  'Position'], ascending=[True, True, False])
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        # Best Ratings Ever Section
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Ratings Ever</h3>", unsafe_allow_html=True)
+
+        # Get all ratings sorted by value 
+        best_ratings = filtered_df.sort_values('Rating', ascending=False)
+
+        # Keep top 20 ratings overall
+        best_ratings_table = best_ratings[['Team', 'Rating', 'Position', 'Year', 'Format']].head(20)
+
+        # Ensure year is displayed as a full year without commas
+        best_ratings_table['Year'] = best_ratings_table['Year'].astype(str)
+
+        # Display the table
+        st.dataframe(best_ratings_table.round(1), use_container_width=True, hide_index=True)
+
+        # Define team colors
+        TEAM_COLORS = {
+            "Australia": "#FFD700",
+            "Bangladesh": "#006A4E",
+            "England": "#00247D",
+            "India": "#FF9933",
+            "Ireland": "#169B62",
+            "New Zealand": "#000000",
+            "Pakistan": "#01411C",
+            "South Africa": "#007A4D",
+            "Sri Lanka": "#000080",
+            "West Indies": "#7B0000",
+            "Zimbabwe": "#C60C30",
+            "Afghanistan": "#002395"
+        }
+
+        # Create a DataFrame with all rankings per year
+        ranking_per_year = filtered_df.copy()
+
+        ranking_per_year['Rating'] = pd.to_numeric(ranking_per_year['Rating'], errors='coerce')
+        ranking_per_year.dropna(subset=['Rating'], inplace=True)
+
+        # Ensure year is displayed as a full year in all relevant DataFrames
+        ranking_per_year['Year'] = ranking_per_year['Year'].astype(int)
+
+        # Create enhanced scatter plot visualization
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>All-Time Ratings & Rankings Distribution</h3>", unsafe_allow_html=True)
+
+        fig_scatter = go.Figure()
+
+        # Add scatter points for each team
+        for team in TEAMS:
+            team_data = ranking_per_year[ranking_per_year['Team'] == team]
+            
+            fig_scatter.add_trace(go.Scatter(
+            x=team_data['Year'],
             y=team_data['Rating'],
             name=team,
-            marker_color=TEAM_COLORS[team],
-            boxpoints=False,  # No points will be shown
-            jitter=0.3,
-            pointpos=-1.8,
+            mode='markers',
+            marker=dict(
+                color=TEAM_COLORS[team],
+                size=10,
+                symbol='circle',
+            ),
             hovertemplate=(
                 f"<b>{team}</b><br>" +
-                "Min: %{customdata[0]:.1f}<br>" +
-                "Q1: %{customdata[1]:.1f}<br>" +
-                "Median: %{customdata[2]:.1f}<br>" +
-                "Q3: %{customdata[3]:.1f}<br>" +
-                "Max: %{customdata[4]:.1f}<br>" +
+                "Year: %{x:.0f}<br>" +  # Ensure full year is displayed
+                "Rating: %{y:.1f}<br>" +
+                "Rank: %{customdata}<br>" +
                 "<extra></extra>"
             ),
-            customdata=[[ 
-                team_data['Rating'].min(),
-                team_data['Rating'].quantile(0.25),
-                team_data['Rating'].median(),
-                team_data['Rating'].quantile(0.75),
-                team_data['Rating'].max()
-            ]]
-        ))
-    
-    fig_box_ratings.update_layout(
-        title={
-            'text': "Rating Distribution by Team",
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'color': '#f04f53'}
-        },
-        height=600,
-        showlegend=False,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis_title="Rating",
-        xaxis_title="Team",
-        yaxis=dict(
-            showgrid=True,
-            gridwidth=1,
-            gridcolor='LightGrey'
+            customdata=team_data['Position']
+            ))
+
+            # Add connecting lines between points
+            fig_scatter.add_trace(go.Scatter(
+            x=team_data['Year'],
+            y=team_data['Rating'],
+            name=team + " (line)",
+            mode='lines',
+            line=dict(
+                color=TEAM_COLORS[team],
+                width=1,
+                dash='dot'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+            ))
+
+        # Update layout
+        fig_scatter.update_layout(
+            height=600,
+            xaxis_title="Year",
+            yaxis_title="Rating",
+            showlegend=True,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False,
+                dtick=1  # Show whole years
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(l=10, r=10, t=50, b=10)
         )
-    )
 
-    st.plotly_chart(fig_box_ratings, use_container_width=True)
+        # Add a horizontal line for the overall mean rating
+        mean_rating = ranking_per_year['Rating'].mean()
+        fig_scatter.add_hline(
+            y=mean_rating, 
+            line_dash="dash", 
+            line_color="grey",
+            annotation_text=f"Overall Mean Rating ({mean_rating:.1f})",
+            annotation_position="bottom right"
+        )
 
-# Rankings Box Plot
-with col2:
-    fig_box_rankings = go.Figure()
-    
-    for team in TEAMS:
-        team_data = ranking_per_year[ranking_per_year['Team'] == team]
-        
-        fig_box_rankings.add_trace(go.Box(
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+        # Rankings movement visualization
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Rankings Movement Over Time</h3>", unsafe_allow_html=True)
+
+        fig_rankings = go.Figure()
+
+        # Add data points for each team
+        for team in TEAMS:
+            team_data = ranking_per_year[ranking_per_year['Team'] == team]
+            
+            # Add scatter points
+            fig_rankings.add_trace(go.Scatter(
+            x=team_data['Year'],
             y=team_data['Position'],
             name=team,
-            marker_color=TEAM_COLORS[team],
-            boxpoints=False,  # No points will be shown
-            jitter=0.3,
-            pointpos=-1.8,
+            mode='markers',
+            marker=dict(
+                color=TEAM_COLORS[team],
+                size=10,
+                symbol='circle',
+            ),
             hovertemplate=(
                 f"<b>{team}</b><br>" +
-                "Best Rank: %{customdata[0]}<br>" +
-                "Q1: %{customdata[1]:.1f}<br>" +
-                "Median: %{customdata[2]:.1f}<br>" +
-                "Q3: %{customdata[3]:.1f}<br>" +
-                "Worst Rank: %{customdata[4]}<br>" +
+                "Year: %{x:.0f}<br>" +  # Ensure full year is displayed
+                "Rank: %{y}<br>" +
+                "Rating: %{customdata:.1f}<br>" +
                 "<extra></extra>"
             ),
-            customdata=[[ 
-                int(team_data['Position'].min()),
-                team_data['Position'].quantile(0.25),
-                team_data['Position'].median(),
-                team_data['Position'].quantile(0.75),
-                int(team_data['Position'].max())
-            ]]
-        ))
-    
-    fig_box_rankings.update_layout(
-        title={
-            'text': "Ranking Distribution by Team",
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'color': '#f04f53'}
-        },
-        height=600,
-        showlegend=False,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis_title="Ranking",
-        xaxis_title="Team",
-        yaxis=dict(
+            customdata=team_data['Rating']
+            ))
+
+            # Add connecting lines
+            fig_rankings.add_trace(go.Scatter(
+            x=team_data['Year'],
+            y=team_data['Position'],
+            name=team + " (line)",
+            mode='lines',
+            line=dict(
+                color=TEAM_COLORS[team],
+                width=1,
+                dash='dot'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+            ))
+
+        fig_rankings.update_layout(
+            height=600,
+            xaxis_title="Year",
+            yaxis_title="Ranking",
+            showlegend=True,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
             showgrid=True,
             gridwidth=1,
             gridcolor='LightGrey',
-            autorange="reversed"  # Reverse y-axis so rank 1 is at the top
+            zeroline=False,
+            dtick=1  # Show whole years
+            ),
+            yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='LightGrey',
+            zeroline=False,
+            autorange="reversed"
+            ),
+            legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+            ),
+            margin=dict(l=10, r=10, t=50, b=10)
         )
-    )
-    
-    st.plotly_chart(fig_box_rankings, use_container_width=True)
 
-# Add new analytics sections
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Advanced Analytics</h3>", unsafe_allow_html=True)
+        st.plotly_chart(fig_rankings, use_container_width=True)
 
-# Create tabs for different analytics views
-tab1, tab2, tab3 = st.tabs(["Head-to-Head Analysis", "Dominance Periods", "Milestones & Records"])
+        # Box Plot Analysis
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Distribution Analysis</h3>", unsafe_allow_html=True)
 
-# First, add this CSS to improve tab spacing
-st.markdown("""
-    <style>
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0px !important;
-        width: 100%;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        width: calc(100%/3) !important;
-        margin: 0px !important;
-        white-space: normal !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+        # Create two columns for the box plots
+        col1, col2 = st.columns(2)
 
-with tab1:
-    st.markdown("<h4 style='color:#f04f53; text-align: center;'>Head-to-Head Rating Comparison</h4>", unsafe_allow_html=True)
-    
-    # Create two columns for team selection
-    col1, col2 = st.columns(2)
-    with col1:
-        team1 = st.selectbox("Select First Team", TEAMS, key="team1_select")
-    with col2:
-        team2 = st.selectbox("Select Second Team", [t for t in TEAMS if t != team1], key="team2_select")
-    
-    # Filter data for selected teams
-    team1_data = ranking_per_year[ranking_per_year['Team'] == team1]
-    team2_data = ranking_per_year[ranking_per_year['Team'] == team2]
-    
-    # Create head-to-head comparison plot
-    fig_h2h = go.Figure()
-    
-    # Add traces for both teams
-    fig_h2h.add_trace(go.Scatter(
-        x=team1_data['Year'],
-        y=team1_data['Rating'],
-        name=team1,
-        line=dict(color=TEAM_COLORS[team1], width=2),
-        fill='tonexty'
-    ))
-    
-    fig_h2h.add_trace(go.Scatter(
-        x=team2_data['Year'],
-        y=team2_data['Rating'],
-        name=team2,
-        line=dict(color=TEAM_COLORS[team2], width=2),
-        fill='tonexty'
-    ))
-    
-    fig_h2h.update_layout(
-        height=400,
-        title={
-            'text': f"Rating Comparison: {team1} vs {team2}",
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'color': '#f04f53'}
-        }
-    )
-    st.plotly_chart(fig_h2h, use_container_width=True)
-    
-    # Add head-to-head statistics
-    st.markdown("#### Key Statistics")
-    col1, col2, col3 = st.columns(3)
-    
-    # Create a DataFrame with aligned years
-    comparison_df = pd.merge(
-        team1_data[['Year', 'Rating']], 
-        team2_data[['Year', 'Rating']], 
-        on='Year', 
-        suffixes=('_1', '_2')
-    )
-    
-    with col1:
-        team1_wins = len(comparison_df[comparison_df['Rating_1'] > comparison_df['Rating_2']])
-        team2_wins = len(comparison_df[comparison_df['Rating_2'] > comparison_df['Rating_1']])
-        st.metric(
-            "Higher Rating Count",
-            f"{team1}: {team1_wins}",
-            f"{team2}: {team2_wins}"
-        )
-    
-    with col2:
-        avg_diff = (comparison_df['Rating_1'] - comparison_df['Rating_2']).mean()
-        st.metric(
-            "Average Rating Difference",
-            f"{avg_diff:.1f}"
-        )
-    
-    with col3:
-        if not comparison_df.empty:
-            current_gap = comparison_df.iloc[-1]['Rating_1'] - comparison_df.iloc[-1]['Rating_2']
-            st.metric(
-                "Current Rating Gap",
-                f"{current_gap:.1f}"
-            )
-        else:
-            st.metric(
-                "Current Rating Gap",
-                "N/A"
+        # Ratings Box Plot
+        with col1:
+            fig_box_ratings = go.Figure()
+            
+            for team in TEAMS:
+                team_data = ranking_per_year[ranking_per_year['Team'] == team]
+                
+                fig_box_ratings.add_trace(go.Box(
+                    y=team_data['Rating'],
+                    name=team,
+                    marker_color=TEAM_COLORS[team],
+                    boxpoints=False,  # No points will be shown
+                    jitter=0.3,
+                    pointpos=-1.8,
+                    hovertemplate=(
+                        f"<b>{team}</b><br>" +
+                        "Min: %{customdata[0]:.1f}<br>" +
+                        "Q1: %{customdata[1]:.1f}<br>" +
+                        "Median: %{customdata[2]:.1f}<br>" +
+                        "Q3: %{customdata[3]:.1f}<br>" +
+                        "Max: %{customdata[4]:.1f}<br>" +
+                        "<extra></extra>"
+                    ),
+                    customdata=[[ 
+                        team_data['Rating'].min(),
+                        team_data['Rating'].quantile(0.25),
+                        team_data['Rating'].median(),
+                        team_data['Rating'].quantile(0.75),
+                        team_data['Rating'].max()
+                    ]]
+                ))
+            
+            fig_box_ratings.update_layout(
+                title={
+                    'text': "Rating Distribution by Team",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'color': '#f04f53'}
+                },
+                height=600,
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="Rating",
+                xaxis_title="Team",
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='LightGrey'
+                )
             )
 
-with tab2:
-    st.markdown("<h4 style='color:#f04f53; text-align: center;'>Team Dominance Periods</h4>", unsafe_allow_html=True)
+            st.plotly_chart(fig_box_ratings, use_container_width=True)
+
+        # Rankings Box Plot
+        with col2:
+            fig_box_rankings = go.Figure()
+            
+            for team in TEAMS:
+                team_data = ranking_per_year[ranking_per_year['Team'] == team]
+                
+                fig_box_rankings.add_trace(go.Box(
+                    y=team_data['Position'],
+                    name=team,
+                    marker_color=TEAM_COLORS[team],
+                    boxpoints=False,  # No points will be shown
+                    jitter=0.3,
+                    pointpos=-1.8,
+                    hovertemplate=(
+                        f"<b>{team}</b><br>" +
+                        "Best Rank: %{customdata[0]}<br>" +
+                        "Q1: %{customdata[1]:.1f}<br>" +
+                        "Median: %{customdata[2]:.1f}<br>" +
+                        "Q3: %{customdata[3]:.1f}<br>" +
+                        "Worst Rank: %{customdata[4]}<br>" +
+                        "<extra></extra>"
+                    ),
+                    customdata=[[ 
+                        int(team_data['Position'].min()) if not pd.isna(team_data['Position'].min()) else 0,
+                        team_data['Position'].quantile(0.25),
+                        team_data['Position'].median(),
+                        team_data['Position'].quantile(0.75),
+                        int(team_data['Position'].max()) if not pd.isna(team_data['Position'].max()) else 0
+                    ]]
+                ))
+            
+            fig_box_rankings.update_layout(
+                title={
+                    'text': "Ranking Distribution by Team",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'color': '#f04f53'}
+                },
+                height=600,
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="Ranking",
+                xaxis_title="Team",
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='LightGrey',
+                    autorange="reversed"  # Reverse y-axis so rank 1 is at the top
+                )
+            )
+            
+            st.plotly_chart(fig_box_rankings, use_container_width=True)
+
+        # Add new analytics sections
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Advanced Analytics</h3>", unsafe_allow_html=True)
+
+        # Create tabs for different analytics views
+        tab1, tab2 = st.tabs(["Head-to-Head Analysis", "Dominance Periods"])
+
+        # First, add this CSS to improve tab spacing
+        st.markdown("""
+            <style>
+            .stTabs [data-baseweb="tab-list"] {
+                gap: 0px !important;
+                width: 100%;
+            }
+            
+            .stTabs [data-baseweb="tab"] {
+                width: calc(100%/2) !important;
+                margin: 0px !important;
+                white-space: normal !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        with tab1:
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Head-to-Head Rating Comparison</h4>", unsafe_allow_html=True)
+            
+            # Create two columns for team selection
+            col1, col2 = st.columns(2)
+            with col1:
+                team1 = st.selectbox("Select First Team", TEAMS, key="team1_select")
+            with col2:
+                team2 = st.selectbox("Select Second Team", [t for t in TEAMS if t != team1], key="team2_select")
+            
+            # Filter data for selected teams
+            team1_data = ranking_per_year[ranking_per_year['Team'] == team1]
+            team2_data = ranking_per_year[ranking_per_year['Team'] == team2]
+            
+            # Create head-to-head comparison plot
+            fig_h2h = go.Figure()
+            
+            # Add traces for both teams
+            fig_h2h.add_trace(go.Scatter(
+                x=team1_data['Year'],
+                y=team1_data['Rating'],
+                name=team1,
+                line=dict(color=TEAM_COLORS[team1], width=2),
+                fill='tonexty'
+            ))
+            
+            fig_h2h.add_trace(go.Scatter(
+                x=team2_data['Year'],
+                y=team2_data['Rating'],
+                name=team2,
+                line=dict(color=TEAM_COLORS[team2], width=2),
+                fill='tonexty'
+            ))
+            
+            fig_h2h.update_layout(
+                height=400,
+                title={
+                    'text': f"Rating Comparison: {team1} vs {team2}",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'color': '#f04f53'}
+                }
+            )
+            st.plotly_chart(fig_h2h, use_container_width=True)
+            
+
+
+        with tab2:
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Team Dominance Periods</h4>", unsafe_allow_html=True)
+            
+            # Calculate dominance periods (when teams were ranked #1)
+            top_ranked_periods = []
+            for year in sorted(ranking_per_year['Year'].unique()):
+                year_data = ranking_per_year[ranking_per_year['Year'] == year]
+                if not year_data[year_data['Position'] == 1].empty:
+                    top_team = year_data[year_data['Position'] == 1].iloc[0]
+                    top_ranked_periods.append({
+                        'Year': year,
+                        'Team': top_team['Team'],
+                        'Rating': top_team['Rating']
+                    })
+            
+            dominance_df = pd.DataFrame(top_ranked_periods)
+            
+            if not dominance_df.empty:
+                # Create dominance visualization
+                fig_dom = go.Figure()
+                
+                # Add scatter points for each #1 ranking
+                fig_dom.add_trace(go.Scatter(
+                    x=dominance_df['Year'],
+                    y=dominance_df['Team'],
+                    mode='markers',
+                    marker=dict(
+                        size=20,
+                        color=[TEAM_COLORS[team] for team in dominance_df['Team']],
+                        symbol='square'
+                    ),
+                    hovertemplate=(
+                        "<b>%{y}</b><br>" +
+                        "Year: %{x}<br>" +
+                        "Rating: %{customdata:.1f}<br>" +
+                        "<extra></extra>"
+                    ),
+                    customdata=dominance_df['Rating'],
+                    showlegend=False
+                ))
+                
+                fig_dom.update_layout(
+                    height=400,
+                    title={
+                        'text': "Periods of #1 Ranking",
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top',
+                        'font': {'color': '#f04f53'}
+                    },
+                    xaxis_title="Year",
+                    yaxis_title="Team",
+                    xaxis=dict(
+                        dtick=1,
+                        tickmode='linear',
+                        tickformat='d'
+                    ),
+                    yaxis=dict(
+                        categoryorder='category ascending'
+                    ),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig_dom, use_container_width=True)
+                
+                # Add dominance statistics
+                st.markdown("#### Dominance Statistics")
+                dom_stats = dominance_df['Team'].value_counts().reset_index()
+                dom_stats.columns = ['Team', 'Years at #1']
+                dom_stats = dom_stats.sort_values('Years at #1', ascending=False)
+                st.dataframe(dom_stats, use_container_width=True, hide_index=True)
+            else:
+                st.info("No #1 ranking data available for the selected format and time period.")
+
+
+##### TOTAL RANKINGS####
+
+# Total Rankings Section
+st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Rankings Across All 3 Formats</h3>", unsafe_allow_html=True)
+
+if not st.session_state.rankings_data.empty:
+    # Group by Year and Team, sum the Ratings
+    total_ratings = st.session_state.rankings_data.groupby(['Year', 'Team'])['Rating'].sum().reset_index()
     
-    # Calculate dominance periods (when teams were ranked #1)
-    top_ranked_periods = []
-    for year in sorted(ranking_per_year['Year'].unique()):
-        year_data = ranking_per_year[ranking_per_year['Year'] == year]
-        top_team = year_data[year_data['Position'] == 1].iloc[0]
-        top_ranked_periods.append({
-            'Year': year,
-            'Team': top_team['Team'],
-            'Rating': top_team['Rating']
-        })
+    # For each year, assign positions based on total rating (highest = 1)
+    total_rankings = []
+    for year in total_ratings['Year'].unique():
+        year_data = total_ratings[total_ratings['Year'] == year]
+        sorted_teams = year_data.sort_values('Rating', ascending=False)
+        for idx, row in enumerate(sorted_teams.itertuples(), 1):
+            total_rankings.append({
+                'Position': idx,
+                'Team': row.Team,
+                'Rating': row.Rating,
+                'Year': row.Year
+            })
     
-    dominance_df = pd.DataFrame(top_ranked_periods)
+    # Convert to DataFrame and sort
+    total_rankings_df = pd.DataFrame(total_rankings)
+    total_rankings_df = total_rankings_df.sort_values(['Year', 'Rating'], ascending=[False, False])
     
-    # Create dominance visualization
-    fig_dom = go.Figure()
-    
-    for team in TEAMS:
-        team_periods = dominance_df[dominance_df['Team'] == team]
-        if not team_periods.empty:
-            fig_dom.add_trace(go.Scatter(
-                x=team_periods['Year'],
-                y=[team] * len(team_periods),
-                mode='markers',
+    # Display the total rankings table
+    st.dataframe(
+        total_rankings_df, 
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # All-Time Ratings & Rankings Distribution for Total Rankings
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>All-Time Total Ratings & Rankings Distribution</h3>", unsafe_allow_html=True)
+
+    if not st.session_state.rankings_data.empty:
+        fig_total_scatter = go.Figure()
+
+        # Add scatter points for each team
+        for team in TEAMS:
+            team_data = total_rankings_df[total_rankings_df['Team'] == team]
+            
+            fig_total_scatter.add_trace(go.Scatter(
+                x=team_data['Year'],
+                y=team_data['Rating'],
                 name=team,
+                mode='markers',
                 marker=dict(
-                    size=20,
                     color=TEAM_COLORS[team],
-                    symbol='square'
+                    size=10,
+                    symbol='circle',
                 ),
                 hovertemplate=(
                     f"<b>{team}</b><br>" +
-                    "Year: %{x}<br>" +
-                    "Rating: %{customdata:.1f}<br>" +
+                    "Year: %{x:.0f}<br>" +
+                    "Total Rating: %{y:.1f}<br>" +
+                    "Total Rank: %{customdata}<br>" +
                     "<extra></extra>"
                 ),
-                customdata=team_periods['Rating']
+                customdata=team_data['Position']
             ))
-    
-    fig_dom.update_layout(
-        height=400,
-        title={
-            'text': "Periods of #1 Ranking",
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'color': '#f04f53'}
-        }
-    )
-    st.plotly_chart(fig_dom, use_container_width=True)
-    
-    # Add dominance statistics
-    st.markdown("#### Dominance Statistics")
-    dom_stats = dominance_df['Team'].value_counts().reset_index()
-    dom_stats.columns = ['Team', 'Years at #1']
-    st.dataframe(dom_stats, use_container_width=True, hide_index=True)
 
-with tab3:
-    st.markdown("<h4 style='color:#f04f53; text-align: center;'>Notable Milestones & Records</h4>", unsafe_allow_html=True)
-    
-    # Calculate various records
-    records = []
-    
-    # Highest ever rating
-    highest_rating = ranking_per_year.nlargest(1, 'Rating').iloc[0]
-    records.append({
-        'Record': 'Highest Rating Ever',
-        'Team': highest_rating['Team'],
-        'Value': f"{highest_rating['Rating']:.1f}",
-        'Year': highest_rating['Year']
-    })
-    
-    # Highest average rating
-    avg_ratings = ranking_per_year.groupby('Team')['Rating'].mean().reset_index()
-    highest_avg = avg_ratings.nlargest(1, 'Rating').iloc[0]
-    records.append({
-        'Record': 'Highest Average Rating',
-        'Team': highest_avg['Team'],
-        'Value': f"{highest_avg['Rating']:.1f}",
-        'Year': 'All time'
-    })
-    
-    # Biggest yearly improvement
-    ranking_per_year['Rating_Change'] = ranking_per_year.groupby('Team')['Rating'].diff()
-    biggest_improvement = ranking_per_year.nlargest(1, 'Rating_Change').iloc[0]
-    records.append({
-        'Record': 'Biggest Year-on-Year Gain',
-        'Team': biggest_improvement['Team'],
-        'Value': f"+{biggest_improvement['Rating_Change']:.1f}",
-        'Year': biggest_improvement['Year']
-    })
-    
-    # Biggest yearly decline
-    biggest_decline = ranking_per_year.nsmallest(1, 'Rating_Change').iloc[0]
-    records.append({
-        'Record': 'Biggest Year-on-Year Drop',
-        'Team': biggest_decline['Team'],
-        'Value': f"{biggest_decline['Rating_Change']:.1f}",
-        'Year': biggest_decline['Year']
-    })
-    
-    # Most years at #1
-    years_at_1 = ranking_per_year[ranking_per_year['Position'] == 1]['Team'].value_counts().reset_index()
-    top_team = years_at_1.iloc[0]
-    records.append({
-        'Record': 'Most Years at #1',
-        'Team': top_team['Team'],
-        'Value': f"{top_team['count']} years",
-        'Year': 'All time'
-    })
-    
-    # Most years at #2
-    years_at_2 = ranking_per_year[ranking_per_year['Position'] == 2]['Team'].value_counts().reset_index()
-    second_most = years_at_2.iloc[0]
-    records.append({
-        'Record': 'Most Years at #2',
-        'Team': second_most['Team'],
-        'Value': f"{second_most['count']} years",
-        'Year': 'All time'
-    })
-    
-    # Most wooden spoons (#12)
-    wooden_spoons = ranking_per_year[ranking_per_year['Position'] == 12]['Team'].value_counts().reset_index()
-    most_spoons = wooden_spoons.iloc[0]
-    records.append({
-        'Record': 'Most Wooden Spoons (#12)',
-        'Team': most_spoons['Team'],
-        'Value': f"{most_spoons['count']} years",
-        'Year': 'All time'
-    })
-    
-    # Longest streak at #1 (fixed calculation)
-    consecutive_years = ranking_per_year.sort_values(['Year'])
-    streaks = []
-    for team in TEAMS:
-        team_data = consecutive_years[consecutive_years['Team'] == team]
-        if team_data.empty:
-            continue
+            # Add connecting lines between points
+            fig_total_scatter.add_trace(go.Scatter(
+                x=team_data['Year'],
+                y=team_data['Rating'],
+                name=team + " (line)",
+                mode='lines',
+                line=dict(
+                    color=TEAM_COLORS[team],
+                    width=1,
+                    dash='dot'
+                ),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+        # Update layout
+        fig_total_scatter.update_layout(
+            height=600,
+            xaxis_title="Year",
+            yaxis_title="Total Rating",
+            showlegend=True,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False,
+                dtick=1
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(l=10, r=10, t=50, b=10)
+        )
+
+        st.plotly_chart(fig_total_scatter, use_container_width=True)
+
+        # Rankings Movement visualization for Total Rankings
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Rankings Movement Over Time</h3>", unsafe_allow_html=True)
+
+        fig_total_rankings = go.Figure()
+
+        # Add data points for each team
+        for team in TEAMS:
+            team_data = total_rankings_df[total_rankings_df['Team'] == team]
             
-        current_streak = 0
-        max_streak = 0
-        streak_start = None
-        max_streak_start = None
-        
-        for year, position in zip(team_data['Year'], team_data['Position']):
-            if position == 1:
-                if current_streak == 0:
-                    streak_start = year
-                current_streak += 1
-                if current_streak > max_streak:
-                    max_streak = current_streak
-                    max_streak_start = streak_start
-            else:
-                current_streak = 0
-                
-        if max_streak > 0:
-            streaks.append({
-                'team': team,
-                'streak': max_streak,
-                'start': max_streak_start,
-                'end': max_streak_start + max_streak - 1
-            })
-    
-    # Find the longest streak
-    longest_streak = max(streaks, key=lambda x: x['streak'])
-    records.append({
-        'Record': 'Longest Consecutive #1 Streak',
-        'Team': longest_streak['team'],
-        'Value': f"{longest_streak['streak']} years",
-        'Year': f"{longest_streak['start']}-{longest_streak['end']}"
-    })
+            # Add scatter points
+            fig_total_rankings.add_trace(go.Scatter(
+                x=team_data['Year'],
+                y=team_data['Position'],
+                name=team,
+                mode='markers',
+                marker=dict(
+                    color=TEAM_COLORS[team],
+                    size=10,
+                    symbol='circle',
+                ),
+                hovertemplate=(
+                    f"<b>{team}</b><br>" +
+                    "Year: %{x:.0f}<br>" +
+                    "Total Rank: %{y}<br>" +
+                    "Total Rating: %{customdata:.1f}<br>" +
+                    "<extra></extra>"
+                ),
+                customdata=team_data['Rating']
+            ))
 
-    # Biggest rating gap between 1st and 2nd
-    yearly_gaps = ranking_per_year.groupby('Year').apply(
-        lambda x: x[x['Position'] == 1]['Rating'].iloc[0] - x[x['Position'] == 2]['Rating'].iloc[0]
-    ).reset_index()
-    biggest_gap_year = yearly_gaps.nlargest(1, 0).iloc[0]
-    gap_data = ranking_per_year[ranking_per_year['Year'] == biggest_gap_year['Year']]
-    first_team = gap_data[gap_data['Position'] == 1].iloc[0]
-    
-    records.append({
-        'Record': 'Biggest #1 vs #2 Gap',
-        'Team': first_team['Team'],
-        'Value': f"{biggest_gap_year[0]:.1f} points",
-        'Year': biggest_gap_year['Year']
-    })
-    
-    # Highest position improvement in one year
-    ranking_per_year['Position_Change'] = ranking_per_year.groupby('Team')['Position'].diff() * -1  # Multiply by -1 so positive is improvement
-    best_climb = ranking_per_year.nlargest(1, 'Position_Change').iloc[0]
-    records.append({
-        'Record': 'Biggest Position Improvement',
-        'Team': best_climb['Team'],
-        'Value': f"+{int(best_climb['Position_Change'])} places",
-        'Year': best_climb['Year']
-    })
-    
-    # Display records in a styled dataframe
-    records_df = pd.DataFrame(records)
-    st.dataframe(records_df, use_container_width=True, hide_index=True)
-    
-    # Add a summary visualization of the records
-    col1, col2 = st.columns(2)
-    
-    # Fix the position counts visualization
-    with col1:
-        # Create a bar chart of years at different positions
-        position_counts = pd.DataFrame()
-        for pos in [1, 2, 12]:  # Top 2 and wooden spoon
-            counts = ranking_per_year[ranking_per_year['Position'] == pos]['Team'].value_counts()
-            position_counts[f'#{pos}'] = counts
-        
-        # Reset index and rename the team column
-        position_counts = position_counts.reset_index()
-        position_counts = position_counts.rename(columns={'index': 'Team'})
-        
-        fig_positions = px.bar(
-            position_counts,
-            x='Team',
-            y=[f'#{pos}' for pos in [1, 2, 12]],
-            title='Years at Key Positions',
-            labels={'value': 'Years', 'variable': 'Position'},
-            barmode='group'
+            # Add connecting lines
+            fig_total_rankings.add_trace(go.Scatter(
+                x=team_data['Year'],
+                y=team_data['Position'],
+                name=team + " (line)",
+                mode='lines',
+                line=dict(
+                    color=TEAM_COLORS[team],
+                    width=1,
+                    dash='dot'
+                ),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+        fig_total_rankings.update_layout(
+            height=600,
+            xaxis_title="Year",
+            yaxis_title="Total Ranking",
+            showlegend=True,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False,
+                dtick=1
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGrey',
+                zeroline=False,
+                autorange="reversed"
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(l=10, r=10, t=50, b=10)
         )
+
+        st.plotly_chart(fig_total_rankings, use_container_width=True)
+
+        # Total Rankings Dominance Periods Analysis
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Rankings Dominance Periods</h3>", unsafe_allow_html=True)
         
-        fig_positions.update_layout(
+        # Calculate dominance periods (when teams were ranked #1 in total rankings)
+        top_ranked_total_periods = []
+        for year in sorted(total_rankings_df['Year'].unique()):
+            year_data = total_rankings_df[total_rankings_df['Year'] == year]
+            if not year_data[year_data['Position'] == 1].empty:
+                top_team = year_data[year_data['Position'] == 1].iloc[0]
+            top_ranked_total_periods.append({
+                'Year': year,
+                'Team': top_team['Team'],
+                'Rating': top_team['Rating']
+            })
+        
+        total_dominance_df = pd.DataFrame(top_ranked_total_periods)
+        
+        if not total_dominance_df.empty:
+            # Create dominance visualization
+            fig_total_dom = go.Figure()
+            
+            # Add scatter points for each #1 ranking
+            fig_total_dom.add_trace(go.Scatter(
+            x=total_dominance_df['Year'],
+            y=total_dominance_df['Team'],
+            mode='markers',
+            marker=dict(
+                size=20,
+                color=[TEAM_COLORS[team] for team in total_dominance_df['Team']],
+                symbol='square'
+            ),
+            hovertemplate=(
+                "<b>%{y}</b><br>" +
+                "Year: %{x}<br>" +
+                "Total Rating: %{customdata:.1f}<br>" +
+                "<extra></extra>"
+            ),
+            customdata=total_dominance_df['Rating'],
+            showlegend=False
+            ))
+            
+            fig_total_dom.update_layout(
             height=400,
             title={
-                'text': 'Years at Key Positions',
-                'x': 0.5,
-                'xanchor': 'center',
-                'yanchor': 'top',
-                'font': {'color': '#f04f53'}
-            }
-        )
-        st.plotly_chart(fig_positions, use_container_width=True)
-    
-    with col2:
-        # Create a scatter plot of highest ratings vs average ratings with corrected calculations
-        team_stats = pd.DataFrame({
-            'Team': TEAMS,  # Use TEAMS list to ensure all teams are included
-            'Highest Rating': [ranking_per_year[ranking_per_year['Team'] == team]['Rating'].max() for team in TEAMS],
-            'Average Rating': [ranking_per_year[ranking_per_year['Team'] == team]['Rating'].mean() for team in TEAMS]
-        }).fillna(0)  # Fill any NaN values with 0
-        
-        fig_ratings = px.scatter(
-            team_stats,
-            x='Average Rating',
-            y='Highest Rating',
-            text='Team',
-            color='Team',
-            color_discrete_map=TEAM_COLORS,
-            labels={
-                'Average Rating': 'Career Average Rating',
-                'Highest Rating': 'Peak Rating'
-            }
-        )
-        
-        fig_ratings.update_layout(
-            height=400,
-            title={
-                'text': 'Peak vs Average Performance',
+                'text': "Periods of #1 Total Ranking",
                 'x': 0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
                 'font': {'color': '#f04f53'}
             },
+            xaxis_title="Year",
+            yaxis_title="Team",
             xaxis=dict(
-                title='Career Average Rating',
-                zeroline=True,
-                zerolinewidth=1,
-                zerolinecolor='LightGrey',
-                range=[0, max(team_stats['Average Rating']) * 1.1]
+                dtick=1,
+                tickmode='linear',
+                tickformat='d'
             ),
             yaxis=dict(
-                title='Peak Rating',
-                zeroline=True,
-                zerolinewidth=1,
-                zerolinecolor='LightGrey',
-                range=[0, max(team_stats['Highest Rating']) * 1.1]
+                categoryorder='category ascending'
+            ),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
             )
-        )
-        
-        # Add hover template with more details
-        fig_ratings.update_traces(
-            hovertemplate="<b>%{text}</b><br>" +
-                         "Peak Rating: %{y:.1f}<br>" +
-                         "Average Rating: %{x:.1f}<br>" +
-                         "<extra></extra>"
-        )
-        
-        st.plotly_chart(fig_ratings, use_container_width=True)
+            st.plotly_chart(fig_total_dom, use_container_width=True)
+            
+            # Add dominance statistics
+            st.markdown("#### Total Rankings Dominance Statistics")
+            total_dom_stats = total_dominance_df['Team'].value_counts().reset_index()
+            total_dom_stats.columns = ['Team', 'Years at #1 (Total Rankings)']
+            total_dom_stats = total_dom_stats.sort_values('Years at #1 (Total Rankings)', ascending=False)
+            st.dataframe(total_dom_stats, use_container_width=True, hide_index=True)
+        else:
+            st.info("No #1 total ranking data available.")
 
-# ...rest of existing code...
+
+    if st.session_state.rankings_data.empty:
+        st.info("No rankings data available. Please update rankings in the 'Update Rankings' tab.")
