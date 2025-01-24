@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import plotly.graph_objects as go
-from tkinter import filedialog
-import tkinter as tk
 
 # Add CSS styling
 st.markdown("""
@@ -74,8 +72,7 @@ TEAM_COLORS = {
     "West Indies": "#7b0041",    # Maroon
     "Zimbabwe": "#d40000",       # Red
     "Afghanistan": "#0066FF"     # Light Blue
-        }
-
+}
 
 def save_data(df):
     """Save DataFrame to CSV using Streamlit download button"""
@@ -112,20 +109,13 @@ def save_session_updates(df):
                 key="download_new_btn"
             )
         else:  # Append to existing file
-            # Create a hidden tkinter root window
-            root = tk.Tk()
-            root.withdraw()
+            # Use Streamlit file uploader for selecting file to append to
+            uploaded_file = st.file_uploader("Select CSV file to append to", type=['csv'], key="append_file_uploader")
             
-            # Open file dialog for selecting file to append to
-            file_path = filedialog.askopenfilename(
-                filetypes=[("CSV files", "*.csv")],
-                title="Select CSV file to append to"
-            )
-            
-            if file_path:  # If user selected a file
+            if uploaded_file is not None:
                 try:
                     # Read existing CSV
-                    existing_df = pd.read_csv(file_path)
+                    existing_df = pd.read_csv(uploaded_file)
                     # Append new data
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     # Remove duplicates and sort
@@ -134,8 +124,15 @@ def save_session_updates(df):
                         keep='last'
                     ).sort_values(by=['Year', 'Position'])
                     # Save back to the same file
-                    combined_df.to_csv(file_path, index=False)
-                    st.success(f"Successfully appended data to {file_path}")
+                    csv = combined_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download Updated CSV",
+                        data=csv,
+                        file_name=f"updated_{uploaded_file.name}",
+                        mime='text/csv',
+                        key="download_updated_btn"
+                    )
+                    st.success(f"Successfully appended data to {uploaded_file.name}")
                     return True
                 except Exception as e:
                     st.error(f"Error appending to file: {str(e)}")
