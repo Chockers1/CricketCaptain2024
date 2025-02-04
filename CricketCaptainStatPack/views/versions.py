@@ -18,6 +18,13 @@ def get_image_path(filename):
 
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Version History</h1>", unsafe_allow_html=True)
 versions_data = [
+
+    {
+        "version": "1.19, 2025-02-04",
+        "title": "Historical Series Stats and Records",
+        "description": "In Records tab under Series records explore all the international series records from your save, Most Runs / Wickets in a series, Most Hundreds / 5W's in a series, Highest Averages and much more",
+        "screenshot": get_image_path("v1.19_records_series.png")
+    },
     {
         "version": "1.18, 2025-01-18",
         "title": "Brand New Series Head-to-Head Visuals",
