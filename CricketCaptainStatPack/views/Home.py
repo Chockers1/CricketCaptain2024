@@ -102,6 +102,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# --- UPDATE BANNER ---
+st.markdown(
+    """
+    <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
+        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.19:</span>
+        <span style="color: white;"> International player series records now in the Records tab! </span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- WELCOME MESSAGE SECTION ---
 st.markdown(
     """
