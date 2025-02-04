@@ -473,7 +473,7 @@ init_page()
 filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
 
 # Create tabs
-tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records"]
+tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records", "Series Records"]
 tabs = st.tabs(tab_names)
 
 # Batting Records Tab
@@ -1380,22 +1380,394 @@ with tabs[3]:
             st.error(f"Error processing first innings lead losses: {str(e)}")
     else:
         st.info("No game or match records available.")
-
-# Add this at the end of the file
-if __name__ == "__main__":
-    # Initialize page
-    init_page()
+##############SERIES
+with tabs[4]:
+    #st.markdown("<h2 style='color:#f04f53; text-align: center;'>Series Records</h2>", unsafe_allow_html=True)
     
-    # Add timestamp for debugging
-    st.sidebar.text(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
-
-    # Initialize data
-    filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
+    # Debug: Show original dataframes for batting, bowling, and match data
     
-    try:
-        # Clear memory
-        gc.collect()
-    except Exception as e:
-        st.error(f"Application error: {str(e)}")
-        st.error(f"Current memory usage: {sys.getsizeof(st.session_state) / (1024 * 1024):.2f} MB")
+    
+    # Helper to check if competition is part of a numbered series
+    def is_part_of_series(competition: str) -> bool:
+        # Check if the competition starts with a numbered indicator
+        parts = competition.lower().split()
+        return parts[0] in ['1st', '2nd', '3rd', '4th', '5th']
+    
+    # Compute series information from match dataframe
+    def compute_series_info(match_df):
+        potential_series = [
+            '1st Test Match','2nd Test Match','3rd Test Match','4th Test Match','5th Test Match',
+            '1st One Day International','2nd One Day International','3rd One Day International',
+            '4th One Day International','5th One Day International',
+            '1st 20 Over International','2nd 20 Over International','3rd 20 Over International',
+            '4th 20 Over International','5th 20 Over International',
+            'Only One Day International','Only 20 Over International','Only Test Match',
+            'Test Championship Final'
+        ]
+        s_df = match_df[match_df['Competition'].isin(potential_series)].copy()
+        s_df = s_df.sort_values('Date', ascending=True)
+        series_list = []
+        for _, match in s_df.iterrows():
+            comp = match['Competition']
+            match_date = pd.to_datetime(match['Date'])
+            if is_part_of_series(comp):
+                subset = s_df[
+                    (s_df['Home_Team'] == match['Home_Team']) &
+                    (s_df['Away_Team'] == match['Away_Team']) &
+                    (s_df['Match_Format'] == match['Match_Format']) &
+                    (abs(pd.to_datetime(s_df['Date']) - match_date).dt.days <= 60)
+                ]
+                if not subset.empty:
+                    info = {
+                        'Start_Date': min(pd.to_datetime(subset['Date'])).date(),
+                        'End_Date': max(pd.to_datetime(subset['Date'])).date(),
+                        'Home_Team': match['Home_Team'],
+                        'Away_Team': match['Away_Team'],
+                        'Match_Format': match['Match_Format'],
+                        'Games_Played': len(subset),
+                        'Total_Home_Wins': subset['Home_Win'].sum(),
+                        'Total_Away_Wins': subset['Home_Lost'].sum(),
+                        'Total_Draws': subset['Home_Drawn'].sum(),
+                    }
+                    key = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
+                    if not any(x.get('key') == key for x in series_list):
+                        info['key'] = key
+                        series_list.append(info)
+            elif comp in ['Only One Day International','Only 20 Over International','Only Test Match','Test Championship Final']:
+                info = {
+                    'Start_Date': match_date.date(),
+                    'End_Date': match_date.date(),
+                    'Home_Team': match['Home_Team'],
+                    'Away_Team': match['Away_Team'],
+                    'Match_Format': match['Match_Format'],
+                    'Games_Played': 1,
+                    'Total_Home_Wins': match['Home_Win'],
+                    'Total_Away_Wins': match['Home_Lost'],
+                    'Total_Draws': match['Home_Drawn'],
+                }
+                info['key'] = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
+                series_list.append(info)
+        if series_list:
+            s_grouped = pd.DataFrame(series_list).drop_duplicates('key').drop('key', axis=1)
+            s_grouped = s_grouped.sort_values('Start_Date')
+            s_grouped['Series'] = range(1, len(s_grouped) + 1)
+            def determine_series_winner(row):
+                if row['Total_Home_Wins'] > row['Total_Away_Wins']:
+                    return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
+                    return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
+                else:
+                    if row['Total_Draws'] > 0:
+                        return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                    return f"Series Tied {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+            s_grouped['Series_Result'] = s_grouped.apply(determine_series_winner, axis=1)
+            return s_grouped
+        return pd.DataFrame()
+    
+    # Series Info Section
+    if filtered_match_df is not None and not filtered_match_df.empty:
+        series_info_df = compute_series_info(filtered_match_df)
+        if not series_info_df.empty:
+            #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Results</h3>", 
+                       #unsafe_allow_html=True)
+            # Format dates for display
+            series_info_df['Start_Date'] = pd.to_datetime(series_info_df['Start_Date']).dt.strftime('%d/%m/%Y')
+            series_info_df['End_Date'] = pd.to_datetime(series_info_df['End_Date']).dt.strftime('%d/%m/%Y')
+            # Display the dataframe
+            #st.dataframe(series_info_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No series records available.")
+    else:
+        st.info("No match data available for series analysis.")
 
+    # Create a copy of batting dataframe and show it
+    if filtered_bat_df is not None and not filtered_bat_df.empty:
+        # Get series info first
+        series_info_df = compute_series_info(filtered_match_df)
+        
+        # Create a copy of batting dataframe
+        series_batting = filtered_bat_df.copy()
+        
+        # Remove unwanted columns
+        series_batting = series_batting.drop(['Bat_Team_x', 'Bowl_Team_x'], axis=1, errors='ignore')
+        
+        # Add Series column by matching date ranges
+        def find_series(row):
+            match_date = pd.to_datetime(row['Date']).date()
+            series_match = series_info_df[
+                (pd.to_datetime(series_info_df['Start_Date']).dt.date <= match_date) &
+                (pd.to_datetime(series_info_df['End_Date']).dt.date >= match_date) &
+                ((series_info_df['Home_Team'] == row['Bat_Team_y']) | 
+                 (series_info_df['Home_Team'] == row['Bowl_Team_y']) |
+                 (series_info_df['Away_Team'] == row['Bat_Team_y']) |
+                 (series_info_df['Away_Team'] == row['Bowl_Team_y']))
+            ]
+            return series_match['Series'].iloc[0] if not series_match.empty else None
+        
+        # Add Series column
+        series_batting['Series'] = series_batting.apply(find_series, axis=1)
+        
+        #st.markdown("**Series Batting Data**")
+        #st.dataframe(series_batting, use_container_width=True)
+    else:
+        st.info("No batting data available for series analysis")
+
+    # Create series batting statistics
+    series_stats = series_batting.groupby(['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team']).agg({
+        'File Name': 'nunique',
+        'Batted': 'sum', 
+        'Out': 'sum',
+        'Not Out': 'sum',
+        'Runs': 'sum',
+        'Balls': 'sum',
+        '4s': 'sum',
+        '6s': 'sum',
+        '50s': 'sum',
+        '100s': 'sum'
+    }).reset_index()
+
+    # Get dates and results from series_info_df
+    series_info_subset = series_info_df[['Series', 'Start_Date', 'End_Date', 'Series_Result']]
+
+    # Merge series info with stats
+    series_stats = series_stats.merge(series_info_subset, on='Series', how='left')
+
+    # Rename columns for clarity
+    series_stats = series_stats.rename(columns={
+        'File Name': 'Matches',
+        'Bat_Team_y': 'Team',
+        'Bowl_Team_y': 'Opponent',
+        'Home Team': 'Location',
+    })
+
+    # Calculate batting averages and strike rates
+    series_stats['Average'] = np.where(
+        series_stats['Out'] > 0,
+        series_stats['Runs'] / series_stats['Out'],
+        np.where(series_stats['Runs'] > 0, series_stats['Runs'], 0)
+    )
+
+    # Calculate strike rate
+    series_stats['Strike Rate'] = np.where(
+        series_stats['Balls'] > 0,
+        (series_stats['Runs'] / series_stats['Balls']) * 100,
+        0
+    )
+
+    # Calculate Balls per Out
+    series_stats['Balls/Out'] = np.where(
+        series_stats['Out'] > 0,
+        series_stats['Balls'] / series_stats['Out'],
+        np.where(series_stats['Balls'] > 0, series_stats['Balls'], 0)
+    )
+
+    # Round the calculated statistics
+    series_stats['Average'] = series_stats['Average'].round(2)
+    series_stats['Strike Rate'] = series_stats['Strike Rate'].round(2)
+    series_stats['Balls/Out'] = series_stats['Balls/Out'].round(2)
+
+    # Reorder columns to show dates and result first
+    cols = ['Series', 'Start_Date', 'End_Date', 'Series_Result', 'Name', 'Team', 'Opponent', 'Location', 
+            'Matches', 'Batted', 'Out', 'Not Out', 'Runs', 'Balls', '4s', '6s', '50s', '100s',
+            'Average', 'Strike Rate', 'Balls/Out']
+    series_stats = series_stats[cols]
+
+    # Sort by Series and Runs
+    series_stats = series_stats.sort_values(['Series', 'Runs'], ascending=[True, False])
+
+    # Display the series batting statistics
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Batting Statistics</h3>", unsafe_allow_html=True)
+    st.dataframe(series_stats, use_container_width=True, hide_index=True)
+
+    # Create series bowling statistics
+    if filtered_bowl_df is not None and not filtered_bowl_df.empty:
+        # Create a copy of bowling dataframe
+        series_bowling = filtered_bowl_df.copy()
+        
+        # Add Series column by matching date ranges
+        def find_series(row):
+            match_date = pd.to_datetime(row['Date']).date()
+            series_match = series_info_df[
+                (pd.to_datetime(series_info_df['Start_Date']).dt.date <= match_date) &
+                (pd.to_datetime(series_info_df['End_Date']).dt.date >= match_date) &
+                ((series_info_df['Home_Team'] == row['Bowl_Team']) | 
+                 (series_info_df['Home_Team'] == row['Bat_Team']) |
+                 (series_info_df['Away_Team'] == row['Bowl_Team']) |
+                 (series_info_df['Away_Team'] == row['Bat_Team']))
+            ]
+            return series_match['Series'].iloc[0] if not series_match.empty else None
+
+        # Add Series column
+        series_bowling['Series'] = series_bowling.apply(find_series, axis=1)
+
+        # First calculate 10-wicket matches at the File Name (match) level
+        match_wickets = series_bowling.groupby(['Series', 'Name', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+        match_wickets['10WM'] = (match_wickets['Bowler_Wkts'] >= 10).astype(int)
+        
+        # Sum up the 10WM by Series and Name
+        ten_wicket_matches = match_wickets.groupby(['Series', 'Name'])['10WM'].sum().reset_index()
+
+        # Calculate bowling statistics by series
+        bowling_stats = series_bowling.groupby(['Series', 'Name', 'Bowl_Team', 'Bat_Team', 'Home_Team']).agg({
+            'File Name': 'nunique',  # Matches
+            'Bowled': 'sum',
+            'Bowler_Overs': 'sum',
+            'Maidens': 'sum',
+            'Bowler_Runs': 'sum',
+            'Bowler_Wkts': 'sum',
+            '5Ws': 'sum',
+            'Bowler_Balls': 'sum',
+        }).reset_index()
+
+        # Merge in the 10-wicket match data
+        bowling_stats = bowling_stats.merge(ten_wicket_matches, on=['Series', 'Name'], how='left')
+        bowling_stats['10WM'] = bowling_stats['10WM'].fillna(0)
+
+        # Get dates and results from series_info_df
+        series_info_subset = series_info_df[['Series', 'Start_Date', 'End_Date', 'Series_Result']]
+
+        # Merge series info with stats
+        bowling_stats = bowling_stats.merge(series_info_subset, on='Series', how='left')
+
+        # Rename columns for clarity
+        bowling_stats = bowling_stats.rename(columns={
+            'File Name': 'Matches',
+            'Bowl_Team': 'Team',
+            'Bat_Team': 'Opponent',
+            'Home_Team': 'Location',
+            'Bowler_Overs': 'Overs',
+            'Bowler_Runs': 'Runs',
+            'Bowler_Wkts': 'Wickets',
+            'Bowler_Balls': 'Balls',
+            '10WM': '10Ws'
+        })
+
+        # Calculate overs from balls (integer overs + decimal part * 10)
+        bowling_stats['Overs'] = (bowling_stats['Balls'] // 6) + ((bowling_stats['Balls'] % 6) / 10)
+
+        # Calculate bowling averages and economy rates 
+        bowling_stats['Average'] = np.where(
+            bowling_stats['Wickets'] > 0,
+            bowling_stats['Runs'] / bowling_stats['Wickets'],
+            np.inf
+        )
+
+        bowling_stats['Economy'] = np.where(
+            bowling_stats['Balls'] > 0,
+            (bowling_stats['Runs'] * 6) / bowling_stats['Balls'],
+            0
+        )
+
+        bowling_stats['Strike Rate'] = np.where(
+            bowling_stats['Wickets'] > 0,
+            bowling_stats['Balls'] / bowling_stats['Wickets'],
+            np.inf
+        )
+
+        # Round the calculated statistics
+        bowling_stats['Overs'] = bowling_stats['Overs'].round(1)
+        bowling_stats['Average'] = bowling_stats['Average'].round(2) 
+        bowling_stats['Economy'] = bowling_stats['Economy'].round(2)
+        bowling_stats['Strike Rate'] = bowling_stats['Strike Rate'].round(2)
+
+        # Reorder columns
+        cols = ['Series', 'Start_Date', 'End_Date', 'Series_Result', 'Name', 'Team', 'Opponent', 'Location',
+            'Matches', 'Bowled', 'Overs', 'Maidens', 'Runs', 'Wickets', '5Ws', '10Ws',
+            'Average', 'Economy', 'Strike Rate']
+        bowling_stats = bowling_stats[cols]
+
+        # Sort by Series and Wickets
+        bowling_stats = bowling_stats.sort_values(['Series', 'Wickets'], ascending=[True, False])
+
+        # Display the series bowling statistics
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Bowling Statistics</h3>", 
+                unsafe_allow_html=True)
+        st.dataframe(bowling_stats, use_container_width=True, hide_index=True)
+    else:
+        st.info("No bowling data available for series analysis")
+
+    # Create series batting records
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Batting Records</h3>", unsafe_allow_html=True)
+
+    # Most Runs in a Series
+    st.markdown("<h4 style='color:#f04f53;'>Most Runs in a Series</h4>", unsafe_allow_html=True)
+    most_runs = series_stats.sort_values('Runs', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Runs', 'Average', 'Strike Rate', '50s', '100s']].head(10)
+    st.dataframe(most_runs, use_container_width=True, hide_index=True)
+
+    # Most Hundreds in a Series  
+    st.markdown("<h4 style='color:#f04f53;'>Most Hundreds in a Series</h4>", unsafe_allow_html=True)
+    most_hundreds = series_stats.sort_values('100s', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Runs', '100s', '50s']].head(10)
+    st.dataframe(most_hundreds[most_hundreds['100s'] > 0], use_container_width=True, hide_index=True)
+
+    # Highest Average in a Series (min 200 runs)
+    st.markdown("<h4 style='color:#f04f53;'>Highest Average in a Series (Min. 300 Runs)</h4>", unsafe_allow_html=True)
+    high_avg = series_stats[series_stats['Runs'] >= 300].sort_values('Average', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Runs', 'Average', 'Strike Rate']].head(10)
+    st.dataframe(high_avg, use_container_width=True, hide_index=True)
+
+    # Bowling Records
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Bowling Records</h3>", unsafe_allow_html=True)
+
+    # Most Wickets in a Series
+    st.markdown("<h4 style='color:#f04f53;'>Most Wickets in a Series</h4>", unsafe_allow_html=True)
+    most_wickets = bowling_stats.sort_values('Wickets', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Wickets', 'Average', 'Economy', '5Ws']].head(10)
+    st.dataframe(most_wickets, use_container_width=True, hide_index=True)
+
+    # Best Average in a Series (min 15 wickets)
+    st.markdown("<h4 style='color:#f04f53;'>Best Average in a Series (Min. 15 Wickets)</h4>", unsafe_allow_html=True)
+    best_avg = bowling_stats[bowling_stats['Wickets'] >= 15].sort_values('Average', ascending=True)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Wickets', 'Average', 'Economy']].head(10)
+    st.dataframe(best_avg, use_container_width=True, hide_index=True)
+
+    # Most 5-Wicket Hauls in a Series
+    st.markdown("<h4 style='color:#f04f53;'>Most 5-Wicket Hauls in a Series</h4>", unsafe_allow_html=True)
+    most_5w = bowling_stats.sort_values('5Ws', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Wickets', '5Ws', 'Average']].head(10)
+    st.dataframe(most_5w[most_5w['5Ws'] > 0], use_container_width=True, hide_index=True)
+
+    # Most Overs in a Series
+    st.markdown("<h4 style='color:#f04f53;'>Most Overs in a Series</h4>", unsafe_allow_html=True)
+    most_overs = bowling_stats.sort_values('Overs', ascending=False)[['Series', 'Name', 'Team', 'Opponent', 'Matches', 'Overs', 'Wickets', 'Average', 'Economy']].head(10)
+    st.dataframe(most_overs, use_container_width=True, hide_index=True)
+    # Create whitewashes section
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Series Whitewashes</h3>", unsafe_allow_html=True)
+
+    # Filter for whitewashes where home team won all games
+    home_whitewashes = series_info_df[
+        (series_info_df['Games_Played'] == series_info_df['Total_Home_Wins']) & 
+        (series_info_df['Games_Played'] > 1)  # Only series with multiple games
+    ].copy()
+    
+    # Add winning/losing team columns for home wins
+    home_whitewashes['Winning_Team'] = home_whitewashes['Home_Team']
+    home_whitewashes['Losing_Team'] = home_whitewashes['Away_Team']
+    home_whitewashes['Location'] = home_whitewashes['Home_Team']
+
+    # Filter for whitewashes where away team won all games  
+    away_whitewashes = series_info_df[
+        (series_info_df['Games_Played'] == series_info_df['Total_Away_Wins']) &
+        (series_info_df['Games_Played'] > 1)  # Only series with multiple games
+    ].copy()
+    
+    # Add winning/losing team columns for away wins
+    away_whitewashes['Winning_Team'] = away_whitewashes['Away_Team']
+    away_whitewashes['Losing_Team'] = away_whitewashes['Home_Team'] 
+    away_whitewashes['Location'] = away_whitewashes['Home_Team']
+
+    # Combine the whitewashes
+    whitewashes_df = pd.concat([home_whitewashes, away_whitewashes])
+
+    if not whitewashes_df.empty:
+        # Sort by date
+        whitewashes_df = whitewashes_df.sort_values('Start_Date')
+        
+        # Select and rename columns for display
+        whitewashes_df = whitewashes_df[[
+            'Start_Date', 'End_Date', 'Winning_Team', 'Losing_Team', 'Location',
+            'Match_Format', 'Games_Played', 'Series_Result'
+        ]].rename(columns={
+            'Match_Format': 'Format',
+            'Winning_Team': 'Winner',
+            'Losing_Team': 'Loser'
+        })
+        
+        st.dataframe(whitewashes_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No series whitewashes found.")
