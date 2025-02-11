@@ -1174,7 +1174,6 @@ with tabs[1]:
     # Only show Form Guide and Performance Trend if specific team(s) selected
     if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
         # Performance Trend
-        st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Series Performance Trend</h1>", unsafe_allow_html=True)
 
         for team in team_choice:
             # Series Form Guide
@@ -1269,6 +1268,7 @@ with tabs[1]:
                         """
                         st.markdown(form_html, unsafe_allow_html=True)
 
+            st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Series Performance Trend</h1>", unsafe_allow_html=True)
 
 
             team_series_trend = series_grouped[
@@ -1564,8 +1564,5 @@ with tabs[1]:
                             </div>
                             """
                             st.markdown(html_block, unsafe_allow_html=True)
-
-# ...existing code...
-
 
 
