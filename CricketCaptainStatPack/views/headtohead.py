@@ -186,6 +186,28 @@ with tabs[0]:
         # Display the filtered and sorted matches
         st.dataframe(raw_matches, use_container_width=True, hide_index=True)
         
+        # Add metrics if a team is selected
+        if 'All' not in team_choice and team_choice:
+            total_matches = len(raw_matches)
+            total_wins = sum(1 for margin in raw_matches['Margin'] if any(team in margin for team in team_choice) and 'won' in margin)
+            total_losses = sum(1 for margin in raw_matches['Margin'] if all(team not in margin for team in team_choice) and 'won' in margin)
+            total_draws = sum(1 for margin in raw_matches['Margin'] if 'drawn' in margin)
+            win_percentage = (total_wins / total_matches) * 100 if total_matches > 0 else 0
+            loss_percentage = (total_losses / total_matches) * 100 if total_matches > 0 else 0
+
+            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Record</h1>", unsafe_allow_html=True)
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Matches", total_matches, border=True)
+            with col2:
+                st.metric("Won", total_wins, border=True)
+            with col3:
+                st.metric("Lost", total_losses, border=True)
+            with col4:
+                st.metric("Win %", f"{win_percentage:.2f}%", border=True)
+            with col5:
+                st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
     else:
         st.info("No match records available for head-to-head analysis.")
 
@@ -288,7 +310,7 @@ with tabs[0]:
         st.markdown(form_styles, unsafe_allow_html=True)
 
         for team in team_choice:
-            # "All Format" row (unchanged logic)
+            # Use recent 20 matches for the team
             team_matches = raw_matches[
                 (raw_matches['Home Team'] == team) | 
                 (raw_matches['Away Team'] == team)
@@ -314,11 +336,14 @@ with tabs[0]:
                 else:
                     form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
 
-            # Display team name and form
+            # Display header with team and format on one line and form indicators beneath
             if form_indicators:  # Only display if there are matches
+                header_text = f"{team} - {fmt}" if 'fmt' in globals() else team
                 form_html = f"""
                 <div class="form-container">
-                    <span class="team-name">{team}</span>
+                    <div style="text-align: center; font-weight: bold; font-size: 1.2em;">
+                        {header_text}
+                    </div>
                     <div class="form-indicators-container">
                         {''.join(reversed(form_indicators))}
                     </div>
@@ -355,17 +380,25 @@ with tabs[0]:
                             else:
                                 form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
 
+                        # Calculate record for the specific format
+                        total = len(sub_matches)
+                        wins = sub_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
+                        draws = sub_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
+                        losses = total - wins - draws
+                        record_str = f"Pld {total}, W {wins}, L {losses}, D {draws}"
+
                         # Display team name and form for the specific format
                         if form_indicators:  # Only display if there are matches
                             form_html = f"""
                             <div class="form-container">
-                                <span class="team-name">{team} ({fm})</span>
+                                <span class="team-name">{team} ({fm}) {record_str}</span>
                                 <div class="form-indicators-container">
                                     {''.join(reversed(form_indicators))}
                                 </div>
                             </div>
                             """
                             st.markdown(form_html, unsafe_allow_html=True)
+
 
     else:
         if 'match_df' in st.session_state:
@@ -825,8 +858,12 @@ with tabs[0]:
                     
                     html_block = f"""
                     <div class="opponent-form-container">
-                        <div class="opponent-name">Opponent: {opponent} (W {w_count}, L {l_count}, D {d_count})</div>
-                        <div class="outings-container">{''.join(reversed(outings))}</div>
+                        <div class="opponent-name">
+                            {team} - {(fm if 'fm' in globals() else 'All')} | Opponent: {opponent} (W {w_count}, L {l_count}, D {d_count})
+                        </div>
+                        <div class="outings-container">
+                            {''.join(reversed(outings))}
+                        </div>
                     </div>
                     """
                     st.markdown(html_block, unsafe_allow_html=True)
@@ -879,6 +916,31 @@ with tabs[0]:
                     ].sort_values('Date', ascending=False).head(20)
                     # ...build & display for sub_data...
 
+    if 'match_df' in st.session_state and 'All' not in team_choice:
+    # Add Form Guide Record summary for each selected team
+        for team in team_choice:
+            team_matches = raw_matches[(raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)]
+            total = len(team_matches)
+            wins = team_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
+            draws = team_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
+            losses = total - wins - draws
+            st.markdown(f"<h3 style='text-align:center;'>{team} Record: P{total}, W{wins}, L{losses}, D{draws}</h3>", unsafe_allow_html=True)
+
+            # Add a row per format record when "All" is selected
+            if 'All' in format_choice:
+                for fm in [f for f in formats if f != "All"]:
+                    team_format_matches = raw_matches[
+                        ((raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)) &
+                        (raw_matches['Format'] == fm)
+                    ]
+                    total = len(team_format_matches)
+                    wins = team_format_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
+                    draws = team_format_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
+                    losses = total - wins - draws
+                    st.markdown(
+                        f"<p style='text-align:center;'>{team} ({fm}): Pld {total}, W {wins}, L {losses}, D {draws}</p>",
+                        unsafe_allow_html=True
+                    )
 
 ################### SERIES TAB #################################
 with tabs[1]:
@@ -1086,30 +1148,108 @@ with tabs[1]:
         else:
             st.info("No series data available for head-to-head analysis.")
 
-        # Only show Form Guide and Performance Trend if specific team(s) selected
-        if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
-            for team in team_choice:
-                # Series Form Guide
-                st.markdown("<h1 style='color:#f04f53; text-align: center;'>Series Form Guide</h1>", unsafe_allow_html=True)
-                st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
-                
-                # All formats row first
-                team_series = series_grouped[
-                    (series_grouped['Home_Team'] == team) | 
-                    (series_grouped['Away_Team'] == team)
+        # Add metrics if a team is selected
+        if 'All' not in team_choice and team_choice and not series_grouped.empty:
+            total_series = len(series_grouped)
+            total_wins = series_grouped['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
+            total_losses = series_grouped['Series_Result'].apply(lambda x: 1 if not x.startswith(team) and 'Drawn' not in x and 'Tied' not in x else 0).sum()
+            total_draws = series_grouped['Series_Result'].apply(lambda x: 1 if 'Drawn' in x or 'Tied' in x else 0).sum()
+            win_percentage = (total_wins / total_series) * 100 if total_series > 0 else 0
+            loss_percentage = (total_losses / total_series) * 100 if total_series > 0 else 0
+
+            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Series Record</h1>", unsafe_allow_html=True)
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Series", total_series, border=True)
+            with col2:
+                st.metric("Won", total_wins, border=True)
+            with col3:
+                st.metric("Lost", total_losses, border=True)
+            with col4:
+                st.metric("Win %", f"{win_percentage:.2f}%", border=True)
+            with col5:
+                st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
+
+    # Only show Form Guide and Performance Trend if specific team(s) selected
+    if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
+        # Performance Trend
+        st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Series Performance Trend</h1>", unsafe_allow_html=True)
+
+        for team in team_choice:
+            # Series Form Guide
+            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Series Form Guide</h1>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+            
+            # All formats row first
+            team_series = series_grouped[
+                (series_grouped['Home_Team'] == team) | 
+                (series_grouped['Away_Team'] == team)
+            ].sort_values('Start_Date', ascending=False).head(20)
+
+            # Calculate team record for all formats
+            total_series = len(team_series)
+            win_count = team_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
+            draw_count = team_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
+            loss_count = total_series - win_count - draw_count
+            record_str = f"P{total_series}, W{win_count}, L{loss_count}, D{draw_count}"
+            
+            if not team_series.empty:
+                form_indicators = []
+                for _, series in team_series.iterrows():
+                    is_home = series['Home_Team'] == team
+                    opponent = series['Away_Team'] if is_home else series['Home_Team']
+                    result = series['Series_Result']
+                    
+                    tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
+                            f"<b>vs {opponent}</b><br>"
+                            f"<b>Format:</b> {series['Match_Format']}<br>"
+                            f"<b>Result:</b> {result}")
+                    
+                    if result.startswith(team):
+                        form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
+                    elif 'Drawn' in result or 'Tied' in result:
+                        form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
+                    else:
+                        form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
+
+                if form_indicators:
+                    form_html = f"""
+                    <div class="form-container">
+                        <span class="team-name">{team} {record_str}</span>
+                        <div class="form-indicators-container">
+                            {''.join(reversed(form_indicators))}
+                        </div>
+                    </div>
+                    """
+                    st.markdown(form_html, unsafe_allow_html=True)
+
+            # Add rows for each format
+            for fmt in format_choice if 'All' not in format_choice else series_grouped['Match_Format'].unique():
+                format_series = series_grouped[
+                    ((series_grouped['Home_Team'] == team) | 
+                    (series_grouped['Away_Team'] == team)) &
+                    (series_grouped['Match_Format'] == fmt)
                 ].sort_values('Start_Date', ascending=False).head(20)
 
-                if not team_series.empty:
+                # Calculate team record for this format
+                total_series_fmt = len(format_series)
+                win_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
+                draw_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
+                loss_count_fmt = total_series_fmt - win_count_fmt - draw_count_fmt
+                record_str_fmt = f"P{total_series_fmt}, W{win_count_fmt}, L{loss_count_fmt}, D{draw_count_fmt}"
+                
+                if not format_series.empty:
                     form_indicators = []
-                    for _, series in team_series.iterrows():
+                    for _, series in format_series.iterrows():
                         is_home = series['Home_Team'] == team
                         opponent = series['Away_Team'] if is_home else series['Home_Team']
                         result = series['Series_Result']
                         
                         tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
-                                 f"<b>vs {opponent}</b><br>"
-                                 f"<b>Format:</b> {series['Match_Format']}<br>"
-                                 f"<b>Result:</b> {result}")
+                                f"<b>vs {opponent}</b><br>"
+                                f"<b>Format:</b> {series['Match_Format']}<br>"
+                                f"<b>Result:</b> {result}")
                         
                         if result.startswith(team):
                             form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
@@ -1121,7 +1261,7 @@ with tabs[1]:
                     if form_indicators:
                         form_html = f"""
                         <div class="form-container">
-                            <span class="team-name">{team}</span>
+                            <span class="team-name">{team} ({fmt}) {record_str_fmt}</span>
                             <div class="form-indicators-container">
                                 {''.join(reversed(form_indicators))}
                             </div>
@@ -1129,108 +1269,69 @@ with tabs[1]:
                         """
                         st.markdown(form_html, unsafe_allow_html=True)
 
-                # Add rows for each format
-                for fmt in format_choice if 'All' not in format_choice else series_grouped['Match_Format'].unique():
-                    format_series = series_grouped[
-                        ((series_grouped['Home_Team'] == team) | 
-                         (series_grouped['Away_Team'] == team)) &
-                        (series_grouped['Match_Format'] == fmt)
-                    ].sort_values('Start_Date', ascending=False).head(20)
 
-                    if not format_series.empty:
-                        form_indicators = []
-                        for _, series in format_series.iterrows():
-                            is_home = series['Home_Team'] == team
-                            opponent = series['Away_Team'] if is_home else series['Home_Team']
-                            result = series['Series_Result']
-                            
-                            tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
-                                     f"<b>vs {opponent}</b><br>"
-                                     f"<b>Format:</b> {series['Match_Format']}<br>"
-                                     f"<b>Result:</b> {result}")
-                            
-                            if result.startswith(team):
-                                form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
-                            elif 'Drawn' in result or 'Tied' in result:
-                                form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
-                            else:
-                                form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
 
-                        if form_indicators:
-                            form_html = f"""
-                            <div class="form-container">
-                                <span class="team-name">{team} ({fmt})</span>
-                                <div class="form-indicators-container">
-                                    {''.join(reversed(form_indicators))}
-                                </div>
-                            </div>
-                            """
-                            st.markdown(form_html, unsafe_allow_html=True)
-
-                # Performance Trend
-                st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Series Performance Trend</h1>", unsafe_allow_html=True)
+            team_series_trend = series_grouped[
+                (series_grouped['Home_Team'] == team) | 
+                (series_grouped['Away_Team'] == team)
+            ].sort_values('Start_Date').tail(50)
+            
+            if not team_series_trend.empty:
+                results = []
+                colors = []
+                for _, series in team_series_trend.iterrows():
+                    if series['Series_Result'].startswith(team):
+                        results.append(1)    # Win
+                        colors.append('#28a745')
+                    elif 'Drawn' in series['Series_Result'] or 'Tied' in series['Series_Result']:
+                        results.append(0.5)  # Draw
+                        colors.append('#ffc107')
+                    else:
+                        results.append(0)    # Loss
+                        colors.append('#dc3545')
                 
-                team_series_trend = series_grouped[
-                    (series_grouped['Home_Team'] == team) | 
-                    (series_grouped['Away_Team'] == team)
-                ].sort_values('Start_Date').tail(50)
+                fig = go.Figure()
                 
-                if not team_series_trend.empty:
-                    results = []
-                    colors = []
-                    for _, series in team_series_trend.iterrows():
-                        if series['Series_Result'].startswith(team):
-                            results.append(1)    # Win
-                            colors.append('#28a745')
-                        elif 'Drawn' in series['Series_Result'] or 'Tied' in series['Series_Result']:
-                            results.append(0.5)  # Draw
-                            colors.append('#ffc107')
-                        else:
-                            results.append(0)    # Loss
-                            colors.append('#dc3545')
-                    
-                    fig = go.Figure()
-                    
-                    # Add the main line
-                    fig.add_trace(go.Scatter(
-                        y=results,
-                        mode='lines',
-                        name='Performance',
-                        line=dict(shape='spline', smoothing=0.8, width=2, color='#666666')
-                    ))
-                    
-                    # Add colored markers
-                    fig.add_trace(go.Scatter(
-                        y=results,
-                        mode='markers',
-                        marker=dict(size=10, color=colors, line=dict(width=2, color='white')),
-                        showlegend=False
-                    ))
-                    
-                    fig.update_layout(
-                        yaxis=dict(
-                            ticktext=["Loss", "Draw", "Win"],
-                            tickvals=[0, 0.5, 1],
-                            range=[-0.1, 1.1],
-                            gridcolor='lightgray'
-                        ),
-                        xaxis=dict(
-                            title="Last 50 Series (Recent ← Old)",
-                            gridcolor='lightgray'
-                        ),
-                        plot_bgcolor='white',
-                        showlegend=False,
-                        height=300
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
+                # Add the main line
+                fig.add_trace(go.Scatter(
+                    y=results,
+                    mode='lines',
+                    name='Performance',
+                    line=dict(shape='spline', smoothing=0.8, width=2, color='#666666')
+                ))
+                
+                # Add colored markers
+                fig.add_trace(go.Scatter(
+                    y=results,
+                    mode='markers',
+                    marker=dict(size=10, color=colors, line=dict(width=2, color='white')),
+                    showlegend=False
+                ))
+                
+                fig.update_layout(
+                    yaxis=dict(
+                        ticktext=["Loss", "Draw", "Win"],
+                        tickvals=[0, 0.5, 1],
+                        range=[-0.1, 1.1],
+                        gridcolor='lightgray'
+                    ),
+                    xaxis=dict(
+                        title="Last 50 Series (Recent ← Old)",
+                        gridcolor='lightgray'
+                    ),
+                    plot_bgcolor='white',
+                    showlegend=False,
+                    height=300
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
 
         # Add a win percentage by year chart for series data
         if 'match_df' in st.session_state and 'All' not in team_choice:
             st.markdown("<h1 style='color:#f04f53; text-align: center;'>Win Percentage by Year (Series)</h1>", unsafe_allow_html=True)
             
             for team in team_choice:
-                # Get series for the team and ensure Date is datetime
+                # Get series for the team and ensure Date is datetime 
                 team_series = series_grouped[
                     (series_grouped['Home_Team'] == team) | 
                     (series_grouped['Away_Team'] == team)
@@ -1239,70 +1340,69 @@ with tabs[1]:
                 # Extract year using string operations since Date is already in datetime format
                 team_series['Year'] = pd.to_datetime(team_series['Start_Date']).apply(lambda x: x.year)
                 
-                # Calculate win percentage by year
-                yearly_stats = []
-                for year in sorted(team_series['Year'].unique()):
-                    year_series = team_series[team_series['Year'] == year]
-                    wins = sum(
-                        (year_series['Home_Team'] == team) & (year_series['Series_Result'].str.startswith(team)) |
-                        (year_series['Away_Team'] == team) & (year_series['Series_Result'].str.startswith(team))
-                    )
-                    total = len(year_series)
-                    win_pct = round((wins / total * 100), 2) if total > 0 else 0
-                    yearly_stats.append({
-                        'Year': year,
-                        'Win_Percentage': win_pct,
-                        'Total_Series': total
-                    })
-                
-                yearly_df = pd.DataFrame(yearly_stats)
-                
                 # Create line chart
                 fig = go.Figure()
                 
-                # Add win percentage line
-                fig.add_trace(go.Scatter(
-                    x=yearly_df['Year'],
-                    y=yearly_df['Win_Percentage'],
-                    mode='lines+markers',
-                    name='Win %',
-                    line=dict(color='#28a745', width=3),
-                    marker=dict(size=8)
-                ))
+                # Calculate and plot win percentage for each format
+                formats = format_choice if 'All' not in format_choice else team_series['Match_Format'].unique()
+                format_colors = {
+                    'Test Match': '#28a745',
+                    'One Day International': '#dc3545', 
+                    '20 Over International': '#ffc107'
+                }
                 
-                # Add total series as bar chart
-                fig.add_trace(go.Bar(
-                    x=yearly_df['Year'],
-                    y=yearly_df['Total_Series'],
-                    name='Total Series',
-                    yaxis='y2',
-                    opacity=0.3,
-                    marker_color='#666666'
-                ))
-                
-                fig.update_layout(
-                    xaxis=dict(
-                        title="Year",
-                        tickmode='linear',
-                        tick0=yearly_df['Year'].min(),
-                        dtick=1,
-                        gridcolor='lightgray'
-                    ),
-                    yaxis=dict(
-                        title="Win Percentage",
-                        ticksuffix="%",
-                        range=[0, 100]
-                    ),
-                    yaxis2=dict(
-                        title="Total Series",
-                        overlaying='y',
-                        side='right'
-                    ),
-                    hovermode='x unified',
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
+                for fmt in formats:
+                    # Filter for this format
+                    format_series = team_series[team_series['Match_Format'] == fmt]
+                    
+                    # Calculate win percentage by year for this format
+                    yearly_stats = []
+                    for year in sorted(format_series['Year'].unique()):
+                        year_series = format_series[format_series['Year'] == year]
+                        wins = sum(
+                            (year_series['Home_Team'] == team) & (year_series['Series_Result'].str.startswith(team)) |
+                            (year_series['Away_Team'] == team) & (year_series['Series_Result'].str.startswith(team))
+                        )
+                        total = len(year_series)
+                        win_pct = round((wins / total * 100), 2) if total > 0 else 0
+                        yearly_stats.append({
+                            'Year': year,
+                            'Win_Percentage': win_pct,
+                            'Total_Series': total
+                        })
+                    
+                    yearly_df = pd.DataFrame(yearly_stats)
+                    
+                    if not yearly_df.empty:
+                        # Add win percentage line for this format
+                        fig.add_trace(go.Scatter(
+                            x=yearly_df['Year'],
+                            y=yearly_df['Win_Percentage'],
+                            mode='lines+markers',
+                            name=f'{fmt} Win %',
+                            line=dict(color=format_colors.get(fmt, '#666666'), width=3),
+                            marker=dict(size=8)
+                        ))
+            
+            fig.update_layout(
+                xaxis=dict(
+                title="Year",
+                tickmode='linear',
+                tick0=team_series['Year'].min(),
+                dtick=1,
+                gridcolor='lightgray'
+                ),
+                yaxis=dict(
+                title="Win Percentage",
+                ticksuffix="%",
+                range=[0, 100]
+                ),
+                hovermode='x unified',
+                showlegend=True,
+                plot_bgcolor='white'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
         # South Africa - Last 20 Outings vs Each Opponent (Series)
         if 'match_df' in st.session_state and 'South Africa' in team_choice:
