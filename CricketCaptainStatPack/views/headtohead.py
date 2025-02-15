@@ -211,6 +211,42 @@ with tabs[0]:
     else:
         st.info("No match records available for head-to-head analysis.")
 
+    if 'match_df' in st.session_state:
+        df = st.session_state['match_df'].copy()
+        df['Date'] = df['Date'].apply(parse_date)
+        
+        # Create separate records for home and away perspectives
+        home_stats = df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
+        away_stats = df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
+        
+        home_stats.columns = ['Team', 'Opponent', 'Won', 'Lost', 'Drawn', 'Match_Format']
+        away_stats.columns = ['Opponent', 'Team', 'Lost', 'Won', 'Drawn', 'Match_Format']
+        
+        combined = pd.concat([home_stats, away_stats], ignore_index=True)
+        
+        # Apply the filters defined on the page
+        filtered_combined = filter_by_all(combined)
+        
+        # Aggregate the records by format
+        agg_df = filtered_combined.groupby('Match_Format').agg({
+            'Won': 'sum',
+            'Lost': 'sum',
+            'Drawn': 'sum'
+        }).reset_index()
+        
+        agg_df['Matches'] = agg_df['Won'] + agg_df['Lost'] + agg_df['Drawn']
+        agg_df['Win%'] = (agg_df['Won'] / agg_df['Matches'] * 100).round(1)
+        agg_df['Draw%'] = (agg_df['Drawn'] / agg_df['Matches'] * 100).round(1)
+        agg_df['Lost%'] = (agg_df['Lost'] / agg_df['Matches'] * 100).round(1)
+        
+        # Order and rename columns as required
+        summary_df = agg_df[['Match_Format', 'Matches', 'Won', 'Drawn', 'Lost', 'Win%', 'Draw%', 'Lost%']].rename(
+            columns={'Match_Format': 'Format'}
+        )
+        
+        st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Summary by Format</h2>", unsafe_allow_html=True)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
     ###################
 
     # Form Guide
@@ -1171,6 +1207,9 @@ with tabs[1]:
             with col5:
                 st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
 
+
+                
+
     # Only show Form Guide and Performance Trend if specific team(s) selected
     if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
         # Performance Trend
@@ -1564,5 +1603,8 @@ with tabs[1]:
                             </div>
                             """
                             st.markdown(html_block, unsafe_allow_html=True)
+
+# ...existing code...
+
 
 
