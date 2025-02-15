@@ -36,13 +36,13 @@ def process_match_data(directory_path):
                 match_format = 'ODI'
             elif '20 Over International' in line_3 or 'World Cup 20' in line_3 or '20 Over Tournament' in line_3 or 'Asia Trophy 20' in line_3:
                 match_format = 'T20I'
-            elif '20 Over Trophy' in line_3 or '20 Over League' in line_3 or 'Domestic 20 Over' in line_3 or 'Provincial 20 Over' in line_3 or 'Super Trophy' in line_3 or 'Vitality Blast' in line_3 or 'Big Bash League' in line_3:
+            elif '20 Over Trophy' in line_3 or '20 Over League' in line_3 or 'Domestic 20 Over' in line_3 or 'Provincial 20 Over' in line_3 or 'Super Trophy' in line_3 or 'Vitality Blast' in line_3 or 'Big Bash League' in line_3 or 'T20 Blast' in line_3:   
                 match_format = 'T20'
             elif 'Test Championship Final' in line_3:
                 match_format = 'Test Match'
             elif '100 Ball Trophy' in line_3 or 'The Hundred' in line_3:
                 match_format = 'The Hundred'
-            elif 'English FC League' in line_3 or 'Australian League' in line_3 or 'FC League' in line_3 or 'FC Plate' in line_3 or '4 Day Competition' in line_3 or 'Vitality County Championship' in line_3 or 'University Match' in line_3 or 'Sheffield Shield' in line_3:
+            elif 'English FC League' in line_3 or 'Australian League' in line_3 or 'FC League' in line_3 or 'FC Plate' in line_3 or '4 Day Competition' in line_3 or 'Vitality County Championship' in line_3 or 'University Match' in line_3 or 'Sheffield Shield' in line_3 or 'County Championship' in line_3:
                 match_format = 'First Class'
             elif 'Challenge Trophy' in line_3 or 'One Day Cup' in line_3 or 'One Day Friendly' in line_3 or 'Dean Jones Trophy' in line_3:
                 match_format = 'One Day'
@@ -137,6 +137,65 @@ def process_match_data(directory_path):
     if dataframes:
         final_df = pd.concat(dataframes, ignore_index=True)
         
+        # Ensure that only one competition is selected when processing matches
+        def transform_competition(row):
+            test_trophies = {
+                ('Australia', 'England'): 'The Ashes',
+                ('England', 'Australia'): 'The Ashes',
+                ('India', 'Australia'): 'Border-Gavaskar Trophy',
+                ('Australia', 'India'): 'Border-Gavaskar Trophy',
+                ('West Indies', 'Australia'): 'Frank Worrell Trophy',
+                ('Australia', 'West Indies'): 'Frank Worrell Trophy',
+                ('South Africa', 'England'): "Basil D'Oliveira Trophy",
+                ('England', 'South Africa'): "Basil D'Oliveira Trophy",
+                ('England', 'India'): 'Pataudi Trophy',
+                ('India', 'England'): 'Anthony de Mello Trophy',
+                ('West Indies', 'Sri Lanka'): 'Sobers-Tissera Trophy',
+                ('Sri Lanka', 'West Indies'): 'Sobers-Tissera Trophy',
+                ('England', 'West Indies'): 'Wisden Trophy',
+                ('West Indies', 'England'): 'Wisden Trophy',
+                ('Australia', 'New Zealand'): 'Trans-Tasman Trophy',
+                ('New Zealand', 'Australia'): 'Trans-Tasman Trophy',
+                ('Australia', 'Sri Lanka'): 'Warne-Muralitharan Trophy',
+                ('Sri Lanka', 'Australia'): 'Warne-Muralitharan Trophy',
+                ('India', 'South Africa'): 'Freedom Trophy',
+                ('South Africa', 'India'): 'Freedom Trophy'
+            }
+
+            comp = row['Competition']
+            if 'Test Match' in comp:
+                team_pair = (row['Home_Team'], row['Away_Team'])
+                if team_pair in test_trophies:
+                    return test_trophies[team_pair]
+                return 'Test Match'
+            elif comp.startswith('World Cup 20'):
+                return 'T20 World Cup'
+            elif comp.startswith('World Cup'):
+                return 'ODI World Cup'
+            elif comp.startswith('Champions Cup'):
+                return 'Champions Cup'
+            elif comp.startswith('Asia Trophy ODI'):
+                return 'ODI Asia Cup'
+            elif comp.startswith('Asia Trophy 20'):
+                return 'T20 Asia Cup'
+            elif 'One Day International' in comp:
+                return 'ODI'
+            elif '20 Over International' in comp:
+                return 'T20I'
+            else:
+                return comp
+
+        # Apply the competition transformation
+        try:
+            final_df['comp'] = final_df.apply(transform_competition, axis=1)
+        except Exception as e:
+            print(f"Error creating comp column: {e}")
+            final_df['comp'] = final_df['Competition']
+
+        if 'comp' not in final_df.columns:
+            print("Warning: comp column not created, using Competition instead")
+            final_df['comp'] = final_df['Competition']
+
         # Save the DataFrame to a CSV file
         csv_path = os.path.join(directory_path, "match_data.csv")
         final_df.to_csv(csv_path, index=False)
