@@ -22,7 +22,7 @@ versions_data = [
 
     {
         "version": "1.20, 2025-02-016",
-        "title": "International Tournament Progress",
+        "title": "International Tournament History",
         "description": "In the Head to Head tab you can now see (if scorecards loaded) the history for all International Tournaments played in your save. This is a matrix view of every teams progression at each tournament, including the winner and runner-up for each tournament.",
         "screenshot": get_image_path("v1.20_tournament_records.png")
     },
