@@ -19,6 +19,13 @@ def get_image_path(filename):
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Version History</h1>", unsafe_allow_html=True)
 versions_data = [
 
+
+    {
+        "version": "1.20, 2025-02-016",
+        "title": "International Tournament Progress",
+        "description": "In the Head to Head tab you can now see (if scorecards loaded) the history for all International Tournaments played in your save. This is a matrix view of every teams progression at each tournament, including the winner and runner-up for each tournament.",
+        "screenshot": get_image_path("v1.20_tournament_records.png")
+    },
     {
         "version": "1.19, 2025-02-04",
         "title": "Historical Series Stats and Records",
