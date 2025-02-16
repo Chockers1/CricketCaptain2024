@@ -95,9 +95,10 @@ def filter_by_all(df):
     
     return filtered_df
 
-# Create tabs
-tabs = st.tabs(["Match", "Series"])
+# Create tabs (UPDATED)
+tabs = st.tabs(["Match", "Series", "Tournaments"])
 
+# Existing Match Tab code
 with tabs[0]:
     #########====================CREATE HEAD TO HEAD TABLE===================######################
     if 'match_df' in st.session_state:
@@ -182,6 +183,11 @@ with tabs[0]:
         
         # Sort by date (newest to oldest)
         raw_matches = raw_matches.sort_values('Date', ascending=False)
+        
+        # Format Date columns to dd/mm/yyyy after parsing
+        raw_matches['Date'] = raw_matches['Date'].apply(
+            lambda d: d.strftime('%d/%m/%Y') if not pd.isnull(d) else ''
+        )
         
         # Display the filtered and sorted matches
         st.dataframe(raw_matches, use_container_width=True, hide_index=True)
@@ -359,9 +365,13 @@ with tabs[0]:
                 is_home = match['Home Team'] == team
                 
                 # Get the date for the tooltip
-                date = match['Date'].strftime('%Y-%m-%d')
+                date_val = pd.to_datetime(match['Date'], dayfirst=True, errors='coerce')
+                if pd.notnull(date_val):
+                    date_str = date_val.strftime('%Y-%m-%d')
+                else:
+                    date_str = ''
                 opponent = match['Away Team'] if is_home else match['Home Team']
-                tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}"
+                tooltip = f"<b>Date:</b> {date_str}<br><b>Margin:</b> {margin}"
                 
                 if 'won by' in margin:
                     winning_team = margin.split(' won')[0]
@@ -403,9 +413,13 @@ with tabs[0]:
                             is_home = match['Home Team'] == team
                             
                             # Get the date for the tooltip
-                            date = match['Date'].strftime('%Y-%m-%d')
+                            date_val = pd.to_datetime(match['Date'], dayfirst=True, errors='coerce')
+                            if pd.notnull(date_val):
+                                date_str = date_val.strftime('%Y-%m-%d')
+                            else:
+                                date_str = ''
                             opponent = match['Away Team'] if is_home else match['Home Team']
-                            tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}"
+                            tooltip = f"<b>Date:</b> {date_str}<br><b>Margin:</b> {margin}"
                             
                             if 'won by' in margin:
                                 winning_team = margin.split(' won')[0]
@@ -633,6 +647,12 @@ with tabs[0]:
                     winless_streak_start_date = None
                     winless_streak_end_date = None
 
+            def format_streak_date(date_val):
+                """Helper function to format streak dates"""
+                if isinstance(date_val, str):
+                    date_val = pd.to_datetime(date_val, errors='coerce')
+                return date_val.strftime('%Y-%m-%d') if pd.notnull(date_val) else 'N/A'
+
             # Display streaks in columns
             col1, col2 = st.columns(2)
 
@@ -655,13 +675,13 @@ with tabs[0]:
                     ],
                     "Value": [
                         current_win_streak,
-                        f"{win_streak_start_date.strftime('%Y-%m-%d') if win_streak_start_date else 'N/A'} to {win_streak_end_date.strftime('%Y-%m-%d') if win_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(win_streak_start_date)} to {format_streak_date(win_streak_end_date)}",
                         current_unbeaten_streak,
-                        f"{unbeaten_streak_start_date.strftime('%Y-%m-%d') if unbeaten_streak_start_date else 'N/A'} to {unbeaten_streak_end_date.strftime('%Y-%m-%d') if unbeaten_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(unbeaten_streak_start_date)} to {format_streak_date(unbeaten_streak_end_date)}",
                         current_loss_streak,
-                        f"{loss_streak_start_date.strftime('%Y-%m-%d') if loss_streak_start_date else 'N/A'} to {loss_streak_end_date.strftime('%Y-%m-%d') if loss_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(loss_streak_start_date)} to {format_streak_date(loss_streak_end_date)}",
                         current_winless_streak,
-                        f"{winless_streak_start_date.strftime('%Y-%m-%d') if winless_streak_start_date else 'N/A'} to {winless_streak_end_date.strftime('%Y-%m-%d') if winless_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(winless_streak_start_date)} to {format_streak_date(winless_streak_end_date)}",
                     ],
                 }
                 current_streaks_df = pd.DataFrame(current_streaks_data)
@@ -686,13 +706,13 @@ with tabs[0]:
                     ],
                     "Value": [
                         longest_win_streak,
-                        f"{longest_win_streak_start_date.strftime('%Y-%m-%d') if longest_win_streak_start_date else 'N/A'} to {longest_win_streak_end_date.strftime('%Y-%m-%d') if longest_win_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(longest_win_streak_start_date)} to {format_streak_date(longest_win_streak_end_date)}",
                         longest_unbeaten_streak,
-                        f"{longest_unbeaten_streak_start_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_start_date else 'N/A'} to {longest_unbeaten_streak_end_date.strftime('%Y-%m-%d') if longest_unbeaten_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(longest_unbeaten_streak_start_date)} to {format_streak_date(longest_unbeaten_streak_end_date)}",
                         longest_loss_streak,
-                        f"{longest_loss_streak_start_date.strftime('%Y-%m-%d') if longest_loss_streak_start_date else 'N/A'} to {longest_loss_streak_end_date.strftime('%Y-%m-%d') if longest_loss_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(longest_loss_streak_start_date)} to {format_streak_date(longest_loss_streak_end_date)}",
                         longest_winless_streak,
-                        f"{longest_winless_streak_start_date.strftime('%Y-%m-%d') if longest_winless_streak_start_date else 'N/A'} to {longest_winless_streak_end_date.strftime('%Y-%m-%d') if longest_winless_streak_end_date else 'N/A'}",
+                        f"{format_streak_date(longest_winless_streak_start_date)} to {format_streak_date(longest_winless_streak_end_date)}",
                     ],
                 }
                 longest_streaks_df = pd.DataFrame(longest_streaks_data)
@@ -713,7 +733,7 @@ with tabs[0]:
             ].copy()
             
             # Extract year using string operations since Date is already in datetime format
-            team_matches['Year'] = pd.to_datetime(team_matches['Date']).apply(lambda x: x.year)
+            team_matches['Year'] = pd.to_datetime(team_matches['Date'], dayfirst=True).apply(lambda x: x.year)
             
             # Calculate win percentage by year
             yearly_stats = []
@@ -879,9 +899,13 @@ with tabs[0]:
                     w_count, l_count, d_count = 0, 0, 0
                     for _, mtch in last_ten.iterrows():
                         margin = mtch['Margin'].lower()
-                        date = mtch['Date'].strftime('%Y-%m-%d')
+                        date_val = pd.to_datetime(mtch['Date'], dayfirst=True, errors='coerce')
+                        if pd.notnull(date_val):
+                            date_str = date_val.strftime('%Y-%m-%d')
+                        else:
+                            date_str = ''
                         format = mtch['Format']
-                        tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
+                        tooltip = f"<b>Date:</b> {date_str}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
                         if margin.startswith(team.lower()):
                             outings.append(f"<div class='outing-indicator win'><span class='tooltip'>{tooltip}</span>W</div>")
                             w_count += 1
@@ -908,7 +932,9 @@ with tabs[0]:
                 for fm in format_choice:
                     if fm != 'All':
                         sub_data = team_data[
-                            (team_data['Format'] == fm) & mask
+                            ((team_data['Home Team'] == team) & (team_data['Away Team'] == opponent)) |
+                            ((team_data['Home Team'] == opponent) & (team_data['Away Team'] == team)) &
+                            (team_data['Format'] == fm)
                         ].sort_values('Date', ascending=False).head(20)
                         
                         if not sub_data.empty:
@@ -916,9 +942,13 @@ with tabs[0]:
                             w_count, l_count, d_count = 0, 0, 0
                             for _, mtch in sub_data.iterrows():
                                 margin = mtch['Margin'].lower()
-                                date = mtch['Date'].strftime('%Y-%m-%d')
+                                date_val = pd.to_datetime(mtch['Date'], dayfirst=True, errors='coerce')
+                                if pd.notnull(date_val):
+                                    date_str = date_val.strftime('%Y-%m-%d')
+                                else:
+                                    date_str = ''
                                 format = mtch['Format']
-                                tooltip = f"<b>Date:</b> {date}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
+                                tooltip = f"<b>Date:</b> {date_str}<br><b>Margin:</b> {margin}<br><b>Format:</b> {format}"
                                 if margin.startswith(team.lower()):
                                     outings.append(f"<div class='outing-indicator win'><span class='tooltip'>{tooltip}</span>W</div>")
                                     w_count += 1
@@ -990,7 +1020,7 @@ with tabs[1]:
 
             match_df = st.session_state['match_df']
             series_df = match_df.copy()
-            series_df['Date'] = pd.to_datetime(series_df['Date']).dt.date
+            series_df['Date'] = pd.to_datetime(series_df['Date'], dayfirst=True).dt.date
 
             # Apply format filter
             if 'All' not in format_choice:
@@ -1036,19 +1066,19 @@ with tabs[1]:
             series_list = []
             for _, match in series_df.iterrows():
                 comp = match['Competition']
-                match_date = pd.to_datetime(match['Date'])
+                match_date = pd.to_datetime(match['Date'], dayfirst=True)
                 if is_part_of_series(comp):
                     # Group all matches in this series within 60 days, same teams & format
                     subset = series_df[
                         (series_df['Home_Team'] == match['Home_Team']) &
                         (series_df['Away_Team'] == match['Away_Team']) &
                         (series_df['Match_Format'] == match['Match_Format']) &
-                        (abs(pd.to_datetime(series_df['Date']) - match_date).dt.days <= 60)
+                        (abs(pd.to_datetime(series_df['Date'], dayfirst=True) - match_date).dt.days <= 60)
                     ]
                     if not subset.empty:
                         info = {
-                            'Start_Date': min(pd.to_datetime(subset['Date'])).date(),
-                            'End_Date': max(pd.to_datetime(subset['Date'])).date(),
+                            'Start_Date': min(pd.to_datetime(subset['Date'], dayfirst=True)).date(),
+                            'End_Date': max(pd.to_datetime(subset['Date'], dayfirst=True)).date(),
                             'Home_Team': match['Home_Team'],
                             'Away_Team': match['Away_Team'],
                             'Match_Format': match['Match_Format'],
@@ -1127,8 +1157,8 @@ with tabs[1]:
                             (series_df['Home_Team'] == row['Home_Team']) &
                             (series_df['Away_Team'] == row['Away_Team']) &
                             (series_df['Match_Format'] == row['Match_Format']) &
-                            (pd.to_datetime(series_df['Date']).dt.date >= row['Start_Date']) &
-                            (pd.to_datetime(series_df['Date']).dt.date <= row['End_Date'])
+                            (pd.to_datetime(series_df['Date'], dayfirst=True).dt.date >= row['Start_Date']) &
+                            (pd.to_datetime(series_df['Date'], dayfirst=True).dt.date <= row['End_Date'])
                         ][['Date', 'Competition', 'Match_Format', 'Home_Team', 'Away_Team', 'Player_of_the_Match', 'Margin']]
                         all_selected_matches.append(series_matches)
 
@@ -1377,7 +1407,7 @@ with tabs[1]:
                 ].copy()
                 
                 # Extract year using string operations since Date is already in datetime format
-                team_series['Year'] = pd.to_datetime(team_series['Start_Date']).apply(lambda x: x.year)
+                team_series['Year'] = pd.to_datetime(team_series['Start_Date'], dayfirst=True).apply(lambda x: x.year)
                 
                 # Create line chart
                 fig = go.Figure()
@@ -1604,7 +1634,282 @@ with tabs[1]:
                             """
                             st.markdown(html_block, unsafe_allow_html=True)
 
+# New Tournaments Tab code
+with tabs[2]:
+    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Tournaments</h1>", unsafe_allow_html=True)
+    if 'match_df' in st.session_state:
+        # Apply page filters to match_df for Tournaments tab
+        tournaments_df = st.session_state['match_df'].copy()
+        if 'All' not in format_choice:
+            tournaments_df = tournaments_df[tournaments_df['Match_Format'].isin(format_choice)]
+        if 'All' not in team_choice:
+            tournaments_df = tournaments_df[
+                (tournaments_df['Home_Team'].isin(team_choice)) | 
+                (tournaments_df['Away_Team'].isin(team_choice))
+            ]
+        if 'All' not in opponent_choice:
+            tournaments_df = tournaments_df[
+                (tournaments_df['Home_Team'].isin(opponent_choice)) | 
+                (tournaments_df['Away_Team'].isin(opponent_choice))
+            ]
+    
+        #st.markdown("<h2 style='color:#f04f53; text-align: center;'>Raw Match Data</h2>", unsafe_allow_html=True)
+        #st.dataframe(tournaments_df, use_container_width=True)
+        
+        finals_competitions = [
+            "Test Championship Final",
+            "World Cup 20 - Final",
+            "World Cup - Final",
+            "Champions Cup - Final"
+        ]
+        finals = tournaments_df[tournaments_df['Competition'].isin(finals_competitions)].copy()
+        if not finals.empty:
+            finals['Date'] = pd.to_datetime(finals['Date'], dayfirst=True).apply(lambda dt: dt.strftime("%d/%m/%Y"))
+            #st.markdown("<h2 style='color:#f04f53; text-align: center;'>All Finals</h2>", unsafe_allow_html=True)
+            #st.dataframe(finals, use_container_width=True, hide_index=True)
+        else:
+            st.info("No finals data available.")
+        
+        # Add World Cup Progress tracker
+        #st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Matches</h2>", unsafe_allow_html=True)
+    
+    #########ODI WORLD CUP PROGRESS ####################
+
+    # Create a new tab for ODI World Cup Progress
+    odiwc_progress_df = st.session_state['match_df'].copy()
+
+    # Filter out non-ODI World Cup matches
+    odiwc_progress_df = odiwc_progress_df[odiwc_progress_df['comp'].str.contains('ODI World Cup')]
+
+    # Extract the year from the date
+    odiwc_progress_df['Year'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True).dt.year
+
+    #st.dataframe(odiwc_progress_df, use_container_width=True)
+
+    # unique year and world cup 
+    years = odiwc_progress_df['Year'].unique()
+    #st.dataframe(years, use_container_width=True)
+
+    teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))    
+    teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))
+    teams.sort()
+    # put the unique teams list into a DataFrame with one column named 'A'
+    teams_df = pd.DataFrame(teams, columns=['A'])
+    #st.dataframe(teams_df, use_container_width=True, hide_index=True)
+
+    unique_years = sorted(odiwc_progress_df['Year'].unique())
+    year_columns = st.columns(len(unique_years))
+    #for col, year in zip(year_columns, unique_years):
+        #col.markdown(f"<h3 style='text-align: center;'>{year}</h3>")
+
+    #st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Matches Matrix</h2>", unsafe_allow_html=True)
+    wc_teams = pd.concat([
+        odiwc_progress_df[['Year','Home_Team']].rename(columns={'Home_Team': 'Team'}),
+        odiwc_progress_df[['Year','Away_Team']].rename(columns={'Away_Team': 'Team'})
+    ], ignore_index=True)
+
+    wc_matrix = wc_teams.groupby(['Team','Year']).size().unstack(fill_value=0)
+    #st.dataframe(wc_matrix, use_container_width=True)
+
+    def map_stage_to_code(stage: str) -> str:
+        """Convert stage name to code with numeric rank (lower is better)"""
+        if "Final" in stage and "Semi" not in stage:
+            return ("F", 1)  # Final is best
+        elif "Semi-Final" in stage:
+            return ("SF", 2)  # Semi-Final is second best
+        elif "Group" in stage:
+            return ("GRP", 3)  # Group stage is worst
+        return ("?", 4)  # Unknown stages ranked last
+
+    # Process each team's matches to find best stage per year
+    team_results = []
+    for team in teams:
+        team_matches = odiwc_progress_df[
+            (team == odiwc_progress_df['Home_Team']) | 
+            (team == odiwc_progress_df['Away_Team'])
+        ]
+        
+        for year in unique_years:
+            year_matches = team_matches[team_matches['Year'] == year]
+            if not year_matches.empty:
+                stages = [map_stage_to_code(comp) for comp in year_matches['Competition']]
+                best_stage = min(stages, key=lambda x: x[1])
+                if best_stage[0] == "F":
+                    # Pick one final match row
+                    final_row = year_matches.iloc[0]
+                    # Check if it was a draw first
+                    if 'drawn' in str(final_row["Match_Result"]).lower():
+                        best_code = "W"  # Both teams get W for a draw
+                    else:
+                        # Check if team won or lost
+                        if team in str(final_row["Match_Result"]):
+                            best_code = "W"
+                        else:
+                            best_code = "RU"
+                else:
+                    best_code = best_stage[0]
+                team_results.append({
+                    'Team': team,
+                    'Year': year,
+                    'Stage': best_code
+                })
+
+    # Convert results to matrix format
+    stage_matrix = pd.DataFrame(team_results).pivot(
+        index='Team', 
+        columns='Year', 
+        values='Stage'
+    ).fillna('')
+
+    st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Best Stage Reached</h2>", unsafe_allow_html=True)
+
+    def highlight_stage(row):
+        # row is a Series with year columns as keys, each value is a stage code.
+        return [
+            "background-color: gold; color: black;" if cell == "W" else
+            "background-color: lightcoral; color: black;" if cell == "GRP" else 
+            "background-color: silver; color: black;" if cell == "RU" else
+            "background-color: #cd7f32; color: black;" if cell == "SF" else ""
+            for cell in row
+        ]
+
+    # Display the styled table
+    styled_stage_matrix = stage_matrix.style.apply(highlight_stage, axis=1)
+    st.dataframe(styled_stage_matrix, use_container_width=True)
+
+    # Format 'Date' back to 'dd/mm/yyyy' for display purposes
+    odiwc_progress_df['Date'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True, errors='coerce').apply(
+        lambda d: d.strftime('%d/%m/%Y') if pd.notnull(d) else ''
+    )
+
+# T20 World Cup Best Stage Reached section
+# Create a copy of match_df and filter for T20 World Cup matches where comp equals "T20 World Cup"
+t20wc_df = st.session_state['match_df'].copy()
+t20wc_df = t20wc_df[t20wc_df['comp'] == "T20 World Cup"]
+t20wc_df['Year'] = pd.to_datetime(t20wc_df['Date'], dayfirst=True, errors='coerce').dt.year
+
+# New: Display filtered T20 World Cup dataset
+#st.markdown("<h2 style='color:#f04f53; text-align: center;'>Filtered T20 World Cup Matches</h2>", unsafe_allow_html=True)
+#st.dataframe(t20wc_df, use_container_width=True)
+
+# Retrieve unique teams for this competition from both Home_Team and Away_Team
+teams_t20 = pd.concat([t20wc_df['Home_Team'], t20wc_df['Away_Team']]).unique()
+
+t20_stage_results = []
+for team in teams_t20:
+    for year in sorted(t20wc_df['Year'].dropna().unique()):
+        team_matches = t20wc_df[
+            (((t20wc_df['Home_Team'] == team) | (t20wc_df['Away_Team'] == team))
+             & (t20wc_df['Year'] == year))
+        ]
+        stage = ""
+        best = 0  # numeric precedence for stage
+        # Determine the stage based on the latest round played
+        for _, match in team_matches.iterrows():
+            comp = match['Competition']
+            if "Final" in comp and "Semi-Final" not in comp:
+                current = 4
+                # Check for drawn match first
+                if 'drawn' in str(match['Match_Result']).lower():
+                    code = "W"  # Both teams get W for a draw
+                else:
+                    # Check if team won or lost
+                    if team in str(match['Match_Result']):
+                        code = "W"
+                    else:
+                        code = "RU"
+            elif "Semi-Final" in comp:
+                current = 3
+                code = "SF"
+            elif "Super Eight" in comp:
+                current = 2
+                code = "S8"
+            elif "Group Match" in comp:
+                current = 1
+                code = "GRP"
+            else:
+                current = 0
+                code = ""
+            if current > best:
+                best = current
+                stage = code
+        t20_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+# Create a DataFrame and ensure required columns exist
+t20_stage_df = pd.DataFrame(t20_stage_results)
+if t20_stage_df.empty or 'Team' not in t20_stage_df.columns:
+    t20_stage_df = pd.DataFrame(columns=['Team', 'Year', 'Stage'])
+
+t20_stage_matrix = t20_stage_df.pivot(
+    index='Team', 
+    columns='Year', 
+    values='Stage'
+).fillna("")
+
+def highlight_t20_stage(row):
+    return [
+        "background-color: gold; color: black;" if cell == "W" else
+        "background-color: silver; color: black;" if cell == "RU" else
+        "background-color: #cd7f32; color: black;" if cell == "SF" else
+        "background-color: lightblue; color: black;" if cell == "S8" else
+        "background-color: lightcoral; color: black;" if cell == "GRP" else ""
+        for cell in row
+    ]
+
+st.markdown("<h2 style='color:#f04f53; text-align: center;'>T20 World Cup Progress</h2>", unsafe_allow_html=True)
+styled_t20_stage_matrix = t20_stage_matrix.style.apply(highlight_t20_stage, axis=1)
+st.dataframe(styled_t20_stage_matrix, use_container_width=True)
+
+# Test Championship Progress Tracker
+wtc_df = st.session_state['match_df'].copy()
+wtc_df = wtc_df[wtc_df['comp'] == "Test Championship Final"]
+wtc_df['Year'] = pd.to_datetime(wtc_df['Date'], dayfirst=True, errors='coerce').dt.year
+
+# Fixed list of Test Championship teams
+wtc_teams = [
+    'Australia', 'Bangladesh', 'England', 'India', 'New Zealand', 
+    'Pakistan', 'South Africa', 'Sri Lanka', 'West Indies'
+]
+
+# New: Display filtered Test Championship dataset
+#st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
+##st.dataframe(wtc_df, use_container_width=True)
+
+wtc_stage_results = []
+for team in wtc_teams:
+    for year in sorted(wtc_df['Year'].dropna().unique()):
+        team_matches = wtc_df[
+            (((wtc_df['Home_Team'] == team) | (wtc_df['Away_Team'] == team))
+             & (wtc_df['Year'] == year))
+        ]
+        stage = "GRP"  # Default to group stage
+        # If team appears in a final, check for draw first
+        if not team_matches.empty:
+            match = team_matches.iloc[0]  # Get the final match
+            if 'drawn' in str(match['Match_Result']).lower():
+                stage = "W"  # Both teams get W for a draw
+            else:
+                stage = "W" if team in str(match['Match_Result']) else "RU"  # W if team in result, RU otherwise
+        wtc_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+# Create matrix
+wtc_stage_df = pd.DataFrame(wtc_stage_results)
+wtc_stage_matrix = wtc_stage_df.pivot(
+    index='Team', 
+    columns='Year', 
+    values='Stage'
+).fillna("GRP")
+
+def highlight_wtc_stage(row):
+    return [
+        "background-color: gold; color: black;" if cell == "W" else
+        "background-color: silver; color: black;" if cell == "RU" else
+        "background-color: lightcoral; color: black;" if cell == "GRP" else ""
+        for cell in row
+    ]
+
+st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
+styled_wtc_stage_matrix = wtc_stage_matrix.style.apply(highlight_wtc_stage, axis=1)
+st.dataframe(styled_wtc_stage_matrix, use_container_width=True)
+
 # ...existing code...
-
-
-
