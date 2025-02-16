@@ -107,7 +107,7 @@ st.markdown(
     """
     <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
         <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.20:</span>
-        <span style="color: white;"> International Tournament History in Head to Head tab for International Saves </span>
+        <span style="color: white;"> International Tournament History in Head to Head tab for International Saves (where scorecards loaded) </span>
     </div>
     """,
     unsafe_allow_html=True
