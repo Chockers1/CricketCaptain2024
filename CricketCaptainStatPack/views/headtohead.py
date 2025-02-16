@@ -1637,8 +1637,11 @@ with tabs[1]:
 # New Tournaments Tab code
 with tabs[2]:
     st.markdown("<h1 style='color:#f04f53; text-align: center;'>Tournaments</h1>", unsafe_allow_html=True)
-    if 'match_df' in st.session_state:
-        # Apply page filters to match_df for Tournaments tab
+    
+    if 'match_df' not in st.session_state or st.session_state['match_df'].empty:
+        st.info("No international tournament data loaded")
+    else:
+        # Rest of the tournaments tab code
         tournaments_df = st.session_state['match_df'].copy()
         if 'All' not in format_choice:
             tournaments_df = tournaments_df[tournaments_df['Match_Format'].isin(format_choice)]
