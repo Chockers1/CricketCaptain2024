@@ -106,8 +106,8 @@ st.markdown(
 st.markdown(
     """
     <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
-        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.20:</span>
-        <span style="color: white;"> International Tournament History in Head to Head tab for International Saves (where scorecards loaded) </span>
+        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.21:</span>
+        <span style="color: white;"> Updated layoout for Batting & Bowling Tabs </span>
     </div>
     """,
     unsafe_allow_html=True
