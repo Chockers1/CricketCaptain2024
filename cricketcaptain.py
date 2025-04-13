@@ -143,7 +143,7 @@ def login():
                 <h1 style="color: #f04f53;">Cricket Captain Stats Dashboard</h1>
                 <p>To access the Cricket Captain Stats Dashboard, please login below.</p>
                 <p>You can find the login credentials after subscribing to the <b>Cricket Captain 2024 Stats Pack tier</b> on:</p>
-                <p><a href="https://buymeacoffee.com/leadingedgepod" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee - Leading Edge</a></p>
+                <p><a href="https://buymeacoffee.com/leadingedgepod" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee - Leading Edge</a>, in the latest post on the site or if you newly sign up in the blurb when you sign up</p>
             </div>
         </div>
         """,
