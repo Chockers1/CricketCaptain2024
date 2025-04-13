@@ -7,9 +7,7 @@ This application requires a subscription to access. The Cricket Captain Stats Da
 ### Login Instructions
 
 1. Subscribe to the "Cricket Captain 2024 Stats Pack tier" on [Buy Me A Coffee - Leading Edge](https://buymeacoffee.com/leadingedgepod)
-2. After subscribing, you'll receive the login credentials:
-   - Username: CC
-   - Password: CCapril2025
+
 
 ### Using the Dashboard
 
