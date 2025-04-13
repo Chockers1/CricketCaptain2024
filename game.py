@@ -138,6 +138,13 @@ def process_game_stats(directory_path, match_df):
         # Format Balls_Per_Wicket to two decimal places
         final_df['Balls_Per_Wicket'] = final_df['Balls_Per_Wicket'].round(2)
 
+        # Standardize format names
+        match_df['Match_Format'] = match_df['Match_Format'].replace({
+            '100 Trophy': 'The Hundred',
+            '100 Ball Trophy': 'The Hundred',
+            '100T': 'The Hundred'
+        })
+
         # Merge final_df with match_df to bring in Competition, Format, Level, Year
         final_df = final_df.merge(match_df[['File Name', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Date']], on='File Name', how='left')
 

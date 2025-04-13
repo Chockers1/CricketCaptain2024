@@ -1,28 +1,42 @@
-Transform your Cricket Captain 2024 experience with this powerful Streamlit Web App for comprehensive cricket stats analysis! This web-based tool lets you upload and analyze your scorecards directly from a browser, giving you deeper insights into your Cricket Captain 2024 gameplay. Perfect for cricket fans and managers, this app enhances your career and helps strategize your games with rich visual stats—no Excel or Power BI needed!
+# Cricket Captain Stats Dashboard
 
-🚀 Cricket Captain 2024 Stats Pack Features
-Easy Scorecard Uploads
-Upload hundreds of scorecards from your PC in seconds, right from the homepage—effortless and fast.
+## Accessing the Dashboard
 
-In-Depth Batting and Bowling Analysis
-Explore detailed stats by career, format, season, location, and opponent. Use dynamic filters to find star players and review custom graphs to visualize player performance.
+This application requires a subscription to access. The Cricket Captain Stats Dashboard is a premium tool designed to help you analyze your Cricket Captain game data.
 
-Team Stats & Strategy
-Access team stats with batting and bowling metrics that help you develop winning strategies against rival teams.
+### Login Instructions
 
-Comprehensive Records Tracking
-View record-breaking achievements across batting, bowling, and matches. Track highest scores, most centuries, thrilling comebacks, and more.
+1. Subscribe to the "Cricket Captain 2024 Stats Pack tier" on [Buy Me A Coffee - Leading Edge](https://buymeacoffee.com/leadingedgepod)
+2. After subscribing, you'll receive the login credentials:
+   - Username: CC
+   - Password: CCapril2025
 
-Player Rankings & Career Progress
-Track international player rankings each season using the Cricket Draft scoring system, and monitor your team’s journey to the top.
+### Using the Dashboard
 
-Head-to-Head Stats
-Review historical matchups and rivalry stats, making it easy to see team strengths and weaknesses.
+Once logged in, you can:
 
-Domestic League Tables & Graphs
-Add domestic tables from your save to see historical competition data and review performance over time.
+1. **Upload your Cricket Captain game data**:
+   - In your Cricket Captain game, save the scorecards you want to analyze
+   - Find the saved .txt files on your computer:
+     - Windows: `C:\Users\[USER NAME]\AppData\Roaming\Childish Things\Cricket Captain 2021`
+     - Mac: `~/Library/Containers/com.childishthings.cricketcaptain2021mac/Data/Library/Application Support/Cricket Captain 2021/childish things/cricket captain 2021/saves`
+   
+2. **Process your data**:
+   - Click "Browse files" and select your saved .txt files
+   - Select all files using Ctrl+A (Windows) or Command+A (Mac)
+   - Click "Process Scorecards" to analyze your data
+   - Navigate through the tabs to view different statistics
 
-Elo Rating System for Cricket
-Track your team’s progress with a custom Elo rating, specially designed for County Cricket. Can you lead your team to be #1?
+## Session Information
 
+- Your login session will last for 24 hours before requiring you to log in again
+- You can manually log out using the "Logout" button in the sidebar
 
+## Additional Resources
+
+- Watch Cricket Captain 2024 gameplay on [Rob Taylor's YouTube Channel](https://www.youtube.com/@RobTaylor1985)
+- Support development through [Buy Me A Coffee](https://buymeacoffee.com/leadingedgepod)
+
+---
+
+*This is a subscription product. Please do not share login credentials.*
