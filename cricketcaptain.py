@@ -2,13 +2,19 @@ import streamlit as st
 import datetime
 import time
 import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env file (for local development)
+# Try to import dotenv, but make it optional
 try:
-    load_dotenv()
-except:
-    pass  # Silently continue if dotenv is not available or .env doesn't exist
+    from dotenv import load_dotenv
+    # Load environment variables from .env file (for local development)
+    try:
+        load_dotenv()
+    except:
+        pass  # Silently continue if .env doesn't exist
+except ImportError:
+    # Create a dummy load_dotenv function to avoid errors
+    def load_dotenv():
+        pass  # Do nothing if the module is not available
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -108,14 +114,18 @@ def get_credentials():
         username = st.secrets["login"]["username"]
         password = st.secrets["login"]["password"]
         return username, password
-    except:
-        pass
-    
+    except Exception as e:
+        # Log the error for debugging, but don't expose details in the UI
+        print(f"Error accessing secrets: {str(e)}")
+        
     # Development: Try environment variables next
-    username = os.environ.get("CC_USERNAME")
-    password = os.environ.get("CC_PASSWORD")
-    if username and password:
-        return username, password
+    try:
+        username = os.environ.get("CC_USERNAME")
+        password = os.environ.get("CC_PASSWORD")
+        if username and password:
+            return username, password
+    except Exception as e:
+        print(f"Error accessing environment variables: {str(e)}")
         
     # Fallback: Use hardcoded credentials as a last resort
     # This should only be used in development, never in production
