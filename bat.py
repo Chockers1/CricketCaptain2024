@@ -132,10 +132,11 @@ def process_bat_stats(directory_path, game_df, match_df):
 
         # Optionally, if you want to display without commas when printing
         bat_df['Year'] = bat_df['Year'].apply(lambda x: f"{x:d}")        
-        bat_df['Batted'] = 1
-        bat_df['Out'] = bat_df['How Out'].apply(lambda x: 1 if x != 'Did not bat' and x != 'Not Out' else 0)
+        bat_df['Batted'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' else 1)
+        bat_df['Out'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' or x == 'not out' else 1)
         bat_df['Not Out'] = bat_df['How Out'].apply(lambda x: 1 if x == 'not out' else 0)
-        bat_df['Runs'] = pd.to_numeric(bat_df['Runs'], errors='coerce').fillna(0)
+        bat_df['DNB'] = bat_df['How Out'].apply(lambda x: 1 if x == 'Did not bat' else 0)
+        
 
         bat_df['50s'] = bat_df['Runs'].apply(lambda x: 1 if 50 <= x < 100 else 0)
         bat_df['100s'] = bat_df['Runs'].apply(lambda x: 1 if 100 <= x < 200 else 0)
@@ -153,11 +154,114 @@ def process_bat_stats(directory_path, game_df, match_df):
         # Calculate Strike Rate
         bat_df['Strike Rate'] = (bat_df['Runs'] / bat_df['Balls'] * 100).round(2)
 
-        # Ensure that Balls are calculated correctly
-        bat_df['Team Balls'] = (bat_df['Overs'].astype(int) * 6) + ((bat_df['Overs'] - bat_df['Overs'].astype(int)) * 10).astype(int)
+        # Calculate team balls based on format and innings state
+        def calculate_team_balls(row):
+            # If team is all out in any format, use sum of actual balls faced
+            if row['Wickets'] == 10:
+                # Group by File Name and Innings to sum actual balls faced in this innings
+                return bat_df[
+                    (bat_df['File Name'] == row['File Name']) & 
+                    (bat_df['Innings'] == row['Innings'])
+                ]['Balls'].sum()
+            else:
+                # Format-specific ball calculations for incomplete innings
+                if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
+                    return 100  # Standard 100 balls
+                elif row['Match_Format'] == 'T20':
+                    return 120  # Standard 20 overs = 120 balls
+                elif row['Match_Format'] == 'One Day':
+                    return 300  # Standard 50 overs = 300 balls
+                else:  # Test Match or First Class
+                    # Handle decimal overs correctly
+                    if pd.isna(row['Overs']):
+                        return 0
+                    try:
+                        # Split overs into whole and partial
+                        whole_overs = int(float(row['Overs']))
+                        partial_balls = int((float(row['Overs']) % 1) * 10)  # Convert decimal part to balls
+                        return (whole_overs * 6) + partial_balls
+                    except (ValueError, TypeError):
+                        # If conversion fails, calculate from actual balls faced
+                        return bat_df[
+                            (bat_df['File Name'] == row['File Name']) & 
+                            (bat_df['Innings'] == row['Innings'])
+                        ]['Balls'].sum()
 
-        # Optionally, you may want to handle divisions by zero
+        # Apply team balls calculation
+        bat_df['Team Balls'] = bat_df.apply(calculate_team_balls, axis=1)
+
+        # Handle divisions by zero
         bat_df['Strike Rate'] = bat_df.apply(lambda x: x['Strike Rate'] if x['Balls'] > 0 else 0, axis=1)
+
+        # Add the comp column with modified competition names
+        def transform_competition(row):
+            # Define trophy mapping based on teams
+            test_trophies = {
+                ('Australia', 'England'): 'The Ashes',
+                ('England', 'Australia'): 'The Ashes',
+                ('India', 'Australia'): 'Border-Gavaskar Trophy',
+                ('Australia', 'India'): 'Border-Gavaskar Trophy',
+                ('West Indies', 'Australia'): 'Frank Worrell Trophy',
+                ('Australia', 'West Indies'): 'Frank Worrell Trophy',
+                ('South Africa', 'England'): "Basil D'Oliveira Trophy",
+                ('England', 'South Africa'): "Basil D'Oliveira Trophy",
+                ('England', 'India'): 'Pataudi Trophy',
+                ('India', 'England'): 'Anthony de Mello Trophy',
+                ('West Indies', 'Sri Lanka'): 'Sobers-Tissera Trophy',
+                ('Sri Lanka', 'West Indies'): 'Sobers-Tissera Trophy',
+                ('England', 'West Indies'): 'Wisden Trophy',
+                ('West Indies', 'England'): 'Wisden Trophy',
+                ('Australia', 'New Zealand'): 'Trans-Tasman Trophy',
+                ('New Zealand', 'Australia'): 'Trans-Tasman Trophy',
+                ('Australia', 'Sri Lanka'): 'Warne-Muralitharan Trophy',
+                ('Sri Lanka', 'Australia'): 'Warne-Muralitharan Trophy',
+                ('India', 'South Africa'): 'Freedom Trophy',
+                ('South Africa', 'India'): 'Freedom Trophy'
+            }
+
+            comp = row['Competition']
+            if 'Test Match' in comp:
+                team_pair = (row['Home Team'], row['Away Team'])
+                if team_pair in test_trophies:
+                    return test_trophies[team_pair]
+                return 'Test Match'
+            elif comp.startswith('World Cup 20'):
+                return 'T20 World Cup'
+            elif comp.startswith('World Cup'):
+                return 'ODI World Cup'
+            elif comp.startswith('Champions Cup'):
+                return 'Champions Cup'
+            elif comp.startswith('Asia Trophy ODI'):
+                return 'ODI Asia Cup'
+            elif comp.startswith('Asia Trophy 20'):
+                return 'T20 Asia Cup'
+            elif 'One Day International' in comp:
+                return 'ODI'
+            elif '20 Over International' in comp:
+                return 'T20I'
+            elif 'Australian League' in comp:
+                return 'Sheffield Shield'
+            elif 'English FC League - D2' in comp:
+                return 'County Championship Division 2'
+            elif 'English FC League - D1' in comp:
+                return 'County Championship Division 1'    
+            elif 'Challenge Trophy' in comp:
+                return 'Royal London Cup'         
+            else:
+                return comp
+
+        # Ensure comp column is created
+        try:
+            bat_df['comp'] = bat_df.apply(transform_competition, axis=1)
+        except Exception as e:
+            print(f"Error creating comp column: {e}")
+            # Fallback - just copy Competition if transform fails
+            bat_df['comp'] = bat_df['Competition']
+
+        # Verify comp column exists before returning
+        if 'comp' not in bat_df.columns:
+            print("Warning: comp column not created, using Competition instead")
+            bat_df['comp'] = bat_df['Competition']
 
         return bat_df  # Return the modified DataFrame
     except Exception as e:

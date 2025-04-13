@@ -1,8 +1,14 @@
+from operator import index
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
 import io
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import plotly.express as px
+
 
 # Title
 st.markdown("<h1 style='color:#f04f53; text-align: center;'>Domestic Tables</h1>", unsafe_allow_html=True)
@@ -739,8 +745,10 @@ if not st.session_state.historical_data.empty:
     history_all_df = filtered_df.copy()
 
     # Create helper columns for titles and runner-ups
-    history_all_df['Titles'] = (history_all_df['Final Position'] == 'Winner').astype(int)
-    history_all_df['Runner_Ups'] = (history_all_df['Final Position'] == 'Runner Up').astype(int)
+    history_all_df['Titles'] = history_all_df['Final Position'].isin(["Winner", "D1 Winner", "D2 Winner"]).astype(int)
+    history_all_df['Runner_Ups'] = history_all_df['Final Position'].isin(["Runner Up", "D1 Runner Up", "D2 Runner Up"]).astype(int)
+
+
 
     # Create helper column for wooden spoons
     max_positions = history_all_df.groupby(['Year', 'Competition'])['Position'].transform('max')
@@ -793,5 +801,602 @@ if not st.session_state.historical_data.empty:
     summary_df = summary_df[columns_order]
 
     # Display summary statistics
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Format</h3>", unsafe_allow_html=True)
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    summary_by_team_df = history_all_df.groupby(['Team']).agg({
+        'P': 'sum',
+        'W': 'sum',
+        'L': 'sum',
+        'D': 'sum',
+        'Bat BP': 'sum',
+        'Bowl BP': 'sum',
+        'Points': 'sum',
+        'Titles': 'sum',
+        'Runner_Ups': 'sum',
+        'Wooden_Spoons': 'sum'
+    }).reset_index()
+
+    summary_by_team_df['Win %'] = (summary_by_team_df['W'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df['Loss %'] = (summary_by_team_df['L'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df['Draw %'] = (summary_by_team_df['D'] / summary_by_team_df['P'] * 100).round(1)
+    summary_by_team_df = summary_by_team_df.round(2).rename(columns={
+        'P': 'Played',
+        'W': 'Wins',
+        'L': 'Losses',
+        'D': 'Draws',
+        'Bat BP': 'Batting Points',
+        'Bowl BP': 'Bowling Points',
+        'Points': 'Total Points',
+        'Runner_Ups': 'Runner Ups',
+        'Wooden_Spoons': 'Wooden Spoons'
+    })
+
+    columns_order_team = [
+        'Team', 'Played', 'Wins', 'Losses', 'Draws',
+        'Win %', 'Loss %', 'Draw %',
+        'Batting Points', 'Bowling Points', 'Total Points',
+        'Titles', 'Runner Ups', 'Wooden Spoons'
+    ]
+    summary_by_team_df = summary_by_team_df[columns_order_team]
+
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Team (All Formats)</h3>", unsafe_allow_html=True)
+    st.dataframe(summary_by_team_df, use_container_width=True, hide_index=True)
+
+#############################
+
+# Custom CSS for styling
+st.markdown("""
+    <style>
+    /* Table styling */
+    table { color: black; width: 100%; }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+    }
+    tbody tr:nth-child(even) { background-color: #f0f2f6; }
+    tbody tr:nth-child(odd) { background-color: white; }
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        display: flex;
+        justify-content: space-between; /* This will space out the tabs evenly */
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# After the existing position history graph, add new visualizations
+if not st.session_state.historical_data.empty:
+    # Create all tabs at once
+    tab1, tab2, tab3, tab4 = st.tabs(["Performance Metrics", "Season Points Comparison", "Points Distribution", "Current Rankings"])
+
+    with tab1:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Metrics</h3>", unsafe_allow_html=True)
+        performance_df = filtered_df.copy()
+        performance_df['Win_Rate'] = (performance_df['W'] / performance_df['P'] * 100).round(2)
+        fig_metrics = px.line(performance_df, x='Year', y='Win_Rate', color='Team', markers=True)
+        fig_metrics.update_layout(height=500)
+        st.plotly_chart(fig_metrics, use_container_width=True)
+
+    with tab2:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Points Comparison</h3>", unsafe_allow_html=True)
+        season_df = filtered_df.pivot_table(values='Points', index='Team', columns='Year', aggfunc='sum').fillna(0)
+        fig_season = px.imshow(season_df, labels=dict(x="Year", y="Team", color="Points"), aspect="auto")
+        fig_season.update_layout(height=600)
+        st.plotly_chart(fig_season, use_container_width=True)
+
+    with tab3:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Points Distribution</h3>", unsafe_allow_html=True)
+        fig_box = px.box(filtered_df, x='Team', y='Points')
+        fig_box.update_layout(height=500, xaxis_title="Team", yaxis_title="Points", showlegend=False)
+        st.plotly_chart(fig_box, use_container_width=True)
+
+    with tab4:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Current Rankings</h3>", unsafe_allow_html=True)
+        
+        # Calculate rankings for all teams
+        rankings_df = filtered_df.copy()
+        
+        # Calculate win percentage
+        rankings_df['Win_Percentage'] = (rankings_df['W'] / rankings_df['P'] * 100).round(2)
+
+        # Initialize points columns
+        rankings_df['Position_Points'] = 0
+        rankings_df['Win_Percentage_Bonus'] = 0
+        
+        # Assign position points
+        position_points = {
+            'Winner': 50,
+            'Runner Up': 40,
+            'Semi Final': 30,
+            'Qualifier': 30,
+            'Quarter Final': 20,
+            'Eliminator': 20,
+            'Group Stage': 10,
+            'D1 Winner': 50,
+            'D2 Winner': 45,
+            'D1 Runner Up': 40,
+            'D2 Runner Up': 35,
+            'Preliminary Final': 25,
+            'Eliminator 1': 20,
+            'Eliminator 2': 25,
+            'Qualifier 1': 30,
+            'Qualifier 2': 25
+        }
+
+        # Calculate position points
+        for position, points in position_points.items():
+            rankings_df.loc[rankings_df['Final Position'] == position, 'Position_Points'] = points
+
+        # Subtract points for lower positions
+        rankings_df['Position_Points'] = rankings_df['Position_Points'] - ((rankings_df['Position'] - 1) * 2)
+
+        # Calculate win percentage bonus
+        win_percentage_bonus = [
+            (100, 50), (90, 40), (80, 30), (70, 25),
+            (60, 20), (50, 15), (40, 10), (30, 7),
+            (20, 5), (10, 3)
+        ]
+
+        for threshold, bonus in win_percentage_bonus:
+            rankings_df.loc[rankings_df['Win_Percentage'] >= threshold, 'Win_Percentage_Bonus'] = bonus
+
+        # Calculate total ranking points for each entry
+        rankings_df['Total_Ranking_Points'] = rankings_df['Position_Points'] + rankings_df['Win_Percentage_Bonus']
+
+        # Get unique years in descending order
+        years = sorted(rankings_df['Year'].unique(), reverse=True)
+        
+        if len(years) >= 1:
+            # Current year points (100%)
+            current_year = rankings_df[rankings_df['Year'] == years[0]]
+            current_points = current_year.groupby('Team')['Total_Ranking_Points'].sum()
+            
+            # Previous year points (50%)
+            prev_year_points = pd.Series(0, index=current_points.index)
+            if len(years) >= 2:
+                prev_year = rankings_df[rankings_df['Year'] == years[1]]
+                prev_year_points = prev_year.groupby('Team')['Total_Ranking_Points'].sum() * 0.5
+            
+            # Two years ago points (33.3%)
+            two_years_points = pd.Series(0, index=current_points.index)
+            if len(years) >= 3:
+                two_years = rankings_df[rankings_df['Year'] == years[2]]
+                two_years_points = two_years.groupby('Team')['Total_Ranking_Points'].sum() * 0.333
+
+            # Combine all points
+            team_rankings = pd.DataFrame({
+                'Current Season Points': current_points,
+                'Previous Season Points': prev_year_points,
+                'Two Seasons Ago Points': two_years_points
+            }).fillna(0)
+
+            # Calculate weighted total
+            team_rankings['Total Weighted Points'] = team_rankings.sum(axis=1)
+
+            # Add additional statistics
+            team_stats = rankings_df.groupby('Team').agg({
+                'Win_Percentage': 'mean',
+                'Position': 'mean',
+                'W': 'sum',
+                'P': 'sum',
+                'Final Position': lambda x: x.value_counts().iloc[0] if not x.empty else 'N/A'
+            }).round(2)
+
+            # Calculate overall win percentage
+            team_stats['Overall Win %'] = (team_stats['W'] / team_stats['P'] * 100).round(2)
+
+            # Merge with team_rankings and sort
+            final_rankings = pd.concat([team_rankings, team_stats], axis=1)
+            final_rankings = final_rankings.sort_values('Total Weighted Points', ascending=False)
+            
+            # Add rank column first
+            final_rankings = final_rankings.reset_index()
+            final_rankings.insert(0, 'Rank', range(1, len(final_rankings) + 1))
+            
+            # Rename 'index' to 'Team' and reorder columns
+            final_rankings = final_rankings.rename(columns={'index': 'Team'})
+            
+            # Select and order columns
+            columns_order = [
+                'Rank', 'Team', 'Current Season Points', 'Previous Season Points', 
+                'Two Seasons Ago Points', 'Total Weighted Points', 'Overall Win %',
+                'Position'  # Removed 'Final Position'
+            ]
+            final_rankings = final_rankings[columns_order]
+
+            # Display rankings table without index
+            st.dataframe(final_rankings, use_container_width=True, hide_index=True)
+
+            # Update rankings visualization
+            fig_rankings = px.bar(
+                final_rankings,
+                x='Team',
+                y='Total Weighted Points',
+                color='Overall Win %',
+                text=final_rankings['Rank'].astype(str) + '. ' + final_rankings['Total Weighted Points'].round(1).astype(str)
+            )
+
+            fig_rankings.update_layout(
+                height=500,
+                xaxis_title="Team",
+                yaxis_title="Ranking Points",
+                showlegend=True,
+                title={
+                    'text': 'Current Rankings (Weighted by Season Recency)',
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'color': '#f04f53'}
+                }
+            )
+
+            st.plotly_chart(fig_rankings, use_container_width=True)
+
+            # Add explanation of points system
+            with st.expander("How are ranking points calculated?"):
+                st.markdown(f"""
+                ### Points Weighting by Season
+                - Current Season ({years[0]}): 100% of points
+                - Previous Season ({years[1] if len(years) > 1 else 'N/A'}): 50% of points
+                - Two Seasons Ago ({years[2] if len(years) > 2 else 'N/A'}): 33.3% of points
+                
+                ### Position Points
+                - Winner/D1 Winner: 50 points
+                - D2 Winner: 45 points
+                - Runner Up/D1 Runner Up: 40 points
+                - D2 Runner Up: 35 points
+                - Semi Final/Qualifier: 30 points
+                - Quarter Final/Eliminator: 20 points
+                - Group Stage: 10 points
+                - Each position below 1st: -2 points
+                
+                ### Win Percentage Bonus Points
+                - 100%: 50 bonus points
+                - 90%+: 40 bonus points
+                - 80%+: 30 bonus points
+                - 70%+: 25 bonus points
+                - 60%+: 20 bonus points
+                - 50%+: 15 bonus points
+                - 40%+: 10 bonus points
+                - 30%+: 7 bonus points
+                - 20%+: 5 bonus points
+                - 10%+: 3 bonus points
+                """)
+
+            # After the existing rankings visualization, add new insights
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Ranking Insights</h4>", unsafe_allow_html=True)
+            
+            # Create three columns for different visualizations
+            insight_col1, insight_col2 = st.columns(2)
+            
+            with insight_col1:
+                # Points Breakdown Chart
+                points_breakdown = pd.DataFrame({
+                    'Team': final_rankings['Team'],
+                    'Current Season': final_rankings['Current Season Points'],
+                    'Previous Season': final_rankings['Previous Season Points'],
+                    'Two Seasons Ago': final_rankings['Two Seasons Ago Points']
+                })
+                
+                fig_breakdown = px.bar(
+                    points_breakdown.melt(id_vars=['Team'], var_name='Season', value_name='Points'),
+                    x='Team',
+                    y='Points',
+                    color='Season',
+                    barmode='stack'
+                )
+                fig_breakdown.update_layout(
+                    height=400,
+                    title={
+                        'text': 'Points Breakdown by Season',
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
+                st.plotly_chart(fig_breakdown, use_container_width=True)
+
+            with insight_col2:
+                # Ranking Movement (if more than one year available)
+                if len(years) >= 2:
+                    current_positions = rankings_df[rankings_df['Year'] == years[0]].groupby('Team')['Position'].mean()
+                    previous_positions = rankings_df[rankings_df['Year'] == years[1]].groupby('Team')['Position'].mean()
+                    
+                    movement_df = pd.DataFrame({
+                        'Current': current_positions,
+                        'Previous': previous_positions
+                    }).fillna(0)
+                    
+                    movement_df['Change'] = movement_df['Previous'] - movement_df['Current']
+                    movement_df = movement_df.sort_values('Change', ascending=False)
+                    
+                    fig_movement = px.bar(
+                        movement_df.reset_index(),
+                        x='Team',
+                        y='Change',
+                        color='Change',
+                        color_continuous_scale=['red', 'lightgray', 'green'],
+                        text=movement_df['Change'].round(1)
+                    )
+                    fig_movement.update_layout(
+                        height=400,
+                        title={
+                            'text': 'Position Change from Previous Season',
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'yanchor': 'top',
+                            'font': {'color': '#f04f53'}
+                        }
+                    )
+                    st.plotly_chart(fig_movement, use_container_width=True)
+                else:
+                    # Provide a fallback to avoid 'NoneType' issues
+                    movement_df = pd.DataFrame()
+                    most_improved = "N/A"
+
+            # Add a summary metrics section
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Key Statistics</h4>", unsafe_allow_html=True)
+            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+            
+            with metric_col1:
+                top_team = final_rankings.iloc[0]
+                st.metric("Current #1", top_team['Team'], 
+                         f"{top_team['Total Weighted Points']:.1f} pts")
+            
+            with metric_col2:
+                if 'Change' in movement_df.columns:
+                    most_improved = movement_df[movement_df['Change'] > 0].index[0] if len(movement_df[movement_df['Change'] > 0]) > 0 else "N/A"
+                else:
+                    most_improved = "N/A"
+                max_improvement = movement_df['Change'].max() if len(movement_df) > 0 else 0
+                st.metric("Most Improved", most_improved, 
+                         f"↑ {max_improvement:.1f} positions" if max_improvement > 0 else "N/A")
+            
+            with metric_col3:
+                highest_win_rate = final_rankings.loc[final_rankings['Overall Win %'].idxmax()]
+                st.metric("Highest Win Rate", highest_win_rate['Team'],
+                         f"{highest_win_rate['Overall Win %']:.1f}%")
+            
+            with metric_col4:
+                avg_points = final_rankings['Total Weighted Points'].mean()
+                st.metric("Average Points", f"{avg_points:.1f}",
+                         f"Over {len(final_rankings)} teams")
+
+            # Add existing expander with points calculation explanation
+            # ...rest of existing code...
+
+# ...rest of existing code...
+
+            # Add historical rankings comparison
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Rankings Comparison</h4>", unsafe_allow_html=True)
+            
+            # Create columns for the two charts
+            hist_col1, hist_col2 = st.columns(2)
+            
+            # Prepare historical rankings data
+            historical_rankings = []
+            for year in years:
+                year_data = rankings_df[rankings_df['Year'] == year].copy()
+                year_data['Total_Points'] = year_data['Total_Ranking_Points']
+                year_data = year_data.sort_values('Total_Points', ascending=False)
+                year_data['Rank'] = range(1, len(year_data) + 1)
+                historical_rankings.append(year_data)
+            
+            historical_df = pd.concat(historical_rankings)
+            
+            with hist_col1:
+                # Create rank by year visualization
+                fig_rank_history = px.line(
+                    historical_df,
+                    x='Year',
+                    y='Rank',
+                    color='Team',
+                    markers=True,
+                    title='Team Rankings by Year'
+                )
+                
+                # Customize the rank chart
+                fig_rank_history.update_layout(
+                    height=500,
+                    yaxis_title="Rank",
+                    yaxis_autorange='reversed',  # Higher rank (1) at the top
+                    xaxis_title="Year",
+                    showlegend=True,
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
+                
+                st.plotly_chart(fig_rank_history, use_container_width=True)
+            
+            with hist_col2:
+                # Create points by year visualization
+                fig_points_history = px.line(
+                    historical_df,
+                    x='Year',
+                    y='Total_Points',
+                    color='Team',
+                    markers=True,
+                    title='Team Total Points by Year'
+                )
+                
+                # Customize the points chart
+                fig_points_history.update_layout(
+                    height=500,
+                    yaxis_title="Total Points",
+                    xaxis_title="Year",
+                    showlegend=True,
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'color': '#f04f53'}
+                    }
+                )
+                
+                st.plotly_chart(fig_points_history, use_container_width=True)
+
+            # Add Historical Statistics Summary
+            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Statistics Summary</h4>", unsafe_allow_html=True)
+
+            # Calculate historical statistics
+            historical_stats = {}
+
+            # Number 1 teams by year
+            top_teams_by_year = historical_df.loc[historical_df.groupby('Year')['Rank'].idxmin()][['Year', 'Team', 'Total_Points']]
+            
+            # Most frequent #1 team
+            most_frequent_top = top_teams_by_year['Team'].value_counts().index[0]
+            most_frequent_top_count = top_teams_by_year['Team'].value_counts().iloc[0]
+
+            # Highest total points ever
+            highest_points_record = historical_df.loc[historical_df['Total_Points'].idxmax()]
+
+            # Most years as last place
+            last_place_counts = historical_df[historical_df['Rank'] == historical_df.groupby('Year')['Rank'].transform('max')]['Team'].value_counts()
+            most_last_place = last_place_counts.index[0] if not last_place_counts.empty else "N/A"
+            most_last_place_count = last_place_counts.iloc[0] if not last_place_counts.empty else 0
+
+            # Lowest total points ever
+            lowest_points_record = historical_df.loc[historical_df['Total_Points'].idxmin()]
+
+            # Average rank by team
+            avg_ranks = historical_df.groupby('Team')['Rank'].mean().sort_values()
+            most_consistent = avg_ranks.index[0]
+            most_consistent_avg = avg_ranks.iloc[0]
+
+            # Create a DataFrame for number 1 teams by year
+            top_teams_df = top_teams_by_year.set_index('Year')
+
+            # Display statistics in expandable sections
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### 🏆 Number 1 Teams By Year")
+                st.dataframe(top_teams_df, use_container_width=True)
+
+            with col2:
+                st.markdown("#### 📊 All-Time Records")
+                
+                # Create records DataFrame
+                records_df = pd.DataFrame({
+                    'Record': [
+                        'Most Frequent #1',
+                        'Highest Points Ever',
+                        'Most Last Place Finishes',
+                        'Lowest Points Ever',
+                        'Most Consistent Team'
+                    ],
+                    'Team': [
+                        most_frequent_top,
+                        highest_points_record['Team'],
+                        most_last_place,
+                        lowest_points_record['Team'],
+                        most_consistent
+                    ],
+                    'Details': [
+                        f"{most_frequent_top_count} times",
+                        f"{highest_points_record['Total_Points']:.1f} pts in {highest_points_record['Year']}",
+                        f"{most_last_place_count} times",
+                        f"{lowest_points_record['Total_Points']:.1f} pts in {lowest_points_record['Year']}",
+                        f"Avg. Rank: {most_consistent_avg:.1f}"
+                    ]
+                })
+                
+                # Display the records table
+                st.dataframe(
+                    records_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Record": st.column_config.TextColumn(
+                            "Record Type",
+                            width="medium"
+                        ),
+                        "Team": st.column_config.TextColumn(
+                            "Team",
+                            width="medium"
+                        ),
+                        "Details": st.column_config.TextColumn(
+                            "Achievement Details",
+                            width="medium"
+                        )
+                    }
+                )
+
+            # Additional Statistics
+            st.markdown("#### 📈 Detailed Statistics")
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
+
+            with stat_col1:
+                # Point Distribution Stats
+                points_stats = historical_df.groupby('Team')['Total_Points'].agg(['mean', 'max', 'min']).round(1)
+                points_stats.columns = ['Avg Points', 'Max Points', 'Min Points']
+                points_stats = points_stats.sort_values('Avg Points', ascending=False)
+                st.markdown("##### Average Points by Team")
+                st.dataframe(points_stats, use_container_width=True, hide_index=True)
+
+            with stat_col2:
+                # Rank Volatility (standard deviation of ranks)
+                rank_volatility = historical_df.groupby('Team')['Rank'].agg(['mean', 'std']).round(2)
+                rank_volatility.columns = ['Avg Rank', 'Rank Volatility']
+                rank_volatility = rank_volatility.sort_values('Avg Rank')
+                st.markdown("##### Rank Consistency")
+                st.dataframe(rank_volatility, use_container_width=True, hide_index=True)
+
+            with stat_col3:
+                # Top 3 Finishes
+                top_3_mask = historical_df['Rank'] <= 3
+                top_3_finishes = historical_df[top_3_mask]['Team'].value_counts()
+                top_3_df = pd.DataFrame({
+                    'Team': top_3_finishes.index,
+                    'Top 3 Finishes': top_3_finishes.values
+                })
+                st.markdown("##### Top 3 Finish Counts")
+                st.dataframe(top_3_df, use_container_width=True, hide_index=True)
+
+            # Add interesting insights
+            st.markdown("#### 🎯 Key Insights")
+            insights_col1, insights_col2 = st.columns(2)
+
+            with insights_col1:
+                # Year-over-year improvement
+                year_improvements = []
+                for team in historical_df['Team'].unique():
+                    team_data = historical_df[historical_df['Team'] == team].sort_values('Year')
+                    if len(team_data) >= 2:
+                        rank_diff = team_data['Rank'].iloc[-1] - team_data['Rank'].iloc[-2]
+                        year_improvements.append((team, -rank_diff))  # Negative because improvement means rank number decreases
+                
+                if year_improvements:
+                    year_improvements.sort(key=lambda x: x[1], reverse=True)
+                    st.markdown("##### Biggest Recent Improvers")
+                    for team, improvement in year_improvements[:5]:
+                        if improvement > 0:
+                            st.markdown(f"- {team}: ⬆️ {improvement} positions")
+
+            with insights_col2:
+                # Longest streaks in top 3
+                st.markdown("##### Notable Streaks")
+                for team in historical_df['Team'].unique():
+                    team_data = historical_df[historical_df['Team'] == team].sort_values('Year')
+                    current_streak = 0
+                    max_streak = 0
+                    for rank in team_data['Rank']:
+                        if rank <= 3:
+                            current_streak += 1
+                            max_streak = max(max_streak, current_streak)
+                        else:
+                            current_streak = 0
+                    if max_streak >= 2:  # Only show streaks of 2 or more years
+                        st.markdown(f"- {team}: {max_streak} consecutive years in top 3")
+
+# ...rest of existing code...
