@@ -672,9 +672,9 @@ if not st.session_state.historical_data.empty:
     # Create filters at the top of the page using two columns
     col1, col2 = st.columns(2)
     with col1:
-        team_choice = st.multiselect('Team:', teams, default='All')
+        team_choice = st.multiselect('Team:', teams, default='All', key="team_filter_main")
     with col2:
-        competition_choice = st.multiselect('Competition:', competitions, default='All')
+        competition_choice = st.multiselect('Competition:', competitions, default='All', key="competition_filter_main")
         
     # Apply filters to the dataframe
     filtered_df = st.session_state.historical_data.copy()
@@ -688,21 +688,139 @@ if not st.session_state.historical_data.empty:
     # Display the filtered dataframe
     st.dataframe(filtered_df, use_container_width=True, hide_index=True)
     
+    # Add the missing summaries
+    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary</h3>", unsafe_allow_html=True)
+    
+    # Create two columns for the summaries
+    summary_col1, summary_col2 = st.columns(2)
+    
+    with summary_col1:
+        st.markdown("#### Summary By Format")
+        
+        # Group by Team first, then Competition as requested
+        format_summary = filtered_df.groupby(['Team', 'Competition']).agg({
+            'Year': 'count',  # Count of entries for this team-competition
+            'P': 'sum',
+            'W': 'sum',
+            'L': 'sum',
+            'D': 'sum',
+            'Bat BP': 'sum',
+            'Bowl BP': 'sum',
+            'Points': 'sum'
+        }).reset_index()
+        
+        # Calculate percentages
+        format_summary['Win %'] = (format_summary['W'] / format_summary['P'] * 100).round(1)
+        format_summary['Loss %'] = (format_summary['L'] / format_summary['P'] * 100).round(1)
+        format_summary['Draw %'] = (format_summary['D'] / format_summary['P'] * 100).round(1)
+        
+        # Count titles, runner ups, and wooden spoons by team and competition
+        titles_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Winner', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Titles')
+        runner_ups_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Runner Up', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Runner Ups')
+        wooden_spoons_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Wooden Spoon', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Wooden Spoons')
+        
+        # Merge these into format_summary
+        format_summary = pd.merge(format_summary, titles_by_team_comp, on=['Team', 'Competition'], how='left')
+        format_summary = pd.merge(format_summary, runner_ups_by_team_comp, on=['Team', 'Competition'], how='left')
+        format_summary = pd.merge(format_summary, wooden_spoons_by_team_comp, on=['Team', 'Competition'], how='left')
+        
+        # Fill NA values with 0
+        format_summary['Titles'] = format_summary['Titles'].fillna(0).astype(int)
+        format_summary['Runner Ups'] = format_summary['Runner Ups'].fillna(0).astype(int)
+        format_summary['Wooden Spoons'] = format_summary['Wooden Spoons'].fillna(0).astype(int)
+        
+        # Rename columns for clarity
+        format_summary = format_summary.rename(columns={
+            'Year': 'Entries'
+        })
+        
+        # Sort by Team and then Competition
+        format_summary = format_summary.sort_values(['Team', 'Competition'])
+        
+        st.dataframe(format_summary, use_container_width=True, hide_index=True)
+    
+    with summary_col2:
+        st.markdown("#### Summary By Team (Competition)")
+        
+        # Group by team AND competition - change from the previous version
+        team_summary = filtered_df.groupby(['Team', 'Competition']).agg({
+            'Year': 'nunique',
+            'Position': ['mean', 'min'],
+            'Points': ['mean', 'sum'],
+            'W': ['sum'],
+            'P': ['sum']
+        }).reset_index()
+        
+        # Flatten the column names
+        team_summary.columns = [f"{col[0]}_{col[1]}" if col[1] else col[0] for col in team_summary.columns]
+        
+        # Rename columns for clarity
+        team_summary = team_summary.rename(columns={
+            'Year_nunique': 'Years',
+            'Position_mean': 'Avg Pos',
+            'Position_min': 'Best Pos',
+            'Points_mean': 'Avg Pts',
+            'Points_sum': 'Total Pts',
+            'W_sum': 'Wins',
+            'P_sum': 'Played'
+        })
+        
+        # Calculate win percentage
+        team_summary['Win %'] = (team_summary['Wins'] / team_summary['Played'] * 100).round(1)
+        
+        # Add Titles, Runner Ups, and Wooden Spoons columns for each team-competition combo
+        titles_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Winner', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Titles')
+        runner_ups_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Runner Up', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Runner Ups')
+        wooden_spoons_by_team_comp = filtered_df[filtered_df['Final Position'].str.contains('Wooden Spoon', na=False)].groupby(['Team', 'Competition']).size().reset_index(name='Wooden Spoons')
+        
+        # Merge these into team_summary
+        team_summary = pd.merge(team_summary, titles_by_team_comp, on=['Team', 'Competition'], how='left')
+        team_summary = pd.merge(team_summary, runner_ups_by_team_comp, on=['Team', 'Competition'], how='left')
+        team_summary = pd.merge(team_summary, wooden_spoons_by_team_comp, on=['Team', 'Competition'], how='left')
+        
+        # Fill NA values with 0
+        team_summary['Titles'] = team_summary['Titles'].fillna(0).astype(int)
+        team_summary['Runner Ups'] = team_summary['Runner Ups'].fillna(0).astype(int)
+        team_summary['Wooden Spoons'] = team_summary['Wooden Spoons'].fillna(0).astype(int)
+        
+        # Round numeric columns
+        team_summary[['Avg Pos', 'Avg Pts', 'Total Pts', 'Win %']] = team_summary[['Avg Pos', 'Avg Pts', 'Total Pts', 'Win %']].round(2)
+        
+        # Sort by team name and then average position
+        team_summary = team_summary.sort_values(['Team', 'Avg Pos'])
+        
+        st.dataframe(team_summary, use_container_width=True, hide_index=True)
+    
     # Add styled header for the graph
     st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position History</h3>", unsafe_allow_html=True)
     
-    # Prepare data for plotting
-    if 'All' not in team_choice:
-        plot_teams = team_choice
+    # Create new filters for position history section with unique keys
+    position_col1, position_col2 = st.columns(2)
+    with position_col1:
+        position_team_choice = st.multiselect('Team:', teams, default='All', key="team_filter_position")
+    with position_col2:
+        position_competition_choice = st.multiselect('Competition:', competitions, default='All', key="competition_filter_position")
+    
+    # Apply position history filters
+    position_filtered_df = st.session_state.historical_data.copy()
+    
+    if 'All' not in position_team_choice:
+        position_filtered_df = position_filtered_df[position_filtered_df['Team'].isin(position_team_choice)]
+        
+    if 'All' not in position_competition_choice:
+        position_filtered_df = position_filtered_df[position_filtered_df['Competition'].isin(position_competition_choice)]
+    
+    # Prepare data for position history plotting
+    if 'All' not in position_team_choice:
+        plot_teams = position_team_choice
     else:
-        # If 'All' is selected, limit to top 5 teams by most recent appearances
-        team_counts = filtered_df['Team'].value_counts()
-        plot_teams = team_counts.head(5).index.tolist()
+        # If 'All' is selected, show all teams
+        plot_teams = position_filtered_df['Team'].unique().tolist()
     
     # Filter data for selected teams
-    plot_df = filtered_df[filtered_df['Team'].isin(plot_teams)]
+    plot_df = position_filtered_df[position_filtered_df['Team'].isin(plot_teams)]
     
-    # Create the line plot
+    # Create the position history line plot
     if not plot_df.empty:
         fig = px.line(plot_df, 
                      x='Year', 
@@ -738,112 +856,25 @@ if not st.session_state.historical_data.empty:
                          "<extra></extra>"
         )
         
-        # Display the plot
-        st.plotly_chart(fig, use_container_width=True)
+        # Set x-axis to show only full years
+        fig.update_xaxes(
+            dtick=1,  # Show every year
+            type='category'  # Use categorical axis to display all years properly
+        )
         
-    # Create summary statistics
-    history_all_df = filtered_df.copy()
-
-    # Create helper columns for titles and runner-ups
-    history_all_df['Titles'] = history_all_df['Final Position'].isin(["Winner", "D1 Winner", "D2 Winner"]).astype(int)
-    history_all_df['Runner_Ups'] = history_all_df['Final Position'].isin(["Runner Up", "D1 Runner Up", "D2 Runner Up"]).astype(int)
-
-
-
-    # Create helper column for wooden spoons
-    max_positions = history_all_df.groupby(['Year', 'Competition'])['Position'].transform('max')
-    history_all_df['Wooden_Spoons'] = (history_all_df['Position'] == max_positions).astype(int)
-
-    # Group by and aggregate
-    summary_df = history_all_df.groupby(['Team', 'Competition']).agg({
-        'P': 'sum',
-        'W': 'sum',
-        'L': 'sum',
-        'D': 'sum',
-        'Bat BP': 'sum',
-        'Bowl BP': 'sum',
-        'Points': 'sum',
-        'Titles': 'sum',
-        'Runner_Ups': 'sum',
-        'Wooden_Spoons': 'sum'
-    }).reset_index()
-
-    # Calculate percentages
-    summary_df['Win %'] = (summary_df['W'] / summary_df['P'] * 100).round(1)
-    summary_df['Loss %'] = (summary_df['L'] / summary_df['P'] * 100).round(1)
-    summary_df['Draw %'] = (summary_df['D'] / summary_df['P'] * 100).round(1)
-
-    # Round floating point numbers
-    summary_df = summary_df.round(2)
-
-    # Rename columns for clarity
-    summary_df = summary_df.rename(columns={
-        'P': 'Played',
-        'W': 'Wins',
-        'L': 'Losses',
-        'D': 'Draws',
-        'Bat BP': 'Batting Points',
-        'Bowl BP': 'Bowling Points',
-        'Points': 'Total Points',
-        'Runner_Ups': 'Runner Ups',
-        'Wooden_Spoons': 'Wooden Spoons'
-    })
-
-    # Reorder columns
-    columns_order = [
-        'Team', 'Competition', 'Played', 
-        'Wins', 'Losses', 'Draws', 
-        'Win %','Loss %', 'Draw %',
-        'Batting Points', 'Bowling Points', 'Total Points',
-        'Titles', 'Runner Ups', 'Wooden Spoons'
-    ]
-
-    summary_df = summary_df[columns_order]
-
-    # Display summary statistics
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Format</h3>", unsafe_allow_html=True)
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-    summary_by_team_df = history_all_df.groupby(['Team']).agg({
-        'P': 'sum',
-        'W': 'sum',
-        'L': 'sum',
-        'D': 'sum',
-        'Bat BP': 'sum',
-        'Bowl BP': 'sum',
-        'Points': 'sum',
-        'Titles': 'sum',
-        'Runner_Ups': 'sum',
-        'Wooden_Spoons': 'sum'
-    }).reset_index()
-
-    summary_by_team_df['Win %'] = (summary_by_team_df['W'] / summary_by_team_df['P'] * 100).round(1)
-    summary_by_team_df['Loss %'] = (summary_by_team_df['L'] / summary_by_team_df['P'] * 100).round(1)
-    summary_by_team_df['Draw %'] = (summary_by_team_df['D'] / summary_by_team_df['P'] * 100).round(1)
-    summary_by_team_df = summary_by_team_df.round(2).rename(columns={
-        'P': 'Played',
-        'W': 'Wins',
-        'L': 'Losses',
-        'D': 'Draws',
-        'Bat BP': 'Batting Points',
-        'Bowl BP': 'Bowling Points',
-        'Points': 'Total Points',
-        'Runner_Ups': 'Runner Ups',
-        'Wooden_Spoons': 'Wooden Spoons'
-    })
-
-    columns_order_team = [
-        'Team', 'Played', 'Wins', 'Losses', 'Draws',
-        'Win %', 'Loss %', 'Draw %',
-        'Batting Points', 'Bowling Points', 'Total Points',
-        'Titles', 'Runner Ups', 'Wooden Spoons'
-    ]
-    summary_by_team_df = summary_by_team_df[columns_order_team]
-
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Historical Summary By Team (All Formats)</h3>", unsafe_allow_html=True)
-    st.dataframe(summary_by_team_df, use_container_width=True, hide_index=True)
-
-#############################
+        # Set y-axis to show only whole numbers
+        fig.update_yaxes(
+            dtick=1,
+            tickmode='linear'
+        )
+        
+        # Display the plot
+        st.plotly_chart(fig, use_container_width=True, key="position_history_main")
+    else:
+        st.info("No data available for the selected filters.")
+        
+    # Remove the duplicate dataframe display that was appearing twice
+    # (The second st.dataframe call for the same filtered_df was removed)
 
 # Custom CSS for styling
 st.markdown("""
@@ -872,29 +903,42 @@ st.markdown("""
 
 # After the existing position history graph, add new visualizations
 if not st.session_state.historical_data.empty:
-    # Create all tabs at once
-    tab1, tab2, tab3, tab4 = st.tabs(["Performance Metrics", "Season Points Comparison", "Points Distribution", "Current Rankings"])
+    # Create all tabs at once including the new heatmap tab
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Performance Metrics", "Season Points Comparison", "Points Distribution", "Current Rankings", "Heatmap"])
 
     with tab1:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Metrics</h3>", unsafe_allow_html=True)
         performance_df = filtered_df.copy()
         performance_df['Win_Rate'] = (performance_df['W'] / performance_df['P'] * 100).round(2)
         fig_metrics = px.line(performance_df, x='Year', y='Win_Rate', color='Team', markers=True)
+        # Update x-axis settings to show full years only
+        fig_metrics.update_xaxes(
+            dtick=1,  # Show every year
+            type='category'  # Use categorical axis
+        )
         fig_metrics.update_layout(height=500)
-        st.plotly_chart(fig_metrics, use_container_width=True)
+        st.plotly_chart(fig_metrics, use_container_width=True, key="performance_metrics_tab")
 
     with tab2:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Points Comparison</h3>", unsafe_allow_html=True)
         season_df = filtered_df.pivot_table(values='Points', index='Team', columns='Year', aggfunc='sum').fillna(0)
         fig_season = px.imshow(season_df, labels=dict(x="Year", y="Team", color="Points"), aspect="auto")
+        
+        # Update layout and ensure x-axis shows only whole numbers
         fig_season.update_layout(height=600)
-        st.plotly_chart(fig_season, use_container_width=True)
+        fig_season.update_xaxes(
+            dtick=1,  # Show every year
+            tickmode='linear',  # Use linear tick mode
+            type='category'  # Use categorical axis to ensure whole numbers
+        )
+        
+        st.plotly_chart(fig_season, use_container_width=True, key="season_points_tab")
 
     with tab3:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Points Distribution</h3>", unsafe_allow_html=True)
         fig_box = px.box(filtered_df, x='Team', y='Points')
         fig_box.update_layout(height=500, xaxis_title="Team", yaxis_title="Points", showlegend=False)
-        st.plotly_chart(fig_box, use_container_width=True)
+        st.plotly_chart(fig_box, use_container_width=True, key="points_dist_tab")
 
     with tab4:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Current Rankings</h3>", unsafe_allow_html=True)
@@ -1002,11 +1046,10 @@ if not st.session_state.historical_data.empty:
             # Rename 'index' to 'Team' and reorder columns
             final_rankings = final_rankings.rename(columns={'index': 'Team'})
             
-            # Select and order columns
+            # Select and order columns - Update column order to show Total Weighted Points right after Team and remove Position
             columns_order = [
-                'Rank', 'Team', 'Current Season Points', 'Previous Season Points', 
-                'Two Seasons Ago Points', 'Total Weighted Points', 'Overall Win %',
-                'Position'  # Removed 'Final Position'
+                'Rank', 'Team', 'Total Weighted Points', 'Current Season Points', 'Previous Season Points', 
+                'Two Seasons Ago Points', 'Overall Win %'
             ]
             final_rankings = final_rankings[columns_order]
 
@@ -1036,7 +1079,7 @@ if not st.session_state.historical_data.empty:
                 }
             )
 
-            st.plotly_chart(fig_rankings, use_container_width=True)
+            st.plotly_chart(fig_rankings, use_container_width=True, key="current_rankings_viz")
 
             # Add explanation of points system
             with st.expander("How are ranking points calculated?"):
@@ -1101,7 +1144,7 @@ if not st.session_state.historical_data.empty:
                         'font': {'color': '#f04f53'}
                     }
                 )
-                st.plotly_chart(fig_breakdown, use_container_width=True)
+                st.plotly_chart(fig_breakdown, use_container_width=True, key="points_breakdown_viz")
 
             with insight_col2:
                 # Ranking Movement (if more than one year available)
@@ -1135,7 +1178,7 @@ if not st.session_state.historical_data.empty:
                             'font': {'color': '#f04f53'}
                         }
                     )
-                    st.plotly_chart(fig_movement, use_container_width=True)
+                    st.plotly_chart(fig_movement, use_container_width=True, key="position_change_viz")
                 else:
                     # Provide a fallback to avoid 'NoneType' issues
                     movement_df = pd.DataFrame()
@@ -1177,191 +1220,265 @@ if not st.session_state.historical_data.empty:
             # Add historical rankings comparison
             st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Rankings Comparison</h4>", unsafe_allow_html=True)
             
+            # Add competition format filter above the historical rankings
+            format_col1, format_col2 = st.columns([3, 1])
+            
+            with format_col1:
+                format_filter = st.multiselect(
+                    'Filter by Competition:',
+                    options=filtered_df['Competition'].unique().tolist(),
+                    default=filtered_df['Competition'].unique().tolist()[0] if len(filtered_df['Competition'].unique()) > 0 else None,
+                    key="format_filter_rankings"
+                )
+            
+            with format_col2:
+                # Add a reset button
+                if st.button("Reset Filters", key="reset_format_filter"):
+                    format_filter = filtered_df['Competition'].unique().tolist()
+            
+            # Apply competition filter
+            if format_filter:
+                format_filtered_df = rankings_df[rankings_df['Competition'].isin(format_filter)]
+            else:
+                format_filtered_df = rankings_df.copy()
+            
             # Create columns for the two charts
             hist_col1, hist_col2 = st.columns(2)
             
-            # Prepare historical rankings data
+            # Prepare historical rankings data with competition filter applied
             historical_rankings = []
             for year in years:
-                year_data = rankings_df[rankings_df['Year'] == year].copy()
-                year_data['Total_Points'] = year_data['Total_Ranking_Points']
-                year_data = year_data.sort_values('Total_Points', ascending=False)
-                year_data['Rank'] = range(1, len(year_data) + 1)
-                historical_rankings.append(year_data)
+                year_data = format_filtered_df[format_filtered_df['Year'] == year].copy()
+                
+                # Skip if no data for this year after filtering
+                if year_data.empty:
+                    continue
+                    
+                # Calculate total ranking points by team for the filtered competitions
+                year_points = year_data.groupby('Team')['Total_Ranking_Points'].sum().reset_index()
+                year_points['Year'] = year
+                year_points = year_points.sort_values('Total_Ranking_Points', ascending=False)
+                year_points['Rank'] = range(1, len(year_points) + 1)
+                historical_rankings.append(year_points)
             
-            historical_df = pd.concat(historical_rankings)
-            
-            with hist_col1:
-                # Create rank by year visualization
-                fig_rank_history = px.line(
-                    historical_df,
-                    x='Year',
-                    y='Rank',
-                    color='Team',
-                    markers=True,
-                    title='Team Rankings by Year'
-                )
+            if not historical_rankings:
+                st.warning("No data available for the selected competitions.")
+            else:
+                historical_df = pd.concat(historical_rankings)
                 
-                # Customize the rank chart
-                fig_rank_history.update_layout(
-                    height=500,
-                    yaxis_title="Rank",
-                    yaxis_autorange='reversed',  # Higher rank (1) at the top
-                    xaxis_title="Year",
-                    showlegend=True,
-                    title={
-                        'x': 0.5,
-                        'xanchor': 'center',
-                        'font': {'color': '#f04f53'}
-                    }
-                )
+                with hist_col1:
+                    # Create rank by year visualization
+                    fig_rank_history = px.line(
+                        historical_df,
+                        x='Year',
+                        y='Rank',
+                        color='Team',
+                        markers=True,
+                        title='Team Rankings by Year'
+                    )
+                    
+                    # Customize the rank chart
+                    fig_rank_history.update_layout(
+                        height=500,
+                        yaxis_title="Rank",
+                        yaxis_autorange='reversed',  # Higher rank (1) at the top
+                        xaxis_title="Year",
+                        showlegend=True,
+                        title={
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'font': {'color': '#f04f53'}
+                        }
+                    )
+                    
+                    # Set x-axis to show only full years
+                    fig_rank_history.update_xaxes(
+                        dtick=1,  # Show every year
+                        type='category'  # Use categorical axis
+                    )
+                    
+                    st.plotly_chart(fig_rank_history, use_container_width=True, key="rank_history_viz")
                 
-                st.plotly_chart(fig_rank_history, use_container_width=True)
-            
-            with hist_col2:
-                # Create points by year visualization
-                fig_points_history = px.line(
-                    historical_df,
-                    x='Year',
-                    y='Total_Points',
-                    color='Team',
-                    markers=True,
-                    title='Team Total Points by Year'
-                )
+                with hist_col2:
+                    # Create points by year visualization - Update title
+                    fig_points_history = px.line(
+                        historical_df,
+                        x='Year',
+                        y='Total_Ranking_Points',
+                        color='Team',
+                        markers=True,
+                        title='Team Total Ranking Points by Year'
+                    )
+                    
+                    # Customize the points chart
+                    fig_points_history.update_layout(
+                        height=500,
+                        yaxis_title="Total Ranking Points",
+                        xaxis_title="Year",
+                        showlegend=True,
+                        title={
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'font': {'color': '#f04f53'}
+                        }
+                    )
+                    
+                    # Set x-axis to show only full years
+                    fig_points_history.update_xaxes(
+                        dtick=1,  # Show every year
+                        type='category'  # Use categorical axis
+                    )
+                    
+                    st.plotly_chart(fig_points_history, use_container_width=True, key="points_history_viz")
                 
-                # Customize the points chart
-                fig_points_history.update_layout(
-                    height=500,
-                    yaxis_title="Total Points",
-                    xaxis_title="Year",
-                    showlegend=True,
-                    title={
-                        'x': 0.5,
-                        'xanchor': 'center',
-                        'font': {'color': '#f04f53'}
-                    }
-                )
+                # Update the Historical Statistics Summary with filtered data
+                st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Statistics Summary</h4>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center;'>Showing data for: {', '.join(format_filter)}</p>", unsafe_allow_html=True)
+
+                # Calculate historical statistics based on filtered data
+                # Number 1 teams by year from filtered data
+                top_teams_by_year = historical_df.loc[historical_df.groupby('Year')['Rank'].idxmin()][['Year', 'Team', 'Total_Ranking_Points']]
                 
-                st.plotly_chart(fig_points_history, use_container_width=True)
+                # Most frequent #1 team
+                most_frequent_top = top_teams_by_year['Team'].value_counts().index[0] if not top_teams_by_year.empty else "N/A"
+                most_frequent_top_count = top_teams_by_year['Team'].value_counts().iloc[0] if not top_teams_by_year.empty else 0
 
-            # Add Historical Statistics Summary
-            st.markdown("<h4 style='color:#f04f53; text-align: center;'>Historical Statistics Summary</h4>", unsafe_allow_html=True)
+                # Highest total points ever
+                if not historical_df.empty:
+                    max_idx = historical_df['Total_Ranking_Points'].idxmax()
+                    highest_pts = historical_df.loc[max_idx, 'Total_Ranking_Points']
+                    highest_pts_team = historical_df.loc[max_idx, 'Team']
+                    highest_pts_year = historical_df.loc[max_idx, 'Year']
+                    
+                    # Ensure highest_pts is a simple float before formatting
+                    try:
+                        highest_pts = float(highest_pts)
+                        highest_pts_string = f"{highest_pts:.1f} pts in {highest_pts_year}"
+                    except (ValueError, TypeError):
+                        highest_pts_string = f"{highest_pts} pts in {highest_pts_year}"
+                else:
+                    highest_pts_team = "N/A"
+                    highest_pts_string = "N/A"
 
-            # Calculate historical statistics
-            historical_stats = {}
+                # Most years as last place
+                last_place_counts = historical_df[historical_df['Rank'] == historical_df.groupby('Year')['Rank'].transform('max')]['Team'].value_counts()
+                most_last_place = last_place_counts.index[0] if not last_place_counts.empty else "N/A"
+                most_last_place_count = last_place_counts.iloc[0] if not last_place_counts.empty else 0
 
-            # Number 1 teams by year
-            top_teams_by_year = historical_df.loc[historical_df.groupby('Year')['Rank'].idxmin()][['Year', 'Team', 'Total_Points']]
-            
-            # Most frequent #1 team
-            most_frequent_top = top_teams_by_year['Team'].value_counts().index[0]
-            most_frequent_top_count = top_teams_by_year['Team'].value_counts().iloc[0]
+                # Lowest total points ever
+                if not historical_df.empty:
+                    min_idx = historical_df['Total_Ranking_Points'].idxmin()
+                    lowest_pts = historical_df.loc[min_idx, 'Total_Ranking_Points']
+                    lowest_pts_team = historical_df.loc[min_idx, 'Team']
+                    lowest_pts_year = historical_df.loc[min_idx, 'Year']
+                    
+                    # Ensure lowest_pts is a simple float before formatting
+                    try:
+                        lowest_pts = float(lowest_pts)
+                        lowest_pts_string = f"{lowest_pts:.1f} pts in {lowest_pts_year}"
+                    except (ValueError, TypeError):
+                        lowest_pts_string = f"{lowest_pts} pts in {lowest_pts_year}"
+                else:
+                    lowest_pts_team = "N/A"
+                    lowest_pts_string = "N/A"
 
-            # Highest total points ever
-            highest_points_record = historical_df.loc[historical_df['Total_Points'].idxmax()]
+                # Average rank by team
+                avg_ranks = historical_df.groupby('Team')['Rank'].mean().sort_values()
+                most_consistent = avg_ranks.index[0] if not avg_ranks.empty else "N/A"
+                most_consistent_avg = avg_ranks.iloc[0] if not avg_ranks.empty else 0
 
-            # Most years as last place
-            last_place_counts = historical_df[historical_df['Rank'] == historical_df.groupby('Year')['Rank'].transform('max')]['Team'].value_counts()
-            most_last_place = last_place_counts.index[0] if not last_place_counts.empty else "N/A"
-            most_last_place_count = last_place_counts.iloc[0] if not last_place_counts.empty else 0
+                # Create a DataFrame for number 1 teams by year
+                top_teams_df = top_teams_by_year.set_index('Year')
 
-            # Lowest total points ever
-            lowest_points_record = historical_df.loc[historical_df['Total_Points'].idxmin()]
+                # Display statistics in expandable sections
+                col1, col2 = st.columns(2)
 
-            # Average rank by team
-            avg_ranks = historical_df.groupby('Team')['Rank'].mean().sort_values()
-            most_consistent = avg_ranks.index[0]
-            most_consistent_avg = avg_ranks.iloc[0]
+                with col1:
+                    st.markdown("#### 🏆 Number 1 Teams By Year")
+                    st.dataframe(top_teams_df, use_container_width=True)
 
-            # Create a DataFrame for number 1 teams by year
-            top_teams_df = top_teams_by_year.set_index('Year')
+                with col2:
+                    st.markdown("#### 📊 All-Time Records")
+                    
+                    # Create records DataFrame
+                    records_df = pd.DataFrame({
+                        'Record': [
+                            'Most Frequent #1',
+                            'Highest Points Ever',
+                            'Most Last Place Finishes',
+                            'Lowest Points Ever',
+                            'Most Consistent Team'
+                        ],
+                        'Team': [
+                            most_frequent_top,
+                            highest_pts_team,
+                            most_last_place,
+                            lowest_pts_team,
+                            most_consistent
+                        ],
+                        'Details': [
+                            f"{most_frequent_top_count} times",
+                            highest_pts_string,
+                            f"{most_last_place_count} times",
+                            lowest_pts_string,
+                            f"Avg. Rank: {most_consistent_avg:.1f}" if isinstance(most_consistent_avg, (int, float)) else "N/A"
+                        ]
+                    })
+                    
+                    # Display the records table
+                    st.dataframe(
+                        records_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Record": st.column_config.TextColumn(
+                                "Record Type",
+                                width="medium"
+                            ),
+                            "Team": st.column_config.TextColumn(
+                                "Team",
+                                width="medium"
+                            ),
+                            "Details": st.column_config.TextColumn(
+                                "Achievement Details",
+                                width="medium"
+                            )
+                        }
+                    )
 
-            # Display statistics in expandable sections
-            col1, col2 = st.columns(2)
+                # Additional Statistics section - need to fix the Total_Points column reference
+                st.markdown("#### 📈 Detailed Statistics")
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
 
-            with col1:
-                st.markdown("#### 🏆 Number 1 Teams By Year")
-                st.dataframe(top_teams_df, use_container_width=True)
+                with stat_col1:
+                    # Point Distribution Stats - Fixed to use Total_Ranking_Points instead of Total_Points
+                    if not historical_df.empty:
+                        points_stats = historical_df.groupby('Team')['Total_Ranking_Points'].agg(['mean', 'max', 'min']).round(1)
+                        points_stats.columns = ['Avg Points', 'Max Points', 'Min Points']
+                        points_stats = points_stats.sort_values('Avg Points', ascending=False)
+                        st.markdown("##### Average Points by Team")
+                        st.dataframe(points_stats, use_container_width=True, hide_index=True)
+                    else:
+                        st.write("No data available")
 
-            with col2:
-                st.markdown("#### 📊 All-Time Records")
-                
-                # Create records DataFrame
-                records_df = pd.DataFrame({
-                    'Record': [
-                        'Most Frequent #1',
-                        'Highest Points Ever',
-                        'Most Last Place Finishes',
-                        'Lowest Points Ever',
-                        'Most Consistent Team'
-                    ],
-                    'Team': [
-                        most_frequent_top,
-                        highest_points_record['Team'],
-                        most_last_place,
-                        lowest_points_record['Team'],
-                        most_consistent
-                    ],
-                    'Details': [
-                        f"{most_frequent_top_count} times",
-                        f"{highest_points_record['Total_Points']:.1f} pts in {highest_points_record['Year']}",
-                        f"{most_last_place_count} times",
-                        f"{lowest_points_record['Total_Points']:.1f} pts in {lowest_points_record['Year']}",
-                        f"Avg. Rank: {most_consistent_avg:.1f}"
-                    ]
-                })
-                
-                # Display the records table
-                st.dataframe(
-                    records_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Record": st.column_config.TextColumn(
-                            "Record Type",
-                            width="medium"
-                        ),
-                        "Team": st.column_config.TextColumn(
-                            "Team",
-                            width="medium"
-                        ),
-                        "Details": st.column_config.TextColumn(
-                            "Achievement Details",
-                            width="medium"
-                        )
-                    }
-                )
+                with stat_col2:
+                    # Rank Volatility (standard deviation of ranks)
+                    rank_volatility = historical_df.groupby('Team')['Rank'].agg(['mean', 'std']).round(2)
+                    rank_volatility.columns = ['Avg Rank', 'Rank Volatility']
+                    rank_volatility = rank_volatility.sort_values('Avg Rank')
+                    st.markdown("##### Rank Consistency")
+                    st.dataframe(rank_volatility, use_container_width=True, hide_index=True)
 
-            # Additional Statistics
-            st.markdown("#### 📈 Detailed Statistics")
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-
-            with stat_col1:
-                # Point Distribution Stats
-                points_stats = historical_df.groupby('Team')['Total_Points'].agg(['mean', 'max', 'min']).round(1)
-                points_stats.columns = ['Avg Points', 'Max Points', 'Min Points']
-                points_stats = points_stats.sort_values('Avg Points', ascending=False)
-                st.markdown("##### Average Points by Team")
-                st.dataframe(points_stats, use_container_width=True, hide_index=True)
-
-            with stat_col2:
-                # Rank Volatility (standard deviation of ranks)
-                rank_volatility = historical_df.groupby('Team')['Rank'].agg(['mean', 'std']).round(2)
-                rank_volatility.columns = ['Avg Rank', 'Rank Volatility']
-                rank_volatility = rank_volatility.sort_values('Avg Rank')
-                st.markdown("##### Rank Consistency")
-                st.dataframe(rank_volatility, use_container_width=True, hide_index=True)
-
-            with stat_col3:
-                # Top 3 Finishes
-                top_3_mask = historical_df['Rank'] <= 3
-                top_3_finishes = historical_df[top_3_mask]['Team'].value_counts()
-                top_3_df = pd.DataFrame({
-                    'Team': top_3_finishes.index,
-                    'Top 3 Finishes': top_3_finishes.values
-                })
-                st.markdown("##### Top 3 Finish Counts")
-                st.dataframe(top_3_df, use_container_width=True, hide_index=True)
+                with stat_col3:
+                    # Top 3 Finishes
+                    top_3_mask = historical_df['Rank'] <= 3
+                    top_3_finishes = historical_df[top_3_mask]['Team'].value_counts()
+                    top_3_df = pd.DataFrame({
+                        'Team': top_3_finishes.index,
+                        'Top 3 Finishes': top_3_finishes.values
+                    })
+                    st.markdown("##### Top 3 Finish Counts")
+                    st.dataframe(top_3_df, use_container_width=True, hide_index=True)
 
             # Add interesting insights
             st.markdown("#### 🎯 Key Insights")
@@ -1399,4 +1516,155 @@ if not st.session_state.historical_data.empty:
                     if max_streak >= 2:  # Only show streaks of 2 or more years
                         st.markdown(f"- {team}: {max_streak} consecutive years in top 3")
 
-# ...rest of existing code...
+    # Add the new Heatmap tab functionality
+    with tab5:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Tournament Achievements Heatmap</h3>", unsafe_allow_html=True)
+        
+        # Create a copy of the filtered data
+        heatmap_df = filtered_df.copy()
+        
+        # Create a simplified mapping function for colors based on Final Position
+        def map_final_position_to_value(position):
+            if pd.isna(position) or position == "":
+                return 0  # No data
+                
+            position_str = str(position).strip()
+            
+            # Gold Category - Winners (excluding D2)
+            if "Winner" in position_str and "D2 Winner" not in position_str:
+                return 5  # Gold for main winners only
+                
+            # Silver Category - Runner-ups (excluding D2)
+            if "Runner Up" in position_str and "D2 Runner Up" not in position_str:
+                return 4  # Silver for main runner-ups only
+                
+            # Bronze Category - Semi Finals, D2 Winners, D2 Runner Ups, Quarter Finals
+            if any(bronze in position_str for bronze in [
+                "Semi Final", "D2 Winner", "D2 Runner Up", "Quarter Final", "Quater Final",
+                "Qualifier", "Qualifier 1", "Qualifier 2", "Preliminary Final",
+                "Eliminator", "Eliminator 1", "Eliminator 2"
+            ]):
+                return 3  # Bronze for semi-finals and similar stages
+                
+            # Light Blue Category - Group Stage
+            if "Group Stage" in position_str:
+                return 2  # Light Blue for group stage
+                
+            # Red Category - Relegated, Wooden Spoon
+            if "Relegated" in position_str or "Wooden Spoon" in position_str:
+                return 1  # Red for relegated or wooden spoon
+                
+            # Default to Light Blue for any other positions
+            return 2
+        
+        # Apply the mapping to create a numerical column for the heatmap
+        heatmap_df['Position_Value'] = heatmap_df['Final Position'].apply(map_final_position_to_value)
+        
+        # Create a custom color scale with proper spacing and light blue for group stage
+        custom_color_scale = [
+            [0.0, 'white'],          # Empty/no data
+            [0.2, '#FF4C4C'],        # Red for Wooden Spoon/Relegated
+            [0.4, '#ADD8E6'],        # Light blue for Group Stage
+            [0.6, '#CD7F32'],        # Bronze for Quarter Finals, Semi Finals, etc.
+            [0.8, '#C0C0C0'],        # Silver for Runner Up
+            [1.0, '#FFD700']         # Gold for Winners
+        ]
+        
+        # Competition selector - directly select from available competitions
+        competitions = sorted(heatmap_df['Competition'].unique().tolist())
+        
+        if len(competitions) > 0:
+            selected_competition = st.selectbox(
+                "Select Competition for Heatmap", 
+                options=competitions
+            )
+            
+            # Filter data based on selection
+            display_df = heatmap_df[heatmap_df['Competition'] == selected_competition].copy()
+        else:
+            display_df = heatmap_df.copy()
+            selected_competition = competitions[0] if competitions else "None"
+        
+        # Group the data by Team and Year, taking the maximum value if there are multiple entries
+        pivot_data = display_df.pivot_table(
+            index='Team', 
+            columns='Year', 
+            values='Position_Value',
+            aggfunc='max'
+        ).fillna(0)
+        
+        # Create the heatmap
+        if not pivot_data.empty:
+            fig = px.imshow(
+                pivot_data,
+                labels=dict(x="Year", y="Team", color="Achievement"),
+                aspect="auto",
+                color_continuous_scale=custom_color_scale,
+                zmin=0,  # Set minimum value to ensure proper color scaling
+                zmax=5   # Set maximum value to ensure proper color scaling
+            )
+            
+            # Update layout
+            fig.update_layout(
+                height=max(300, len(pivot_data) * 30),  # Dynamic height based on team count
+                title={
+                    'text': f"{selected_competition} Achievements",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'color': '#f04f53'}
+                }
+            )
+            
+            # Ensure x-axis shows only whole numbers
+            fig.update_xaxes(
+                dtick=1,  # Show every year
+                tickmode='linear',  # Use linear tick mode
+                type='category'  # Use categorical axis to ensure whole numbers
+            )
+            
+            # Display the heatmap
+            st.plotly_chart(fig, use_container_width=True, key="achievements_heatmap")
+            
+            # Add a consistent legend
+            legend_html = """
+            <div style="background-color:#f9f9f9; padding:10px; border-radius:5px; margin-top:10px;">
+                <h5 style="color:#f04f53">Legend:</h5>
+                <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; margin-right:15px;">
+                        <div style="background-color:#FFD700; width:20px; height:20px; margin-right:5px;"></div>
+                        <span>Winner/D1 Winner</span>
+                    </div>
+                    <div style="display:flex; align-items:center; margin-right:15px;">
+                        <div style="background-color:#C0C0C0; width:20px; height:20px; margin-right:5px;"></div>
+                        <span>Runner Up/D1 Runner Up</span>
+                    </div>
+                    <div style="display:flex; align-items:center; margin-right:15px;">
+                        <div style="background-color:#CD7F32; width:20px; height:20px; margin-right:5px;"></div>
+                        <span>Semi Final/Quarter Final/D2 Winner/D2 Runner Up</span>
+                    </div>
+                    <div style="display:flex; align-items:center; margin-right:15px;">
+                        <div style="background-color:#ADD8E6; width:20px; height:20px; margin-right:5px;"></div>
+                        <span>Group Stage</span>
+                    </div>
+                    <div style="display:flex; align-items:center;">
+                        <div style="background-color:#FF4C4C; width:20px; height:20px; margin-right:5px;"></div>
+                        <span>Wooden Spoon/Relegated</span>
+                    </div>
+                </div>
+            </div>
+            """
+            st.markdown(legend_html, unsafe_allow_html=True)
+        else:
+            st.info("No data available to display in the heatmap.")
+        
+        # Add explanatory text
+        st.markdown("""
+        This heatmap visualizes team achievements over time. The color represents the highest achievement 
+        in each year for each team:
+        
+        - **Gold**: Tournament winners (Winner, D1 Winner)
+        - **Silver**: Runners-up (Runner Up, D1 Runner Up)
+        - **Bronze**: Semi-finalists, Quarter-finalists, D2 Winners & Runner-ups
+        - **Light Blue**: Group Stage participants
+        - **Red**: Teams that finished last (Wooden Spoon) or were relegated
+        """)
