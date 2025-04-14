@@ -1675,244 +1675,285 @@ with tabs[2]:
         
         # Add World Cup Progress tracker
         #st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Matches</h2>", unsafe_allow_html=True)
-    
-    #########ODI WORLD CUP PROGRESS ####################
-
-    # Create a new tab for ODI World Cup Progress
-    odiwc_progress_df = st.session_state['match_df'].copy()
-
-    # Filter out non-ODI World Cup matches
-    odiwc_progress_df = odiwc_progress_df[odiwc_progress_df['comp'].str.contains('ODI World Cup')]
-
-    # Extract the year from the date
-    odiwc_progress_df['Year'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True).dt.year
-
-    #st.dataframe(odiwc_progress_df, use_container_width=True)
-
-    # unique year and world cup 
-    years = odiwc_progress_df['Year'].unique()
-    #st.dataframe(years, use_container_width=True)
-
-    teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))    
-    teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))
-    teams.sort()
-    # put the unique teams list into a DataFrame with one column named 'A'
-    teams_df = pd.DataFrame(teams, columns=['A'])
-    #st.dataframe(teams_df, use_container_width=True, hide_index=True)
-
-    unique_years = sorted(odiwc_progress_df['Year'].unique())
-    year_columns = st.columns(len(unique_years))
-    #for col, year in zip(year_columns, unique_years):
-        #col.markdown(f"<h3 style='text-align: center;'>{year}</h3>")
-
-    #st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Matches Matrix</h2>", unsafe_allow_html=True)
-    wc_teams = pd.concat([
-        odiwc_progress_df[['Year','Home_Team']].rename(columns={'Home_Team': 'Team'}),
-        odiwc_progress_df[['Year','Away_Team']].rename(columns={'Away_Team': 'Team'})
-    ], ignore_index=True)
-
-    wc_matrix = wc_teams.groupby(['Team','Year']).size().unstack(fill_value=0)
-    #st.dataframe(wc_matrix, use_container_width=True)
-
-    def map_stage_to_code(stage: str) -> str:
-        """Convert stage name to code with numeric rank (lower is better)"""
-        if "Final" in stage and "Semi" not in stage:
-            return ("F", 1)  # Final is best
-        elif "Semi-Final" in stage:
-            return ("SF", 2)  # Semi-Final is second best
-        elif "Group" in stage:
-            return ("GRP", 3)  # Group stage is worst
-        return ("?", 4)  # Unknown stages ranked last
-
-    # Process each team's matches to find best stage per year
-    team_results = []
-    for team in teams:
-        team_matches = odiwc_progress_df[
-            (team == odiwc_progress_df['Home_Team']) | 
-            (team == odiwc_progress_df['Away_Team'])
-        ]
         
-        for year in unique_years:
-            year_matches = team_matches[team_matches['Year'] == year]
-            if not year_matches.empty:
-                stages = [map_stage_to_code(comp) for comp in year_matches['Competition']]
-                best_stage = min(stages, key=lambda x: x[1])
-                if best_stage[0] == "F":
-                    # Pick one final match row
-                    final_row = year_matches.iloc[0]
-                    # Check if it was a draw first
-                    if 'drawn' in str(final_row["Match_Result"]).lower():
-                        best_code = "W"  # Both teams get W for a draw
-                    else:
-                        # Check if team won or lost
-                        if team in str(final_row["Match_Result"]):
-                            best_code = "W"
+        #########ODI WORLD CUP PROGRESS ####################
+
+        # Create a new tab for ODI World Cup Progress
+        odiwc_progress_df = st.session_state['match_df'].copy()
+
+        # Filter out non-ODI World Cup matches
+        odiwc_progress_df = odiwc_progress_df[odiwc_progress_df['comp'].str.contains('ODI World Cup')]
+
+        # Extract the year from the date
+        odiwc_progress_df['Year'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True).dt.year
+
+        #st.dataframe(odiwc_progress_df, use_container_width=True)
+
+        # unique year and world cup 
+        years = odiwc_progress_df['Year'].unique()
+        #st.dataframe(years, use_container_width=True)
+
+        teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))    
+        teams = list(set(odiwc_progress_df['Home_Team'].unique()) | set(odiwc_progress_df['Away_Team'].unique()))
+        teams.sort()
+        # put the unique teams list into a DataFrame with one column named 'A'
+        teams_df = pd.DataFrame(teams, columns=['A'])
+        #st.dataframe(teams_df, use_container_width=True, hide_index=True)
+
+        unique_years = sorted(odiwc_progress_df['Year'].unique())
+        
+        # Fix: Check if there are any unique years before creating columns
+        if len(unique_years) > 0:
+            year_columns = st.columns(len(unique_years))
+            #for col, year in zip(year_columns, unique_years):
+                #col.markdown(f"<h3 style='text-align: center;'>{year}</h3>")
+
+        #st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Matches Matrix</h2>", unsafe_allow_html=True)
+        wc_teams = pd.concat([
+            odiwc_progress_df[['Year','Home_Team']].rename(columns={'Home_Team': 'Team'}),
+            odiwc_progress_df[['Year','Away_Team']].rename(columns={'Away_Team': 'Team'})
+        ], ignore_index=True)
+
+        wc_matrix = wc_teams.groupby(['Team','Year']).size().unstack(fill_value=0)
+        #st.dataframe(wc_matrix, use_container_width=True)
+
+        def map_stage_to_code(stage: str) -> str:
+            """Convert stage name to code with numeric rank (lower is better)"""
+            if "Final" in stage and "Semi" not in stage:
+                return ("F", 1)  # Final is best
+            elif "Semi-Final" in stage:
+                return ("SF", 2)  # Semi-Final is second best
+            elif "Group" in stage:
+                return ("GRP", 3)  # Group stage is worst
+            return ("?", 4)  # Unknown stages ranked last
+
+        # Process each team's matches to find best stage per year
+        team_results = []
+        
+        # Fix: Check if there are teams and years to process
+        if teams and unique_years:
+            for team in teams:
+                team_matches = odiwc_progress_df[
+                    (team == odiwc_progress_df['Home_Team']) | 
+                    (team == odiwc_progress_df['Away_Team'])
+                ]
+                
+                for year in unique_years:
+                    year_matches = team_matches[team_matches['Year'] == year]
+                    if not year_matches.empty:
+                        stages = [map_stage_to_code(comp) for comp in year_matches['Competition']]
+                        best_stage = min(stages, key=lambda x: x[1])
+                        if best_stage[0] == "F":
+                            # Pick one final match row
+                            final_row = year_matches.iloc[0]
+                            # Check if it was a draw first
+                            if 'drawn' in str(final_row["Match_Result"]).lower():
+                                best_code = "W"  # Both teams get W for a draw
+                            else:
+                                # Check if team won or lost
+                                if team in str(final_row["Match_Result"]):
+                                    best_code = "W"
+                                else:
+                                    best_code = "RU"
                         else:
-                            best_code = "RU"
-                else:
-                    best_code = best_stage[0]
-                team_results.append({
-                    'Team': team,
-                    'Year': year,
-                    'Stage': best_code
-                })
+                            best_code = best_stage[0]
+                        team_results.append({
+                            'Team': team,
+                            'Year': year,
+                            'Stage': best_code
+                        })
 
-    # Convert results to matrix format
-    stage_matrix = pd.DataFrame(team_results).pivot(
-        index='Team', 
-        columns='Year', 
-        values='Stage'
-    ).fillna('')
-
-    st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Best Stage Reached</h2>", unsafe_allow_html=True)
-
-    def highlight_stage(row):
-        # row is a Series with year columns as keys, each value is a stage code.
-        return [
-            "background-color: gold; color: black;" if cell == "W" else
-            "background-color: lightcoral; color: black;" if cell == "GRP" else 
-            "background-color: silver; color: black;" if cell == "RU" else
-            "background-color: #cd7f32; color: black;" if cell == "SF" else ""
-            for cell in row
-        ]
-
-    # Display the styled table
-    styled_stage_matrix = stage_matrix.style.apply(highlight_stage, axis=1)
-    st.dataframe(styled_stage_matrix, use_container_width=True)
-
-    # Format 'Date' back to 'dd/mm/yyyy' for display purposes
-    odiwc_progress_df['Date'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True, errors='coerce').apply(
-        lambda d: d.strftime('%d/%m/%Y') if pd.notnull(d) else ''
-    )
-
-# T20 World Cup Best Stage Reached section
-# Create a copy of match_df and filter for T20 World Cup matches where comp equals "T20 World Cup"
-t20wc_df = st.session_state['match_df'].copy()
-t20wc_df = t20wc_df[t20wc_df['comp'] == "T20 World Cup"]
-t20wc_df['Year'] = pd.to_datetime(t20wc_df['Date'], dayfirst=True, errors='coerce').dt.year
-
-# New: Display filtered T20 World Cup dataset
-#st.markdown("<h2 style='color:#f04f53; text-align: center;'>Filtered T20 World Cup Matches</h2>", unsafe_allow_html=True)
-#st.dataframe(t20wc_df, use_container_width=True)
-
-# Retrieve unique teams for this competition from both Home_Team and Away_Team
-teams_t20 = pd.concat([t20wc_df['Home_Team'], t20wc_df['Away_Team']]).unique()
-
-t20_stage_results = []
-for team in teams_t20:
-    for year in sorted(t20wc_df['Year'].dropna().unique()):
-        team_matches = t20wc_df[
-            (((t20wc_df['Home_Team'] == team) | (t20wc_df['Away_Team'] == team))
-             & (t20wc_df['Year'] == year))
-        ]
-        stage = ""
-        best = 0  # numeric precedence for stage
-        # Determine the stage based on the latest round played
-        for _, match in team_matches.iterrows():
-            comp = match['Competition']
-            if "Final" in comp and "Semi-Final" not in comp:
-                current = 4
-                # Check for drawn match first
-                if 'drawn' in str(match['Match_Result']).lower():
-                    code = "W"  # Both teams get W for a draw
-                else:
-                    # Check if team won or lost
-                    if team in str(match['Match_Result']):
-                        code = "W"
-                    else:
-                        code = "RU"
-            elif "Semi-Final" in comp:
-                current = 3
-                code = "SF"
-            elif "Super Eight" in comp:
-                current = 2
-                code = "S8"
-            elif "Group Match" in comp:
-                current = 1
-                code = "GRP"
+        # Convert results to matrix format - Fix: Check if team_results has data before creating DataFrame and pivot
+        if team_results:
+            result_df = pd.DataFrame(team_results)
+            if 'Team' in result_df.columns and 'Year' in result_df.columns and 'Stage' in result_df.columns:
+                stage_matrix = result_df.pivot(
+                    index='Team', 
+                    columns='Year', 
+                    values='Stage'
+                ).fillna('')
             else:
-                current = 0
-                code = ""
-            if current > best:
-                best = current
-                stage = code
-        t20_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
+                # Create an empty matrix with proper columns if the DataFrame doesn't have required columns
+                stage_matrix = pd.DataFrame(columns=['Team', 'Year', 'Stage']).pivot(
+                    index='Team', 
+                    columns='Year', 
+                    values='Stage'
+                ).fillna('')
+        else:
+            # Create an empty DataFrame if no results
+            stage_matrix = pd.DataFrame()
 
-# Create a DataFrame and ensure required columns exist
-t20_stage_df = pd.DataFrame(t20_stage_results)
-if t20_stage_df.empty or 'Team' not in t20_stage_df.columns:
-    t20_stage_df = pd.DataFrame(columns=['Team', 'Year', 'Stage'])
+        st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Best Stage Reached</h2>", unsafe_allow_html=True)
 
-t20_stage_matrix = t20_stage_df.pivot(
-    index='Team', 
-    columns='Year', 
-    values='Stage'
-).fillna("")
+        # Fix: Check if stage_matrix exists and is not empty before styling
+        if not stage_matrix.empty:
+            def highlight_stage(row):
+                # row is a Series with year columns as keys, each value is a stage code.
+                return [
+                    "background-color: gold; color: black;" if cell == "W" else
+                    "background-color: lightcoral; color: black;" if cell == "GRP" else 
+                    "background-color: silver; color: black;" if cell == "RU" else
+                    "background-color: #cd7f32; color: black;" if cell == "SF" else ""
+                    for cell in row
+                ]
 
-def highlight_t20_stage(row):
-    return [
-        "background-color: gold; color: black;" if cell == "W" else
-        "background-color: silver; color: black;" if cell == "RU" else
-        "background-color: #cd7f32; color: black;" if cell == "SF" else
-        "background-color: lightblue; color: black;" if cell == "S8" else
-        "background-color: lightcoral; color: black;" if cell == "GRP" else ""
-        for cell in row
-    ]
+            # Display the styled table
+            styled_stage_matrix = stage_matrix.style.apply(highlight_stage, axis=1)
+            st.dataframe(styled_stage_matrix, use_container_width=True)
+        else:
+            st.info("No ODI World Cup data available.")
 
-st.markdown("<h2 style='color:#f04f53; text-align: center;'>T20 World Cup Progress</h2>", unsafe_allow_html=True)
-styled_t20_stage_matrix = t20_stage_matrix.style.apply(highlight_t20_stage, axis=1)
-st.dataframe(styled_t20_stage_matrix, use_container_width=True)
+        # Format 'Date' back to 'dd/mm/yyyy' for display purposes
+        if not odiwc_progress_df.empty:
+            odiwc_progress_df['Date'] = pd.to_datetime(odiwc_progress_df['Date'], dayfirst=True, errors='coerce').apply(
+                lambda d: d.strftime('%d/%m/%Y') if pd.notnull(d) else ''
+            )
 
-# Test Championship Progress Tracker
-wtc_df = st.session_state['match_df'].copy()
-wtc_df = wtc_df[wtc_df['comp'] == "Test Championship Final"]
-wtc_df['Year'] = pd.to_datetime(wtc_df['Date'], dayfirst=True, errors='coerce').dt.year
+        # T20 World Cup Best Stage Reached section
+        # Create a copy of match_df and filter for T20 World Cup matches where comp equals "T20 World Cup"
+        t20wc_df = st.session_state['match_df'].copy()
+        t20wc_df = t20wc_df[t20wc_df['comp'] == "T20 World Cup"]
+        t20wc_df['Year'] = pd.to_datetime(t20wc_df['Date'], dayfirst=True, errors='coerce').dt.year
 
-# Fixed list of Test Championship teams
-wtc_teams = [
-    'Australia', 'Bangladesh', 'England', 'India', 'New Zealand', 
-    'Pakistan', 'South Africa', 'Sri Lanka', 'West Indies'
-]
+        # New: Display filtered T20 World Cup dataset
+        #st.markdown("<h2 style='color:#f04f53; text-align: center;'>Filtered T20 World Cup Matches</h2>", unsafe_allow_html=True)
+        #st.dataframe(t20wc_df, use_container_width=True)
 
-# New: Display filtered Test Championship dataset
-#st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
-##st.dataframe(wtc_df, use_container_width=True)
+        # Retrieve unique teams for this competition from both Home_Team and Away_Team
+        teams_t20 = pd.concat([t20wc_df['Home_Team'], t20wc_df['Away_Team']]).unique()
+        unique_t20_years = sorted(t20wc_df['Year'].dropna().unique())
 
-wtc_stage_results = []
-for team in wtc_teams:
-    for year in sorted(wtc_df['Year'].dropna().unique()):
-        team_matches = wtc_df[
-            (((wtc_df['Home_Team'] == team) | (wtc_df['Away_Team'] == team))
-             & (wtc_df['Year'] == year))
+        t20_stage_results = []
+
+        # Fix: Check if there are teams and years to process
+        if len(teams_t20) > 0 and len(unique_t20_years) > 0:
+            for team in teams_t20:
+                for year in unique_t20_years:
+                    team_matches = t20wc_df[
+                        (((t20wc_df['Home_Team'] == team) | (t20wc_df['Away_Team'] == team))
+                        & (t20wc_df['Year'] == year))
+                    ]
+                    stage = ""
+                    best = 0  # numeric precedence for stage
+                    # Determine the stage based on the latest round played
+                    for _, match in team_matches.iterrows():
+                        comp = match['Competition']
+                        if "Final" in comp and "Semi-Final" not in comp:
+                            current = 4
+                            # Check for drawn match first
+                            if 'drawn' in str(match['Match_Result']).lower():
+                                code = "W"  # Both teams get W for a draw
+                            else:
+                                # Check if team won or lost
+                                if team in str(match['Match_Result']):
+                                    code = "W"
+                                else:
+                                    code = "RU"
+                        elif "Semi-Final" in comp:
+                            current = 3
+                            code = "SF"
+                        elif "Super Eight" in comp:
+                            current = 2
+                            code = "S8"
+                        elif "Group Match" in comp:
+                            current = 1
+                            code = "GRP"
+                        else:
+                            current = 0
+                            code = ""
+                        if current > best:
+                            best = current
+                            stage = code
+                    t20_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+        # Create a DataFrame and ensure required columns exist
+        t20_stage_df = pd.DataFrame(t20_stage_results)
+        if t20_stage_df.empty or 'Team' not in t20_stage_df.columns:
+            t20_stage_df = pd.DataFrame(columns=['Team', 'Year', 'Stage'])
+
+        t20_stage_matrix = t20_stage_df.pivot(
+            index='Team', 
+            columns='Year', 
+            values='Stage'
+        ).fillna("")
+
+        st.markdown("<h2 style='color:#f04f53; text-align: center;'>T20 World Cup Progress</h2>", unsafe_allow_html=True)
+
+        # Fix: Check if t20_stage_matrix exists and is not empty before styling
+        if not t20_stage_matrix.empty:
+            def highlight_t20_stage(row):
+                return [
+                    "background-color: gold; color: black;" if cell == "W" else
+                    "background-color: silver; color: black;" if cell == "RU" else
+                    "background-color: #cd7f32; color: black;" if cell == "SF" else
+                    "background-color: lightblue; color: black;" if cell == "S8" else
+                    "background-color: lightcoral; color: black;" if cell == "GRP" else ""
+                    for cell in row
+                ]
+
+            styled_t20_stage_matrix = t20_stage_matrix.style.apply(highlight_t20_stage, axis=1)
+            st.dataframe(styled_t20_stage_matrix, use_container_width=True)
+        else:
+            st.info("No T20 World Cup data available.")
+
+        # Test Championship Progress Tracker
+        wtc_df = st.session_state['match_df'].copy()
+        wtc_df = wtc_df[wtc_df['comp'] == "Test Championship Final"]
+        wtc_df['Year'] = pd.to_datetime(wtc_df['Date'], dayfirst=True, errors='coerce').dt.year
+
+        # Fixed list of Test Championship teams
+        wtc_teams = [
+            'Australia', 'Bangladesh', 'England', 'India', 'New Zealand', 
+            'Pakistan', 'South Africa', 'Sri Lanka', 'West Indies'
         ]
-        stage = "GRP"  # Default to group stage
-        # If team appears in a final, check for draw first
-        if not team_matches.empty:
-            match = team_matches.iloc[0]  # Get the final match
-            if 'drawn' in str(match['Match_Result']).lower():
-                stage = "W"  # Both teams get W for a draw
-            else:
-                stage = "W" if team in str(match['Match_Result']) else "RU"  # W if team in result, RU otherwise
-        wtc_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
 
-# Create matrix
-wtc_stage_df = pd.DataFrame(wtc_stage_results)
-wtc_stage_matrix = wtc_stage_df.pivot(
-    index='Team', 
-    columns='Year', 
-    values='Stage'
-).fillna("GRP")
+        # Get unique years for Test Championship
+        unique_wtc_years = sorted(wtc_df['Year'].dropna().unique())
 
-def highlight_wtc_stage(row):
-    return [
-        "background-color: gold; color: black;" if cell == "W" else
-        "background-color: silver; color: black;" if cell == "RU" else
-        "background-color: lightcoral; color: black;" if cell == "GRP" else ""
-        for cell in row
-    ]
+        wtc_stage_results = []
 
-st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
-styled_wtc_stage_matrix = wtc_stage_matrix.style.apply(highlight_wtc_stage, axis=1)
-st.dataframe(styled_wtc_stage_matrix, use_container_width=True)
+        # Fix: Check if there are years to process
+        if len(unique_wtc_years) > 0:
+            for team in wtc_teams:
+                for year in unique_wtc_years:
+                    team_matches = wtc_df[
+                        (((wtc_df['Home_Team'] == team) | (wtc_df['Away_Team'] == team))
+                         & (wtc_df['Year'] == year))
+                    ]
+                    stage = "GRP"  # Default to group stage
+                    # If team appears in a final, check for draw first
+                    if not team_matches.empty:
+                        match = team_matches.iloc[0]  # Get the final match
+                        if 'drawn' in str(match['Match_Result']).lower():
+                            stage = "W"  # Both teams get W for a draw
+                        else:
+                            stage = "W" if team in str(match['Match_Result']) else "RU"  # W if team in result, RU otherwise
+                    wtc_stage_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+        # Create matrix
+        wtc_stage_df = pd.DataFrame(wtc_stage_results)
+
+        st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
+
+        # Fix: Check if wtc_stage_df exists and is not empty before creating pivot
+        if not wtc_stage_df.empty:
+            wtc_stage_matrix = wtc_stage_df.pivot(
+                index='Team', 
+                columns='Year', 
+                values='Stage'
+            ).fillna("GRP")
+
+            def highlight_wtc_stage(row):
+                return [
+                    "background-color: gold; color: black;" if cell == "W" else
+                    "background-color: silver; color: black;" if cell == "RU" else
+                    "background-color: lightcoral; color: black;" if cell == "GRP" else ""
+                    for cell in row
+                ]
+
+            styled_wtc_stage_matrix = wtc_stage_matrix.style.apply(highlight_wtc_stage, axis=1)
+            st.dataframe(styled_wtc_stage_matrix, use_container_width=True)
+        else:
+            st.info("No World Test Championship data available.")
 
 # ...existing code...

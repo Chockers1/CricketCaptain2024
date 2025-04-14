@@ -5,6 +5,29 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
 
+# Add this CSS styling after imports
+st.markdown("""
+<style>
+/* Table styling */
+table { color: black; width: 100%; }
+thead tr th {
+    background-color: #f04f53 !important;
+    color: white !important;
+}
+tbody tr:nth-child(even) { background-color: #f0f2f6; }
+tbody tr:nth-child(odd) { background-color: white; }
+
+/* Tab styling for full width and centered */
+.stTabs [data-baseweb="tab-list"] {
+    width: 100%;
+}
+.stTabs [data-baseweb="tab"] {
+    flex-grow: 1;
+    text-align: center;
+}
+</style>
+""", unsafe_allow_html=True)
+
 def get_filtered_options(df, column, selected_filters=None):
     """
     Get available options for a column based on current filter selections.
