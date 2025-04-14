@@ -11,6 +11,29 @@ import pickle
 from datetime import timedelta
 from functools import wraps
 
+# Add this CSS styling at the beginning of the file, after imports
+st.markdown("""
+<style>
+/* Table styling */
+table { color: black; width: 100%; }
+thead tr th {
+    background-color: #f04f53 !important;
+    color: white !important;
+}
+tbody tr:nth-child(even) { background-color: #f0f2f6; }
+tbody tr:nth-child(odd) { background-color: white; }
+
+/* Tab styling for full width and centered */
+.stTabs [data-baseweb="tab-list"] {
+    width: 100%;
+}
+.stTabs [data-baseweb="tab"] {
+    flex-grow: 1;
+    text-align: center;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Check if seaborn is installed, if not, install it
 try:
     import seaborn as sns
@@ -812,7 +835,97 @@ def display_bat_view():
                 
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
             st.dataframe(df_format, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
-        
+
+            # Add new line graph showing Average & Strike Rate per season for each format
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Performance Trends by Season</h3>", unsafe_allow_html=True)
+            
+            # Create subplots for Average and Strike Rate
+            fig = make_subplots(rows=1, cols=2, subplot_titles=("Average per Season by Format", "Strike Rate per Season by Format"))
+            
+            # Get unique formats from filtered data
+            unique_formats = sorted(filtered_df['Match_Format'].unique())
+            
+            # Define format colors
+            format_colors = {
+                'Test Match': '#28a745',              # Green
+                'One Day International': '#dc3545',    # Red
+                '20 Over International': '#ffc107',    # Yellow/Amber
+                'First Class': '#6610f2',              # Purple
+                'List A': '#fd7e14',                   # Orange
+                'T20': '#17a2b8'                       # Cyan
+            }
+            
+            # For each format, create a line showing the trend by season
+            for format_name in unique_formats:
+                format_data = filtered_df[filtered_df['Match_Format'] == format_name]
+                
+                # Group by year to get yearly stats for this format
+                yearly_format_stats = format_data.groupby('Year').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum'
+                }).reset_index()
+                
+                # Calculate metrics
+                yearly_format_stats['Average'] = (yearly_format_stats['Runs'] / yearly_format_stats['Out']).round(2).fillna(0)
+                yearly_format_stats['Strike_Rate'] = ((yearly_format_stats['Runs'] / yearly_format_stats['Balls']) * 100).round(2).fillna(0)
+                
+                # Sort by year
+                yearly_format_stats = yearly_format_stats.sort_values('Year')
+                
+                # Get color for this format (use default if not in dictionary)
+                color = format_colors.get(format_name, f'#{random.randint(0, 0xFFFFFF):06x}')
+                
+                # Add trace for average
+                fig.add_trace(
+                    go.Scatter(
+                        x=yearly_format_stats['Year'],
+                        y=yearly_format_stats['Average'],
+                        mode='lines+markers',
+                        name=f"{format_name} Avg",
+                        line=dict(color=color),
+                        legendgroup=format_name
+                    ),
+                    row=1, col=1
+                )
+                
+                # Add trace for strike rate
+                fig.add_trace(
+                    go.Scatter(
+                        x=yearly_format_stats['Year'],
+                        y=yearly_format_stats['Strike_Rate'],
+                        mode='lines+markers',
+                        name=f"{format_name} SR",
+                        line=dict(color=color, dash='dash'),
+                        legendgroup=format_name,
+                        showlegend=False
+                    ),
+                    row=1, col=2
+                )
+            
+            # Update layout
+            fig.update_layout(
+                height=500,
+                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5
+                )
+            )
+            
+            # Update axes
+            fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
+            fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
+            
+            # Display the figure
+            st.plotly_chart(fig, use_container_width=True)
+
         # Season Stats Tab
         with tabs[2]:
             # Cache key for season statistics
