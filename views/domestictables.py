@@ -799,7 +799,14 @@ if not st.session_state.historical_data.empty:
     with position_col1:
         position_team_choice = st.multiselect('Team:', teams, default='All', key="team_filter_position")
     with position_col2:
-        position_competition_choice = st.multiselect('Competition:', competitions, default='All', key="competition_filter_position")
+        # Remove 'All' from competition choices for Position History
+        position_competitions = sorted(st.session_state.historical_data['Competition'].unique().tolist())
+        position_competition_choice = st.multiselect(
+            'Competition:', 
+            position_competitions,  # No 'All' option here 
+            default=position_competitions[0] if position_competitions else None,
+            key="competition_filter_position"
+        )
     
     # Apply position history filters
     position_filtered_df = st.session_state.historical_data.copy()
@@ -807,8 +814,13 @@ if not st.session_state.historical_data.empty:
     if 'All' not in position_team_choice:
         position_filtered_df = position_filtered_df[position_filtered_df['Team'].isin(position_team_choice)]
         
-    if 'All' not in position_competition_choice:
+    # Updated competition filter handling - always filter by selected competitions
+    if position_competition_choice:  # Check if any competitions are selected
         position_filtered_df = position_filtered_df[position_filtered_df['Competition'].isin(position_competition_choice)]
+    else:
+        # If no competitions selected, show a message and empty the dataframe
+        st.warning("Please select at least one competition for Position History")
+        position_filtered_df = pd.DataFrame()  # Empty dataframe if no competitions selected
     
     # Prepare data for position history plotting
     if 'All' not in position_team_choice:
@@ -908,16 +920,47 @@ if not st.session_state.historical_data.empty:
 
     with tab1:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Performance Metrics</h3>", unsafe_allow_html=True)
-        performance_df = filtered_df.copy()
-        performance_df['Win_Rate'] = (performance_df['W'] / performance_df['P'] * 100).round(2)
-        fig_metrics = px.line(performance_df, x='Year', y='Win_Rate', color='Team', markers=True)
-        # Update x-axis settings to show full years only
-        fig_metrics.update_xaxes(
-            dtick=1,  # Show every year
-            type='category'  # Use categorical axis
+        
+        # Add Competition filter for Performance Metrics tab
+        performance_competitions = sorted(filtered_df['Competition'].unique().tolist())
+        performance_competition_choice = st.multiselect(
+            'Filter by Competition:', 
+            performance_competitions,
+            default=performance_competitions,
+            key="competition_filter_performance"
         )
-        fig_metrics.update_layout(height=500)
-        st.plotly_chart(fig_metrics, use_container_width=True, key="performance_metrics_tab")
+        
+        # Apply competition filter
+        if performance_competition_choice:
+            performance_df = filtered_df[filtered_df['Competition'].isin(performance_competition_choice)]
+        else:
+            performance_df = filtered_df.copy() # Use all data if no specific competitions selected
+        
+        # Calculate win rate and create chart
+        if not performance_df.empty:
+            performance_df['Win_Rate'] = (performance_df['W'] / performance_df['P'] * 100).round(2)
+            fig_metrics = px.line(performance_df, x='Year', y='Win_Rate', color='Team', markers=True)
+            
+            # Update x-axis settings to show full years only
+            fig_metrics.update_xaxes(
+                dtick=1,  # Show every year
+                type='category'  # Use categorical axis
+            )
+            
+            fig_metrics.update_layout(
+                height=500, 
+                title={
+                    'text': f"Win Rate by Year for Selected Competitions",
+                    'x': 0.5,
+                    'xanchor': 'center'
+                },
+                yaxis_title="Win Rate (%)",
+                xaxis_title="Year"
+            )
+            
+            st.plotly_chart(fig_metrics, use_container_width=True, key="performance_metrics_tab")
+        else:
+            st.info("Please select at least one competition to display performance metrics")
 
     with tab2:
         st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Points Comparison</h3>", unsafe_allow_html=True)
