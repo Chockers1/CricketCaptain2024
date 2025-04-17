@@ -57,23 +57,11 @@ def display_bowl_view():
             bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
             bowl_df['Year'] = bowl_df['Date'].dt.year
             
-            # Add HomeOrAway column to designate home or away matches
-            bowl_df['HomeOrAway'] = 'Neutral'  # Default value
-            # Where Home Team equals Bowling Team
-            bowl_df.loc[bowl_df['Home_Team'] == bowl_df['Bowl_Team'], 'HomeOrAway'] = 'Home'
-            # Where Away Team equals Bowling Team
-            bowl_df.loc[bowl_df['Away_Team'] == bowl_df['Bowl_Team'], 'HomeOrAway'] = 'Away'
-            
         except Exception as e:
             st.error(f"Error processing dates. Using original dates.")
             bowl_df = st.session_state['bowl_df'].copy()
             bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
             bowl_df['Year'] = bowl_df['Date'].dt.year
-            
-            # Add HomeOrAway column even in case of error with dates
-            bowl_df['HomeOrAway'] = 'Neutral'  # Default value
-            bowl_df.loc[bowl_df['Home_Team'] == bowl_df['Bowl_Team'], 'HomeOrAway'] = 'Home'
-            bowl_df.loc[bowl_df['Away_Team'] == bowl_df['Bowl_Team'], 'HomeOrAway'] = 'Away'
 
         # Add data validation check and reset filters if needed
         if 'prev_bowl_teams' not in st.session_state:
@@ -298,21 +286,21 @@ def display_bowl_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Add "Home/Away Stats" tab
+        # Create tabs for different views
         tabs = main_container.tabs([
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Home/Away Stats",
-            "Cumulative Stats", "Block Stats"
+            "Innings Stats", "Position Stats", "Cumulative Stats",
+            "Block Stats"
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
-        # Career Stats Tab – now displaying Career Statistics (Overall) exactly as calculated below
+        # Career Stats Tab
         with tabs[0]:
-            # Calculate career statistics exactly as in the overall career section
+            # Calculate career statistics
             match_wickets = filtered_df.groupby(['Name', 'File Name'])['Bowler_Wkts'].sum().reset_index()
             ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby('Name').size().reset_index(name='10W')
-            
+
             bowlcareer_df = filtered_df.groupby('Name').agg({
                 'File Name': 'nunique',
                 'Bowler_Balls': 'sum',
@@ -320,19 +308,38 @@ def display_bowl_view():
                 'Bowler_Runs': 'sum',
                 'Bowler_Wkts': 'sum'
             }).reset_index()
+
             bowlcareer_df.columns = ['Name', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-            
-            # Calculate derived metrics
+
+            # Calculate career metrics
             bowlcareer_df['Overs'] = (bowlcareer_df['Balls'] // 6) + (bowlcareer_df['Balls'] % 6) / 10
             bowlcareer_df['Strike Rate'] = (bowlcareer_df['Balls'] / bowlcareer_df['Wickets']).round(2)
             bowlcareer_df['Economy Rate'] = (bowlcareer_df['Runs'] / bowlcareer_df['Overs']).round(2)
             bowlcareer_df['Avg'] = (bowlcareer_df['Runs'] / bowlcareer_df['Wickets']).round(2)
+
+            # Add additional statistics
+            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby('Name').size().reset_index(name='5W')
+            bowlcareer_df = bowlcareer_df.merge(five_wickets, on='Name', how='left')
+            bowlcareer_df['5W'] = bowlcareer_df['5W'].fillna(0).astype(int)
             
-            # Reorder columns to put Overs right after Matches
-            bowlcareer_df = bowlcareer_df[['Name', 'Matches', 'Overs', 'Balls', 'M/D', 'Runs', 'Wickets', 
-                                          'Avg', 'Strike Rate', 'Economy Rate']]
-            
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics (Overall)</h3>", unsafe_allow_html=True)
+            bowlcareer_df = bowlcareer_df.merge(ten_wickets, on='Name', how='left')
+            bowlcareer_df['10W'] = bowlcareer_df['10W'].fillna(0).astype(int)
+
+            bowlcareer_df['WPM'] = (bowlcareer_df['Wickets'] / bowlcareer_df['Matches']).round(2)
+
+            pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
+            bowlcareer_df = bowlcareer_df.merge(pom_counts, on='Name', how='left')
+            bowlcareer_df['POM'] = bowlcareer_df['POM'].fillna(0).astype(int)
+
+            bowlcareer_df = bowlcareer_df.replace([np.inf, -np.inf], np.nan)
+
+            # Final column ordering
+            bowlcareer_df = bowlcareer_df[[
+                'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
+                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
+            ]]
+
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
             st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
 
             # Create a new figure for the scatter plot
@@ -431,117 +438,6 @@ def display_bowl_view():
 
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
             st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
-            
-            # Add new section for Format Performance Trends by Year
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Performance Trends by Year</h3>", unsafe_allow_html=True)
-            
-            # Create subplots for Average and Strike Rate
-            fig_format_year = make_subplots(rows=1, cols=3, 
-                subplot_titles=("Average by Year", "Strike Rate by Year", "Economy Rate by Year"))
-                
-            # Define format colors
-            format_colors = {
-                'Test Match': '#28a745',              # Green
-                'One Day International': '#dc3545',    # Red
-                '20 Over International': '#ffc107',    # Yellow/Amber
-                'First Class': '#6610f2',              # Purple
-                'List A': '#fd7e14',                  # Orange
-                'T20': '#17a2b8'                       # Cyan
-            }
-            
-            # Get unique formats from filtered data
-            unique_formats = sorted(filtered_df['Match_Format'].unique())
-            
-            # For each format, create lines showing the trend by year
-            for fmt in unique_formats:
-                fmt_data = filtered_df[filtered_df['Match_Format'] == fmt]
-                
-                # Group by year to get yearly stats for this format
-                yearly_stats = fmt_data.groupby('Year').agg({
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum',
-                    'Overs': 'sum'
-                }).reset_index()
-                
-                # Calculate metrics
-                yearly_stats['Average'] = (yearly_stats['Bowler_Runs'] / yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                yearly_stats['Strike_Rate'] = (yearly_stats['Bowler_Balls'] / yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                yearly_stats['Economy_Rate'] = (yearly_stats['Bowler_Runs'] / 
-                                              ((yearly_stats['Bowler_Balls'] // 6) + 
-                                               (yearly_stats['Bowler_Balls'] % 6) / 10)).round(2).fillna(0)
-                
-                # Sort by year
-                yearly_stats = yearly_stats.sort_values('Year')
-                
-                # Get color for this format (use default if not in dictionary)
-                color = format_colors.get(fmt, '#000000')
-                
-                # Add trace for Average (first subplot)
-                fig_format_year.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Average'],
-                        mode='lines+markers',
-                        name=f"{fmt} Avg",
-                        line=dict(color=color),
-                        legendgroup=fmt
-                    ),
-                    row=1, col=1
-                )
-                
-                # Add trace for Strike Rate (second subplot)
-                fig_format_year.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Strike_Rate'],
-                        mode='lines+markers',
-                        name=f"{fmt} SR",
-                        line=dict(color=color, dash='dash'),
-                        legendgroup=fmt,
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-                
-                # Add trace for Economy Rate (third subplot)
-                fig_format_year.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Economy_Rate'],
-                        mode='lines+markers',
-                        name=f"{fmt} Econ",
-                        line=dict(color=color, dash='dot'),
-                        legendgroup=fmt,
-                        showlegend=False
-                    ),
-                    row=1, col=3
-                )
-            
-            # Update layout
-            fig_format_year.update_layout(
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                )
-            )
-            
-            # Update axes - note: for bowling, lower numbers are better
-            fig_format_year.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', 
-                              tickmode='linear', dtick=1)
-            fig_format_year.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
-            fig_format_year.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
-            fig_format_year.update_yaxes(title_text="Economy Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=3)
-            
-            # Display the figure with a unique key
-            st.plotly_chart(fig_format_year, use_container_width=True, key="format_year_trends")
 
         ###-------------------------------------SEASON STATS-------------------------------------###
         # Season Stats Tab
@@ -710,7 +606,7 @@ def display_bowl_view():
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Year")
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
-            st.plotly_chart(fig, use_container_width=True, key="season_performance_metrics")
+            st.plotly_chart(fig, use_container_width=True)
 
             # Create wickets per year chart
             fig = go.Figure()
@@ -760,118 +656,7 @@ def display_bowl_view():
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
-            st.plotly_chart(fig, use_container_width=True, key="wickets_per_year")
-            
-            # Add new section for Format Performance Trends by Year (similar to Format Stats tab)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Performance Trends by Year</h3>", unsafe_allow_html=True)
-            
-            # Create subplots for Average and Strike Rate
-            format_year_fig = make_subplots(rows=1, cols=3, 
-                subplot_titles=("Average by Year", "Strike Rate by Year", "Economy Rate by Year"))
-                
-            # Define format colors
-            format_colors = {
-                'Test Match': '#28a745',              # Green
-                'One Day International': '#dc3545',    # Red
-                '20 Over International': '#ffc107',    # Yellow/Amber
-                'First Class': '#6610f2',              # Purple
-                'List A': '#fd7e14',                   # Orange
-                'T20': '#17a2b8'                       # Cyan
-            }
-            
-            # Get unique formats from filtered data
-            unique_formats = sorted(filtered_df['Match_Format'].unique())
-            
-            # For each format, create lines showing the trend by year
-            for fmt in unique_formats:
-                fmt_data = filtered_df[filtered_df['Match_Format'] == fmt]
-                
-                # Group by year to get yearly stats for this format
-                yearly_stats = fmt_data.groupby('Year').agg({
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum',
-                    'Overs': 'sum'
-                }).reset_index()
-                
-                # Calculate metrics
-                yearly_stats['Average'] = (yearly_stats['Bowler_Runs'] / yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                yearly_stats['Strike_Rate'] = (yearly_stats['Bowler_Balls'] / yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                yearly_stats['Economy_Rate'] = (yearly_stats['Bowler_Runs'] / 
-                                          ((yearly_stats['Bowler_Balls'] // 6) + 
-                                           (yearly_stats['Bowler_Balls'] % 6) / 10)).round(2).fillna(0)
-                
-                # Sort by year
-                yearly_stats = yearly_stats.sort_values('Year')
-                
-                # Get color for this format (use default if not in dictionary)
-                color = format_colors.get(fmt, '#000000')
-                
-                # Add trace for Average (first subplot)
-                format_year_fig.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Average'],
-                        mode='lines+markers',
-                        name=f"{fmt} Avg",
-                        line=dict(color=color),
-                        legendgroup=fmt
-                    ),
-                    row=1, col=1
-                )
-                
-                # Add trace for Strike Rate (second subplot)
-                format_year_fig.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Strike_Rate'],
-                        mode='lines+markers',
-                        name=f"{fmt} SR",
-                        line=dict(color=color, dash='dash'),
-                        legendgroup=fmt,
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-                
-                # Add trace for Economy Rate (third subplot)
-                format_year_fig.add_trace(
-                    go.Scatter(
-                        x=yearly_stats['Year'],
-                        y=yearly_stats['Economy_Rate'],
-                        mode='lines+markers',
-                        name=f"{fmt} Econ",
-                        line=dict(color=color, dash='dot'),
-                        legendgroup=fmt,
-                        showlegend=False
-                    ),
-                    row=1, col=3
-                )
-            
-            # Update layout
-            format_year_fig.update_layout(
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                )
-            )
-            
-            # Update axes - note: for bowling, lower numbers are better
-            format_year_fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', 
-                              tickmode='linear', dtick=1)
-            format_year_fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
-            format_year_fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
-            format_year_fig.update_yaxes(title_text="Economy Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=3)
-            
-            # Display the figure with a unique key
-            st.plotly_chart(format_year_fig, use_container_width=True, key="format_year_trends_in_seasons")
+            st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------LATEST INNINGS-------------------------------------###
         # Latest Innings Tab
@@ -1356,7 +1141,7 @@ def display_bowl_view():
             innings_summary['WPM'] = (innings_summary['Wickets'] / innings_summary['Matches']).round(2)
 
             # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']). size().reset_index(name='5W')
+            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
             innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left')
             innings_summary['5W'] = innings_summary['5W'].fillna(0).astype(int)
 
@@ -1621,467 +1406,9 @@ def display_bowl_view():
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
 
-        ###-------------------------------------HOME/AWAY STATS-------------------------------------###
-        # Home/Away Stats Tab
-        with tabs[8]:
-            # Calculate career statistics separately (overall for each player)
-            career_stats = filtered_df.groupby('Name').agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-            career_stats.columns = ['Name', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-            career_stats['Overs'] = (career_stats['Balls'] // 6) + (career_stats['Balls'] % 6) / 10
-            career_stats['Average'] = (career_stats['Runs'] / career_stats['Wickets']).round(2)
-            career_stats['Strike Rate'] = (career_stats['Balls'] / career_stats['Wickets']).round(2)
-            career_stats['Economy Rate'] = (career_stats['Runs'] / career_stats['Overs']).round(2)
-            career_stats['WPM'] = (career_stats['Wickets'] / career_stats['Matches']).round(2)
-            
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics (Overall)</h3>", unsafe_allow_html=True)
-            st.dataframe(career_stats, use_container_width=True, hide_index=True)
-            
-            # Now calculate Home/Away statistics (excluding career totals)
-            homeaway_stats = filtered_df.groupby(['Name', 'HomeOrAway']).agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-            homeaway_stats.columns = ['Name', 'HomeOrAway', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-            homeaway_stats['Overs'] = (homeaway_stats['Balls'] // 6) + (homeaway_stats['Balls'] % 6) / 10
-            homeaway_stats['Average'] = (homeaway_stats['Runs'] / homeaway_stats['Wickets']).round(2)
-            homeaway_stats['Strike Rate'] = (homeaway_stats['Balls'] / homeaway_stats['Wickets']).round(2)
-            homeaway_stats['Economy Rate'] = (homeaway_stats['Runs'] / homeaway_stats['Overs']).round(2)
-            homeaway_stats['WPM'] = (homeaway_stats['Wickets'] / homeaway_stats['Matches']).round(2)
-            
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
-            st.dataframe(homeaway_stats, use_container_width=True, hide_index=True)
-
-            # Create home/away averages graph
-            fig = make_subplots(rows=1, cols=3, 
-                              subplot_titles=("Average", "Strike Rate", "Economy Rate"))
-
-            # Calculate overall metrics for all data (excluding Career rows)
-            all_homeaway_stats = filtered_df.groupby('HomeOrAway').agg({
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'Bowler_Balls': 'sum',
-                'File Name': 'nunique'
-            }).reset_index()
-            
-            all_homeaway_stats = all_homeaway_stats[all_homeaway_stats['HomeOrAway'] != 'Career']
-            
-            all_homeaway_stats['Overs'] = (all_homeaway_stats['Bowler_Balls'] // 6) + (all_homeaway_stats['Bowler_Balls'] % 6)/10
-            all_homeaway_stats['Average'] = (all_homeaway_stats['Bowler_Runs'] / all_homeaway_stats['Bowler_Wkts']).round(2)
-            all_homeaway_stats['Strike_Rate'] = (all_homeaway_stats['Bowler_Balls'] / all_homeaway_stats['Bowler_Wkts']).round(2)
-            all_homeaway_stats['Economy_Rate'] = (all_homeaway_stats['Bowler_Runs'] / all_homeaway_stats['Overs']).round(2)
-            all_homeaway_stats['Matches'] = all_homeaway_stats['File Name']
-
-            # Add 'All' trace if selected
-            if 'All' in name_choice:
-                all_color = '#f84e4e' if not individual_players else 'black'
-                
-                # Add Average bars
-                fig.add_trace(
-                    go.Bar(
-                        x=all_homeaway_stats['HomeOrAway'], 
-                        y=all_homeaway_stats['Average'], 
-                        name='All Players', 
-                        marker_color=all_color,
-                        text=all_homeaway_stats['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>'
-                    ),
-                    row=1, col=1
-                )
-
-                # Add Strike Rate bars
-                fig.add_trace(
-                    go.Bar(
-                        x=all_homeaway_stats['HomeOrAway'], 
-                        y=all_homeaway_stats['Strike_Rate'], 
-                        name='All Players', 
-                        marker_color=all_color,
-                        text=all_homeaway_stats['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-                
-                # Add Economy Rate bars
-                fig.add_trace(
-                    go.Bar(
-                        x=all_homeaway_stats['HomeOrAway'], 
-                        y=all_homeaway_stats['Economy_Rate'], 
-                        name='All Players', 
-                        marker_color=all_color,
-                        text=all_homeaway_stats['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Economy Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                        showlegend=False
-                    ),
-                    row=1, col=3
-                )
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_data = filtered_df[filtered_df['Name'] == name].groupby('HomeOrAway').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum',
-                    'File Name': 'nunique'
-                }).reset_index()
-                
-                player_data = player_data[player_data['HomeOrAway'] != 'Career']
-                
-                player_data['Overs'] = (player_data['Bowler_Balls'] // 6) + (player_data['Bowler_Balls'] % 6)/10
-                player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
-                player_data['Strike_Rate'] = (player_data['Bowler_Balls'] / player_data['Bowler_Wkts']).round(2)
-                player_data['Economy_Rate'] = (player_data['Bowler_Runs'] / player_data['Overs']).round(2)
-                player_data['Matches'] = player_data['File Name']
-                
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                
-                # Add Average bars
-                fig.add_trace(
-                    go.Bar(
-                        x=player_data['HomeOrAway'], 
-                        y=player_data['Average'], 
-                        name=name, 
-                        marker_color=color,
-                        text=player_data['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>',
-                        legendgroup=name
-                    ),
-                    row=1, col=1
-                )
-
-                # Add Strike Rate bars
-                fig.add_trace(
-                    go.Bar(
-                        x=player_data['HomeOrAway'], 
-                        y=player_data['Strike_Rate'], 
-                        name=name, 
-                        marker_color=color,
-                        text=player_data['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                        legendgroup=name,
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-                
-                # Add Economy Rate bars
-                fig.add_trace(
-                    go.Bar(
-                        x=player_data['HomeOrAway'], 
-                        y=player_data['Economy_Rate'], 
-                        name=name, 
-                        marker_color=color,
-                        text=player_data['Matches'].apply(lambda x: f"{x} matches"),
-                        hovertemplate='%{x}<br>Economy Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                        legendgroup=name,
-                        showlegend=False
-                    ),
-                    row=1, col=3
-                )
-
-            # Calculate the appropriate averages based on selection for reference lines
-            career_data = None
-            
-            if 'All' in name_choice and len(name_choice) == 1:
-                # Use career averages from homeaway_summary where HomeOrAway is 'Career'
-                career_data = homeaway_summary[homeaway_summary['HomeOrAway'] == 'Career']
-                if len(career_data) > 0:
-                    overall_avg = career_data['Average'].mean()
-                    overall_sr = career_data['Strike Rate'].mean()
-                    overall_econ = career_data['Economy Rate'].mean()
-                else:
-                    # Fallback if Career data is not available
-                    overall_avg = homeaway_summary['Average'].mean()
-                    overall_sr = homeaway_summary['Strike Rate'].mean()
-                    overall_econ = homeaway_summary['Economy_Rate'].mean()
-            elif individual_players:
-                # Use individual player's career data
-                player_name = individual_players[0]
-                player_career = homeaway_stats[(homeaway_stats['Name'] == player_name) & 
-                                               (homeaway_stats['HomeOrAway'] == 'Career')]
-                if len(player_career) > 0:
-                    overall_avg = player_career['Average'].iloc[0]
-                    overall_sr = player_career['Strike Rate'].iloc[0]
-                    overall_econ = player_career['Economy Rate'].iloc[0]
-                else:
-                    # Fallback for individual player
-                    overall_avg = homeaway_stats['Average'].mean()
-                    overall_sr = homeaway_stats['Strike Rate'].mean() 
-                    overall_econ = homeaway_stats['Economy Rate'].mean()
-            else:
-                # Default values if no clear selection
-                overall_avg = 0
-                overall_sr = 0
-                overall_econ = 0
-
-            # Add reference lines for career stats
-            locations = ['Home', 'Away', 'Neutral']
-            
-            # Add horizontal line for average
-            fig.add_trace(
-                go.Scatter(
-                    x=locations,
-                    y=[overall_avg] * len(locations),
-                    mode='lines+text',
-                    name='Career Average',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=["Career Average", "", ""],
-                    textposition='top center',
-                    legendgroup='reference'
-                ),
-                row=1, col=1
-            )
-            
-            # Add horizontal line for strike rate
-            fig.add_trace(
-                go.Scatter(
-                    x=locations,
-                    y=[overall_sr] * len(locations),
-                    mode='lines+text',
-                    name='Career SR',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=["Career SR", "", ""],
-                    textposition='top center',
-                    legendgroup='reference',
-                    showlegend=False
-                ),
-                row=1, col=2
-            )
-            
-            # Add horizontal line for economy rate
-            fig.add_trace(
-                go.Scatter(
-                    x=locations,
-                    y=[overall_econ] * len(locations),
-                    mode='lines+text',
-                    name='Career Econ',
-                    line=dict(color='black', width=2, dash='dash'),
-                    text=["Career Econ", "", ""],
-                    textposition='top center',
-                    legendgroup='reference',
-                    showlegend=False
-                ),
-                row=1, col=3
-            )
-
-            # Update layout
-            fig.update_layout(
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                ),
-                margin=dict(l=50, r=50, t=70, b=50)
-            )
-
-            # Update axes
-            fig.update_yaxes(title_text="Average", row=1, col=1)
-            fig.update_yaxes(title_text="Strike Rate", row=1, col=2)
-            fig.update_yaxes(title_text="Economy Rate", row=1, col=3)
-
-            # Add gridlines
-            for i in range(1, 4):
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=i)
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=i)
-
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance by Home/Away</h3>", unsafe_allow_html=True)
-            
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Add year-by-year home/away comparison charts
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home vs Away Performance Trends by Year</h3>", unsafe_allow_html=True)
-            
-            # Group data by Year and HomeOrAway to get yearly stats for home and away
-            yearly_homeaway_stats = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'Bowler_Balls': 'sum',
-                'File Name': 'nunique'
-            }).reset_index()
-            
-            # Calculate metrics
-            yearly_homeaway_stats['Overs'] = (yearly_homeaway_stats['Bowler_Balls'] // 6) + (yearly_homeaway_stats['Bowler_Balls'] % 6) / 10
-            yearly_homeaway_stats['Average'] = (yearly_homeaway_stats['Bowler_Runs'] / yearly_homeaway_stats['Bowler_Wkts']).round(2).fillna(0)
-            yearly_homeaway_stats['Strike_Rate'] = (yearly_homeaway_stats['Bowler_Balls'] / yearly_homeaway_stats['Bowler_Wkts']).round(2).fillna(0)
-            yearly_homeaway_stats['Economy_Rate'] = (yearly_homeaway_stats['Bowler_Runs'] / yearly_homeaway_stats['Overs']).round(2).fillna(0)
-            yearly_homeaway_stats['Matches'] = yearly_homeaway_stats['File Name']
-            
-            # Sort by year
-            yearly_homeaway_stats = yearly_homeaway_stats.sort_values('Year')
-            
-            # Create subplots: one for average, one for strike rate, one for economy rate
-            homeaway_yearly_fig = make_subplots(rows=1, cols=3, 
-                                               subplot_titles=("Average by Year (Home vs Away)", 
-                                                              "Strike Rate by Year (Home vs Away)",
-                                                              "Economy Rate by Year (Home vs Away)"))
-            
-            # Define colors for home, away, and neutral
-            colors = {
-                'Home': '#1f77b4',   # Blue
-                'Away': '#d62728',   # Red
-                'Neutral': '#2ca02c'  # Green
-            }
-            
-            # Add traces for Average
-            for location in yearly_homeaway_stats['HomeOrAway'].unique():
-                if location != 'Career':  # Skip 'Career' in the yearly view
-                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
-                    
-                    homeaway_yearly_fig.add_trace(
-                        go.Scatter(
-                            x=location_data['Year'],
-                            y=location_data['Average'],
-                            mode='lines+markers',
-                            name=f"{location} Avg",
-                            line=dict(color=colors.get(location, '#7f7f7f')),
-                            marker=dict(size=8),
-                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
-                            hovertemplate='Year: %{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>',
-                            legendgroup=location
-                        ),
-                        row=1, col=1
-                    )
-            
-            # Add traces for Strike Rate
-            for location in yearly_homeaway_stats['HomeOrAway'].unique():
-                if location != 'Career':
-                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
-                    
-                    homeaway_yearly_fig.add_trace(
-                        go.Scatter(
-                            x=location_data['Year'],
-                            y=location_data['Strike_Rate'],
-                            mode='lines+markers',
-                            name=f"{location} SR",
-                            line=dict(color=colors.get(location, '#7f7f7f'), dash='dot'),
-                            marker=dict(size=8),
-                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
-                            hovertemplate='Year: %{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                            legendgroup=location,
-                            showlegend=False  # Don't duplicate legend entries
-                        ),
-                        row=1, col=2
-                    )
-                    
-            # Add traces for Economy Rate
-            for location in yearly_homeaway_stats['HomeOrAway'].unique():
-                if location != 'Career':
-                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
-                    
-                    homeaway_yearly_fig.add_trace(
-                        go.Scatter(
-                            x=location_data['Year'],
-                            y=location_data['Economy_Rate'],
-                            mode='lines+markers',
-                            name=f"{location} Econ",
-                            line=dict(color=colors.get(location, '#7f7f7f'), dash='dashdot'),
-                            marker=dict(size=8),
-                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
-                            hovertemplate='Year: %{x}<br>Economy Rate: %{y:.2f}<br>%{text}<extra></extra>',
-                            legendgroup=location,
-                            showlegend=False  # Don't duplicate legend entries
-                        ),
-                        row=1, col=3
-                    )
-                    
-            # Add career average reference lines for each metric
-            years_range = yearly_homeaway_stats['Year'].unique()
-            if len(years_range) >= 2:
-                min_year = min(years_range)
-                max_year = max(years_range)
-                
-                # Add reference line for average
-                homeaway_yearly_fig.add_trace(
-                    go.Scatter(
-                        x=[min_year, max_year],
-                        y=[overall_avg, overall_avg],
-                        mode='lines+text',
-                        name='Career Average',
-                        line=dict(color='black', width=2, dash='dash'),
-                        text=["Career Average", ""],
-                        textposition='top center',
-                        legendgroup='reference'
-                    ),
-                    row=1, col=1
-                )
-                
-                # Add reference line for strike rate
-                homeaway_yearly_fig.add_trace(
-                    go.Scatter(
-                        x=[min_year, max_year],
-                        y=[overall_sr, overall_sr],
-                        mode='lines+text',
-                        name='Career SR',
-                        line=dict(color='black', width=2, dash='dash'),
-                        text=["Career SR", ""],
-                        textposition='top center',
-                        legendgroup='reference',
-                        showlegend=False  # Don't duplicate legend entries
-                    ),
-                    row=1, col=2
-                )
-                
-                # Add reference line for economy rate
-                homeaway_yearly_fig.add_trace(
-                    go.Scatter(
-                        x=[min_year, max_year],
-                        y=[overall_econ, overall_econ],
-                        mode='lines+text',
-                        name='Career Econ',
-                        line=dict(color='black', width=2, dash='dash'),
-                        text=["Career Econ", ""],
-                        textposition='top center',
-                        legendgroup='reference',
-                        showlegend=False  # Don't duplicate legend entries
-                    ),
-                    row=1, col=3
-                )
-                
-            # Update layout
-            homeaway_yearly_fig.update_layout(
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                )
-            )
-            
-            # Update axes
-            homeaway_yearly_fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)',
-                                           tickmode='linear', dtick=1)  # Ensure only whole years are displayed
-            homeaway_yearly_fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
-            homeaway_yearly_fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
-            homeaway_yearly_fig.update_yaxes(title_text="Economy Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=3)
-            
-            # Display the line charts
-            st.plotly_chart(homeaway_yearly_fig, use_container_width=True)
-
         ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
         # Cumulative Stats Tab
-        with tabs[9]:
+        with tabs[8]:
             # Create initial df_bowl from filtered bowl_df
             df_bowl = filtered_df.copy()
 
@@ -2226,7 +1553,7 @@ def display_bowl_view():
 
         ###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
         # Block Stats Tab
-        with tabs[10]:
+        with tabs[9]:
             # Create DataFrame for block stats from filtered_df (notice this is at the same level as other main sections)
             df_blockbowl = filtered_df.copy()
 
