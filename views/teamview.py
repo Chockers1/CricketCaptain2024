@@ -164,7 +164,7 @@ def display_team_view():
         """, unsafe_allow_html=True)
 
     # Create tabs
-    tab1, tab2 = st.tabs(["Batting Statistics", "Bowling Statistics"])
+    tab1, tab2, tab3 = st.tabs(["Batting Statistics", "Bowling Statistics", "Rank"])
 
     # Batting  Statistics Tab
     with tab1:
@@ -1409,6 +1409,528 @@ def display_team_view():
             
             # Display bar chart
             st.plotly_chart(pos_fig, use_container_width=True)
+
+    # Rank Tab - Combined Season Stats
+    with tab3:
+        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Season Rankings</h3>", unsafe_allow_html=True)
+        
+        # Add explanation for performance metrics
+        with st.expander("Understanding Performance Metrics", expanded=False):
+            st.markdown("""
+            ### Performance Metrics Explained
+            
+            #### Performance Index
+            The Performance Index is a balanced metric that compares a team's performance to format averages:
+            - **Formula**: 100 × (Batting Avg ÷ Format Batting Mean) + 100 × (Format Bowling Mean ÷ Bowling Avg)
+            - **Higher is better**: Teams with higher performance index have better overall performance
+            - **Interpretation**: 
+              - 200 represents a perfectly balanced team at format average
+              - > 220 indicates title-contending teams
+              - 190-220 indicates solid, competitive teams
+              - < 190 indicates teams lagging in one or both disciplines
+            
+            #### Avg Difference
+            The Average Difference is simply: Batting Average - Bowling Average
+            - **Higher is better**: A positive value means a team's batters score more runs per wicket than their bowlers concede
+            - **Interpretation**:
+              - Positive values indicate teams that generally win matches
+              - Negative values suggest teams that struggle to win consistently
+            """)
+        
+        # Check if we have the necessary dataframes to work with
+        if 'bat_df' in st.session_state and 'bowl_df' in st.session_state:
+            filtered_bat_df = filtered_bat_df.copy()
+            filtered_bowl_df = filtered_bowl_df.copy()
+            
+            # Calculate milestone innings based on run ranges (for batting)
+            filtered_bat_df['50s'] = ((filtered_bat_df['Runs'] >= 50) & (filtered_bat_df['Runs'] < 100)).astype(int)
+            filtered_bat_df['100s'] = ((filtered_bat_df['Runs'] >= 100) & (filtered_bat_df['Runs'] < 150)).astype(int)
+            filtered_bat_df['150s'] = ((filtered_bat_df['Runs'] >= 150) & (filtered_bat_df['Runs'] < 200)).astype(int)
+            filtered_bat_df['200s'] = (filtered_bat_df['Runs'] >= 200).astype(int)
+
+            # Calculate bat_team_season_df
+            bat_team_season_df = filtered_bat_df.groupby(['Bat_Team_y', 'Year']).agg({
+                'File Name': 'nunique',
+                'Batted': 'sum',
+                'Out': 'sum',
+                'Not Out': 'sum',    
+                'Balls': 'sum',
+                'Runs': ['sum', 'max'],
+                '4s': 'sum',
+                '6s': 'sum',
+                '50s': 'sum',
+                '100s': 'sum',
+                '150s': 'sum',
+                '200s': 'sum'
+            }).reset_index()
+
+            # Flatten multi-level columns
+            bat_team_season_df.columns = ['Team', 'Year', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                        'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s']
+
+            # Calculate batting metrics
+            bat_team_season_df['Bat_Avg'] = (bat_team_season_df['Runs'] / bat_team_season_df['Out']).round(2).fillna(0)
+            bat_team_season_df['BPO'] = (bat_team_season_df['Balls'] / bat_team_season_df['Out']).round(2).fillna(0)
+            bat_team_season_df['Bat_SR'] = ((bat_team_season_df['Runs'] / bat_team_season_df['Balls']) * 100).round(2).fillna(0)
+            
+            # Calculate bowling stats
+            match_wickets = filtered_bowl_df.groupby(['Bowl_Team', 'Year', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Bowl_Team', 'Year']).size().reset_index(name='10W')
+
+            bowl_team_season_df = filtered_bowl_df.groupby(['Bowl_Team', 'Year']).agg({
+                'File Name': 'nunique',
+                'Bowler_Balls': 'sum',
+                'Maidens': 'sum',
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
+
+            bowl_team_season_df.columns = ['Bowl_Team', 'Year', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+
+            # Calculate bowling metrics
+            bowl_team_season_df['Overs'] = (bowl_team_season_df['Balls'] // 6) + (bowl_team_season_df['Balls'] % 6) / 10
+            bowl_team_season_df['Bowl_SR'] = (bowl_team_season_df['Balls'] / bowl_team_season_df['Wickets']).round(2)
+            bowl_team_season_df['Economy'] = (bowl_team_season_df['Runs'] / bowl_team_season_df['Overs']).round(2)
+            bowl_team_season_df['Bowl_Avg'] = (bowl_team_season_df['Runs'] / bowl_team_season_df['Wickets']).round(2)
+
+            # Add additional statistics
+            five_wickets = filtered_bowl_df[filtered_bowl_df['Bowler_Wkts'] >= 5].groupby(['Bowl_Team', 'Year']).size().reset_index(name='5W')
+            bowl_team_season_df = bowl_team_season_df.merge(five_wickets, on=['Bowl_Team', 'Year'], how='left')
+            bowl_team_season_df['5W'] = bowl_team_season_df['5W'].fillna(0).astype(int)
+
+            bowl_team_season_df = bowl_team_season_df.merge(ten_wickets, on=['Bowl_Team', 'Year'], how='left')
+            bowl_team_season_df['10W'] = bowl_team_season_df['10W'].fillna(0).astype(int)
+            
+            # Calculate format means for normalization
+            format_bat_mean = bat_team_season_df.groupby('Year')['Bat_Avg'].mean().to_dict()
+            format_bowl_mean = bowl_team_season_df.groupby('Year')['Bowl_Avg'].mean().to_dict()
+            
+            # Default means if we have missing data
+            default_bat_mean = bat_team_season_df['Bat_Avg'].mean() if not bat_team_season_df.empty else 30
+            default_bowl_mean = bowl_team_season_df['Bowl_Avg'].mean() if not bowl_team_season_df.empty else 25
+            
+            # Merge batting and bowling dataframes on Team and Year
+            # Rename columns to avoid conflicts
+            bat_cols_to_keep = ['Team', 'Year', 'Runs', 'Bat_Avg', 'BPO', 'Bat_SR', '50s', '100s', '150s', '200s']
+            bowl_cols_to_keep = ['Bowl_Team', 'Year', 'Overs', 'Wickets', 'Bowl_Avg', 'Bowl_SR', 'Economy', '5W', '10W']
+            
+            bat_season_slim = bat_team_season_df[bat_cols_to_keep]
+            bowl_season_slim = bowl_team_season_df[bowl_cols_to_keep]
+            
+            # Merge both dataframes on Team and Year
+            combined_df = pd.merge(
+                bat_season_slim, 
+                bowl_season_slim, 
+                left_on=['Team', 'Year'], 
+                right_on=['Bowl_Team', 'Year'], 
+                how='outer'
+            )
+            
+            # Clean up the merged dataframe
+            combined_df = combined_df.drop('Bowl_Team', axis=1)
+            combined_df = combined_df.fillna(0)  # Fill NaN values with 0
+            
+            # Calculate new performance metrics using format means
+            combined_df['Performance_Index'] = combined_df.apply(
+                lambda row: round(
+                    # Batting component: 100 × (Batting Avg ÷ Format Batting Mean)
+                    100 * (row['Bat_Avg'] / format_bat_mean.get(row['Year'], default_bat_mean)) +
+                    # Bowling component: 100 × (Format Bowling Mean ÷ Bowling Avg)
+                    100 * (format_bowl_mean.get(row['Year'], default_bowl_mean) / (row['Bowl_Avg'] + 0.01)),
+                    2  # Round to 2 decimal places
+                ),
+                axis=1
+            )
+            
+            # Add new column for Average Difference
+            combined_df['Avg_Difference'] = (combined_df['Bat_Avg'] - combined_df['Bowl_Avg']).round(2)
+            
+            # Sort by Year and Performance Index
+            combined_df = combined_df.sort_values(by=['Year', 'Performance_Index'], ascending=[False, False])
+            
+            # Function to apply color formatting to Avg_Difference
+            def color_avg_difference(val):
+                if val > 0:
+                    return f'background-color: rgba(144, 238, 144, {min(0.3 + val/20, 0.7)})' # Light green with intensity based on value
+                elif val < 0:
+                    return f'background-color: rgba(255, 182, 193, {min(0.3 + abs(val)/20, 0.7)})' # Light red with intensity based on value
+                else:
+                    return ''
+            
+            # Function to apply color formatting to Batting Average based on year mean
+            def color_bat_avg(s):
+                # Calculate means by year for batting average
+                year_means = combined_df.groupby('Year')['Bat_Avg'].mean().to_dict()
+                
+                # Create result series with same index as input
+                result = pd.Series(index=s.index, data='')
+                
+                # Apply styling based on comparison to year mean
+                for idx, val in s.items():
+                    year = combined_df.loc[idx, 'Year']  # Get year for this row
+                    year_mean = year_means.get(year, val)  # Get mean for this year
+                    
+                    if val > year_mean:
+                        result.loc[idx] = f'background-color: rgba(144, 238, 144, {min(0.3 + (val-year_mean)/10, 0.7)})'
+                    elif val < year_mean:
+                        result.loc[idx] = f'background-color: rgba(255, 182, 193, {min(0.3 + (year_mean-val)/10, 0.7)})'
+                
+                return result
+            
+            # Function to apply color formatting to Bowling Average based on year mean
+            def color_bowl_avg(s):
+                # Calculate means by year for bowling average
+                year_means = combined_df.groupby('Year')['Bowl_Avg'].mean().to_dict()
+                
+                # Create result series with same index as input
+                result = pd.Series(index=s.index, data='')
+                
+                # Apply styling based on comparison to year mean
+                for idx, val in s.items():
+                    year = combined_df.loc[idx, 'Year']  # Get year for this row
+                    year_mean = year_means.get(year, val)  # Get mean for this year
+                    
+                    if val < year_mean:  # Lower bowling average is better
+                        result.loc[idx] = f'background-color: rgba(144, 238, 144, {min(0.3 + (year_mean-val)/10, 0.7)})'
+                    elif val > year_mean:  # Higher bowling average is worse
+                        result.loc[idx] = f'background-color: rgba(255, 182, 193, {min(0.3 + (val-year_mean)/10, 0.7)})'
+                
+                return result
+            
+            # Apply styling to the dataframe
+            styled_combined_df = combined_df.style.applymap(
+                color_avg_difference, 
+                subset=['Avg_Difference']
+            )
+            
+            # Apply batting and bowling average styling
+            styled_combined_df = styled_combined_df.apply(
+                color_bat_avg, 
+                subset=['Bat_Avg']
+            ).apply(
+                color_bowl_avg,
+                subset=['Bowl_Avg']
+            )
+            
+            # Display the combined dataframe with styling
+            st.dataframe(
+                styled_combined_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Team": st.column_config.Column("Team", pinned=True),
+                    "Year": st.column_config.Column("Year"),
+                    "Runs": st.column_config.NumberColumn("Runs", format="%d"),
+                    "Bat_Avg": st.column_config.NumberColumn("Batting Avg", format="%.2f"),
+                    "BPO": st.column_config.NumberColumn("Balls/Out", format="%.1f"),
+                    "Bat_SR": st.column_config.NumberColumn("Batting SR", format="%.2f"),
+                    "50s": st.column_config.NumberColumn("50s", format="%d"),
+                    "100s": st.column_config.NumberColumn("100s", format="%d"),
+                    "150s": st.column_config.NumberColumn("150s", format="%d"),
+                    "200s": st.column_config.NumberColumn("200s", format="%d"),
+                    "Overs": st.column_config.NumberColumn("Overs", format="%.1f"),
+                    "Wickets": st.column_config.NumberColumn("Wickets", format="%d"),
+                    "Bowl_Avg": st.column_config.NumberColumn("Bowling Avg", format="%.2f"),
+                    "Bowl_SR": st.column_config.NumberColumn("Bowling SR", format="%.2f"),
+                    "Economy": st.column_config.NumberColumn("Economy", format="%.2f"),
+                    "5W": st.column_config.NumberColumn("5W", format="%d"),
+                    "10W": st.column_config.NumberColumn("10W", format="%d"),
+                    "Performance_Index": st.column_config.NumberColumn(
+                        "Performance Index", 
+                        format="%.2f", 
+                        help="Combined metric: 100 × (Batting Avg ÷ Format Batting Mean) + 100 × (Format Bowling Mean ÷ Bowling Avg)"
+                    ),
+                    "Avg_Difference": st.column_config.NumberColumn(
+                        "Avg Difference",
+                        format="%.2f",
+                        help="Batting Average - Bowling Average"
+                    )
+                }
+            )
+            
+            # Create tabs for different visualizations
+            viz_tabs = st.tabs(["Performance Index", "Average Difference"])
+
+            with viz_tabs[0]:
+                # Create a year filter for the visualization
+                available_years = sorted(combined_df['Year'].unique(), reverse=True)
+                if available_years:
+                    selected_year = st.selectbox(
+                        "Select Year", 
+                        available_years,
+                        index=0,
+                        key="perf_index_year"
+                    )
+                    year_data = combined_df[combined_df['Year'] == selected_year].sort_values('Performance_Index', ascending=False)
+                    if not year_data.empty:
+                        # Create bar chart for team performance in selected year
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(
+                            x=year_data['Team'],
+                            y=year_data['Performance_Index'],
+                            marker_color='#f84e4e',
+                            text=year_data['Performance_Index'].round(2),
+                            textposition='auto',
+                            hovertemplate=(
+                                "Team: %{x}<br>"
+                                "Performance Index: %{y:.2f}<br>"
+                                "<extra></extra>"
+                            )
+                        ))
+                        # Update layout
+                        fig.update_layout(
+                            title=f"Team Performance Index for {selected_year}",
+                            showlegend=False,
+                            height=500,
+                            xaxis_title="Team",
+                            yaxis_title="Performance Index",
+                            font=dict(size=12),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                        )
+                        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                        # Show plot
+                        st.plotly_chart(fig, use_container_width=True)
+
+            with viz_tabs[1]:
+                # Create a year filter for average difference visualization
+                if available_years:
+                    selected_year_diff = st.selectbox(
+                        "Select Year", 
+                        available_years,
+                        index=0,
+                        key="avg_diff_year"
+                    )
+                    year_data_diff = combined_df[combined_df['Year'] == selected_year_diff].sort_values('Avg_Difference', ascending=False)
+                    if not year_data_diff.empty:
+                        # Create bar chart for average difference in selected year
+                        fig_diff = go.Figure()
+                        # Create a color scale based on whether difference is positive or negative
+                        colors = ['#f84e4e' if x >= 0 else '#4e8ff8' for x in year_data_diff['Avg_Difference']]
+                        fig_diff.add_trace(go.Bar(
+                            x=year_data_diff['Team'],
+                            y=year_data_diff['Avg_Difference'],
+                            marker_color=colors,
+                            text=year_data_diff['Avg_Difference'].round(2),
+                            textposition='auto',
+                            hovertemplate=(
+                                "Team: %{x}<br>"
+                                "Average Difference: %{y:.2f}<br>"
+                                "Batting Average: %{customdata[0]:.2f}<br>"
+                                "Bowling Average: %{customdata[1]:.2f}<br>"
+                                "<extra></extra>"
+                            ),
+                            customdata=np.stack((year_data_diff['Bat_Avg'], year_data_diff['Bowl_Avg']), axis=-1)
+                        ))
+                        # Update layout
+                        fig_diff.update_layout(
+                            title=f"Average Difference (Batting Avg - Bowling Avg) for {selected_year_diff}",
+                            showlegend=False,
+                            height=500,
+                            xaxis_title="Team",
+                            yaxis_title="Average Difference",
+                            font=dict(size=12),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                        )
+                        # Add a horizontal line at y=0
+                        fig_diff.add_shape(
+                            type="line",
+                            x0=-0.5,
+                            x1=len(year_data_diff) - 0.5,
+                            y0=0,
+                            y1=0,
+                            line=dict(color="gray", width=1, dash="dash")
+                        )
+                        fig_diff.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                        fig_diff.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                        # Show plot
+                        st.plotly_chart(fig_diff, use_container_width=True)
+                        st.markdown("""
+                        **Note on Average Difference:**
+                        - **Positive values** (red bars): Team's batting average exceeds bowling average - typically successful teams
+                        - **Negative values** (blue bars): Team's bowling average exceeds batting average - typically struggling teams
+                        - The larger the positive difference, the more dominant the team typically is
+                        """)
+
+            # Create a scatter plot for batting vs bowling average
+            st.markdown("### Batting vs Bowling Average Comparison")
+            # Allow user to select year for the scatter plot
+            selected_year_scatter = st.selectbox(
+                "Select Year for Analysis", 
+                available_years,
+                index=0,
+                key="scatter_year"
+            )
+            scatter_data = combined_df[combined_df['Year'] == selected_year_scatter]
+            if not scatter_data.empty:
+                scatter_fig = go.Figure()
+                for _, row in scatter_data.iterrows():
+                    team = row['Team']
+                    bat_avg = row['Bat_Avg']
+                    bowl_avg = row['Bowl_Avg']
+                    perf_index = row['Performance_Index']
+                    avg_diff = row['Avg_Difference']
+                    if bat_avg > 0 and bowl_avg > 0:
+                        scatter_fig.add_trace(go.Scatter(
+                            x=[bat_avg],
+                            y=[bowl_avg],
+                            mode='markers+text',
+                            text=[team],
+                            textposition='top center',
+                            marker=dict(
+                                size=15,
+                                color='#f84e4e',
+                                opacity=0.8
+                            ),
+                            name=team,
+                            hovertemplate=(
+                                f"<b>{team}</b><br><br>"
+                                f"Batting Avg: {bat_avg:.2f}<br>"
+                                f"Bowling Avg: {bowl_avg:.2f}<br>"
+                                f"Avg Difference: {avg_diff:.2f}<br>"
+                                f"Performance Index: {perf_index:.2f}<br>"
+                                "<extra></extra>"
+                            )
+                        ))
+                # Add a diagonal reference line (where batting avg = bowling avg)
+                max_val = max(scatter_data['Bat_Avg'].max(), scatter_data['Bowl_Avg'].max()) + 5
+                min_val = min(scatter_data['Bat_Avg'].min(), scatter_data['Bowl_Avg'].min(), 0)
+                scatter_fig.add_trace(go.Scatter(
+                    x=[min_val, max_val],
+                    y=[min_val, max_val],
+                    mode='lines',
+                    line=dict(color='gray', dash='dash'),
+                    showlegend=False,
+                    hoverinfo='none'
+                ))
+                # Remove the green tint background
+                # Update layout
+                scatter_fig.update_layout(
+                    title=f"Batting Average vs Bowling Average for {selected_year_scatter}",
+                    xaxis_title="Batting Average",
+                    yaxis_title="Bowling Average",
+                    height=600,
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False,
+                    xaxis=dict(
+                        range=[min_val, max_val],
+                    ),
+                    yaxis=dict(
+                        range=[min_val, max_val],
+                    ),
+                )
+                # Show plot
+                st.plotly_chart(scatter_fig, use_container_width=True)
+                st.markdown("""
+                **Interpreting the Scatter Plot:**
+                - **Above the diagonal line**: Bowling average is higher than batting average (challenging position)
+                - **Below the diagonal line**: Batting average is higher than bowling average (advantageous position)
+                - **Top-right**: Teams with high batting and high bowling averages (batsman-friendly conditions)
+                - **Bottom-left**: Teams with low batting and low bowling averages (bowler-friendly conditions)
+                - **Top-left**: Strong batting teams with lower bowling averages (ideal position)
+                - **Bottom-right**: Weaker batting teams with higher bowling averages (struggling position)
+                """)
+                    
+                # Add a Performance Index comparison chart
+                st.markdown("### Performance Index vs Average Difference")
+                if not scatter_data.empty:
+                    perf_index_fig = go.Figure()
+                    for _, row in scatter_data.iterrows():
+                        team = row['Team']
+                        perf_index = row['Performance_Index']
+                        avg_diff = row['Avg_Difference']
+                        bat_avg = row['Bat_Avg']
+                        bowl_avg = row['Bowl_Avg']
+                        
+                        # Determine marker color based on performance index
+                        if perf_index > 200:  # Good performance
+                            marker_color = '#32CD32'  # Bright green for good performance
+                        elif perf_index > 180:  # Average performance
+                            marker_color = '#FFA500'  # Orange for average performance
+                        else:  # Below average performance
+                            marker_color = '#DC143C'  # Crimson for below average performance
+                            
+                        perf_index_fig.add_trace(go.Scatter(
+                            x=[perf_index],
+                            y=[avg_diff],
+                            mode='markers+text',
+                            text=[team],
+                            textposition='top center',
+                            marker=dict(
+                                size=15,
+                                color=marker_color,
+                                opacity=0.8
+                            ),
+                            name=team,
+                            hovertemplate=(
+                                f"<b>{team}</b><br><br>"
+                                f"Performance Index: {perf_index:.2f}<br>"
+                                f"Avg Difference: {avg_diff:.2f}<br>"
+                                f"Batting Avg: {bat_avg:.2f}<br>"
+                                f"Bowling Avg: {bowl_avg:.2f}<br>"
+                                "<extra></extra>"
+                            )
+                        ))
+                        
+                    # Add a horizontal reference line at y=0
+                    perf_index_fig.add_shape(
+                        type="line",
+                        x0=min(scatter_data['Performance_Index'].min() - 10, 160),
+                        x1=max(scatter_data['Performance_Index'].max() + 10, 240),
+                        y0=0,
+                        y1=0,
+                        line=dict(color="gray", dash="dash")
+                    )
+                    
+                    # Add a vertical reference line at x=200 (balanced performance)
+                    perf_index_fig.add_shape(
+                        type="line",
+                        x0=200,
+                        x1=200,
+                        y0=min(scatter_data['Avg_Difference'].min() - 5, -10),
+                        y1=max(scatter_data['Avg_Difference'].max() + 5, 10),
+                        line=dict(color="gray", dash="dash")
+                    )
+                    
+                    # Update layout
+                    perf_index_fig.update_layout(
+                        title=f"Team Performance Analysis for {selected_year_scatter}",
+                        xaxis_title="Performance Index",
+                        yaxis_title="Average Difference",
+                        height=600,
+                        font=dict(size=12),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        showlegend=False,
+                        xaxis=dict(
+                            range=[min(scatter_data['Performance_Index'].min() - 10, 160), 
+                                  max(scatter_data['Performance_Index'].max() + 10, 240)]
+                        ),
+                        yaxis=dict(
+                            range=[min(scatter_data['Avg_Difference'].min() - 5, -10),
+                                  max(scatter_data['Avg_Difference'].max() + 5, 10)]
+                        ),
+                        # Add grid
+                        xaxis_gridcolor='rgba(200, 200, 200, 0.2)',
+                        yaxis_gridcolor='rgba(200, 200, 200, 0.2)',
+                    )
+                    
+                    # Show plot
+                    st.plotly_chart(perf_index_fig, use_container_width=True)
+                    st.markdown("""
+                    **Interpreting the Performance Index Chart:**
+                    - **Top-Right**: Elite teams (high performance index, positive avg difference)
+                    - **Bottom-Right**: Good bowling teams, weaker batting (high performance index, negative avg difference)
+                    - **Top-Left**: Good batting teams, weaker bowling (lower performance index, positive avg difference)
+                    - **Bottom-Left**: Struggling teams (lower performance index, negative avg difference)
+                    - **Vertical line at 200**: Balanced team at format average
+                    """)
+        else:
+            st.warning("Please upload batting and bowling data files to view team rankings.")
 
 # No need for the if __name__ == "__main__" part
 display_team_view()
