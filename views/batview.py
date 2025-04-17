@@ -147,6 +147,13 @@ def display_bat_view():
             # Convert Year to int once
             bat_df['Year'] = bat_df['Year'].astype(int)
             
+            # Add HomeOrAway column to designate home or away matches
+            bat_df['HomeOrAway'] = 'Neutral'  # Default value
+            # Where Home Team equals Batting Team
+            bat_df.loc[bat_df['Home Team'] == bat_df['Bat_Team_y'], 'HomeOrAway'] = 'Home'
+            # Where Away Team equals Batting Team
+            bat_df.loc[bat_df['Away Team'] == bat_df['Bat_Team_y'], 'HomeOrAway'] = 'Away'
+            
             st.session_state['processed_bat_df'] = bat_df
         else:
             bat_df = st.session_state['processed_bat_df']
@@ -389,6 +396,14 @@ def display_bat_view():
             mask &= filtered_df['Position'].between(position_choice[0], position_choice[1])
             
             filtered_df = filtered_df[mask]
+
+            # Ensure HomeOrAway column exists in the filtered DataFrame
+            if 'HomeOrAway' not in filtered_df.columns:
+                filtered_df['HomeOrAway'] = 'Neutral'  # Default value
+                # Where Home Team equals Batting Team
+                filtered_df.loc[filtered_df['Home Team'] == filtered_df['Bat_Team_y'], 'HomeOrAway'] = 'Home'
+                # Where Away Team equals Batting Team
+                filtered_df.loc[filtered_df['Away Team'] == filtered_df['Bat_Team_y'], 'HomeOrAway'] = 'Away'
             
             # Group-based filters using a more efficient approach
             player_stats = filtered_df.groupby('Name').agg({
@@ -448,12 +463,12 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Added "Percentile" tab and renamed "Visualizations" to "Distributions"
+        # Create tabs for different views - Added "Home/Away" tab
         tabs = main_container.tabs([
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats", "Distributions", "Percentile"
+            "Innings Stats", "Position Stats", "Home/Away Stats",
+            "Cumulative Stats", "Block Stats", "Distributions", "Percentile"
         ])
         
         # Career Stats Tab
@@ -919,7 +934,8 @@ def display_bat_view():
             )
             
             # Update axes
-            fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', 
+                             tickmode='linear', dtick=1)  # Ensure only whole years are displayed
             fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
             fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
             
@@ -1113,7 +1129,7 @@ def display_bat_view():
             )
 
             # Update axes
-            fig.update_xaxes(title_text="Year", gridcolor='lightgray')
+            fig.update_xaxes(title_text="Year", gridcolor='lightgray', tickmode='linear', dtick=1)  # Ensure only whole years are displayed
             fig.update_yaxes(title_text="Average", gridcolor='lightgray', col=1)
             fig.update_yaxes(title_text="Strike Rate", gridcolor='lightgray', col=2)
 
@@ -1890,8 +1906,393 @@ def display_bat_view():
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
 
-        # Cumulative Stats Tab
+        # Home/Away Stats Tab
         with tabs[8]:
+            # Cache key for home/away statistics
+            homeaway_cache_key = f"{cache_key}_homeaway_stats"
+            homeaway_stats_df = get_cached_dataframe(homeaway_cache_key)
+
+            if homeaway_stats_df is None:
+                # Calculate statistics by HomeOrAway designation
+                homeaway_stats_df = filtered_df.groupby(['Name', 'HomeOrAway']).agg({
+                    'File Name': 'nunique',
+                    'Batted': 'sum',
+                    'Out': 'sum',
+                    'Not Out': 'sum',    
+                    'Balls': 'sum',
+                    'Runs': ['sum', 'max'],
+                    '4s': 'sum',
+                    '6s': 'sum',
+                    '50s': 'sum',
+                    '100s': 'sum',
+                    '200s': 'sum',
+                    '<25&Out': 'sum',
+                    'Caught': 'sum',
+                    'Bowled': 'sum',
+                    'LBW': 'sum',
+                    'Run Out': 'sum',
+                    'Stumped': 'sum',
+                    'Total_Runs': 'sum',
+                    'Overs': 'sum',
+                    'Wickets': 'sum',
+                    'Team Balls': 'sum'
+                }).reset_index()
+
+                # Flatten multi-level columns
+                homeaway_stats_df.columns = ['Name', 'HomeOrAway', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                          'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
+                                          '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                                          'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+                
+                # Create Career totals (aggregated across all locations)
+                career_stats = filtered_df.groupby(['Name']).agg({
+                    'File Name': 'nunique',
+                    'Batted': 'sum',
+                    'Out': 'sum',
+                    'Not Out': 'sum',    
+                    'Balls': 'sum',
+                    'Runs': ['sum', 'max'],
+                    '4s': 'sum',
+                    '6s': 'sum',
+                    '50s': 'sum',
+                    '100s': 'sum',
+                    '200s': 'sum',
+                    '<25&Out': 'sum',
+                    'Caught': 'sum',
+                    'Bowled': 'sum',
+                    'LBW': 'sum',
+                    'Run Out': 'sum',
+                    'Stumped': 'sum',
+                    'Total_Runs': 'sum',
+                    'Overs': 'sum',
+                    'Wickets': 'sum',
+                    'Team Balls': 'sum'
+                }).reset_index()
+                
+                # Flatten multi-level columns for career stats
+                career_stats.columns = ['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                      'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
+                                      '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                                      'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+                
+                # Add "Career" as location identifier
+                career_stats.insert(1, 'HomeOrAway', 'Career')
+                
+                # Concatenate career stats with home/away stats
+                homeaway_stats_df = pd.concat([career_stats, homeaway_stats_df], ignore_index=True)
+
+                # Calculate average runs per out, strike rate, and balls per out
+                homeaway_stats_df['Avg'] = (homeaway_stats_df['Runs'] / homeaway_stats_df['Out']).round(2).fillna(0)
+                homeaway_stats_df['SR'] = ((homeaway_stats_df['Runs'] / homeaway_stats_df['Balls']) * 100).round(2).fillna(0)
+                homeaway_stats_df['BPO'] = (homeaway_stats_df['Balls'] / homeaway_stats_df['Out']).round(2).fillna(0)
+
+                # Calculate new columns for team statistics
+                homeaway_stats_df['Team Avg'] = (homeaway_stats_df['Team Runs'] / homeaway_stats_df['Wickets']).round(2).fillna(0)
+                homeaway_stats_df['Team SR'] = (homeaway_stats_df['Team Runs'] / homeaway_stats_df['Team Balls'] * 100).round(2).fillna(0)
+
+                # Calculate P+ Avg and P+ SR
+                homeaway_stats_df['P+ Avg'] = (homeaway_stats_df['Avg'] / homeaway_stats_df['Team Avg'] * 100).round(2).fillna(0)
+                homeaway_stats_df['P+ SR'] = (homeaway_stats_df['SR'] / homeaway_stats_df['Team SR'] * 100).round(2).fillna(0)
+
+                # Calculate BPB (Balls Per Boundary)
+                homeaway_stats_df['BPB'] = (homeaway_stats_df['Balls'] / (homeaway_stats_df['4s'] + homeaway_stats_df['6s']).replace(0, 1)).round(2)
+
+                # Calculate new statistics
+                homeaway_stats_df['50+PI'] = (((homeaway_stats_df['50s'] + homeaway_stats_df['100s']) / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['100PI'] = ((homeaway_stats_df['100s'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['<25&OutPI'] = ((homeaway_stats_df['<25&Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+
+                # Calculate dismissal percentages
+                homeaway_stats_df['Caught%'] = ((homeaway_stats_df['Caught'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Bowled%'] = ((homeaway_stats_df['Bowled'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['LBW%'] = ((homeaway_stats_df['LBW'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Run Out%'] = ((homeaway_stats_df['Run Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Stumped%'] = ((homeaway_stats_df['Stumped'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Not Out%'] = ((homeaway_stats_df['Not Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+
+                # Reorder columns
+                homeaway_stats_df = homeaway_stats_df[['Name', 'HomeOrAway', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
+                                                'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', 
+                                                '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
+                                                'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
+                
+                # Sort by Name and then put Career first, followed by Home, Away, and Neutral
+                homeaway_stats_df['HomeOrAway_order'] = homeaway_stats_df['HomeOrAway'].map({'Career': 0, 'Home': 1, 'Away': 2, 'Neutral': 3})
+                homeaway_stats_df = homeaway_stats_df.sort_values(by=['Name', 'HomeOrAway_order']).drop('HomeOrAway_order', axis=1)
+                
+                # Cache the computed home/away statistics
+                cache_dataframe(homeaway_cache_key, homeaway_stats_df)
+
+            # Display the Home/Away Stats header
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+            
+            # Display the full dataframe first
+            st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Cache key for home/away averages
+            homeaway_avg_cache_key = f"{cache_key}_homeaway_averages"
+            homeaway_avg_stats_df = get_cached_dataframe(homeaway_avg_cache_key)
+
+            if homeaway_avg_stats_df is None:
+                # Calculate average runs by home/away
+                homeaway_avg_stats_df = filtered_df.groupby('HomeOrAway').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum',
+                    'File Name': 'nunique'
+                }).reset_index()
+
+                # Calculate averages and strike rates
+                homeaway_avg_stats_df['Avg'] = (homeaway_avg_stats_df['Runs'] / homeaway_avg_stats_df['Out']).round(2)
+                homeaway_avg_stats_df['SR'] = ((homeaway_avg_stats_df['Runs'] / homeaway_avg_stats_df['Balls']) * 100).round(2)
+                homeaway_avg_stats_df['Matches'] = homeaway_avg_stats_df['File Name']
+                
+                # Cache the home/away averages
+                cache_dataframe(homeaway_avg_cache_key, homeaway_avg_stats_df)
+
+            # Create a bar chart for Average runs by home/away
+            homeaway_chart_cache_key = f"{cache_key}_homeaway_chart"
+            fig = get_cached_dataframe(homeaway_chart_cache_key)
+
+            if fig is None:
+                # Create subplots: one for average, one for strike rate
+                fig = make_subplots(rows=1, cols=2, subplot_titles=("Average by Home/Away", "Strike Rate by Home/Away"))
+
+                # Add Average bars
+                fig.add_trace(
+                    go.Bar(
+                        x=homeaway_avg_stats_df['HomeOrAway'], 
+                        y=homeaway_avg_stats_df['Avg'], 
+                        name='Average', 
+                        marker_color='#f84e4e',
+                        text=homeaway_avg_stats_df['Matches'].apply(lambda x: f"{x} matches"),
+                        hovertemplate='%{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>'
+                    ),
+                    row=1, col=1
+                )
+
+                # Add Strike Rate bars
+                fig.add_trace(
+                    go.Bar(
+                        x=homeaway_avg_stats_df['HomeOrAway'], 
+                        y=homeaway_avg_stats_df['SR'], 
+                        name='Strike Rate', 
+                        marker_color='#4e84f8',
+                        text=homeaway_avg_stats_df['Matches'].apply(lambda x: f"{x} matches"),
+                        hovertemplate='%{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>'
+                    ),
+                    row=1, col=2
+                )
+
+                # Calculate the appropriate averages based on selection
+                if 'All' in name_choice and len(name_choice) == 1:
+                    # Calculate overall averages across all data
+                    overall_avg = homeaway_avg_stats_df['Avg'].mean()
+                    overall_sr = homeaway_avg_stats_df['SR'].mean()
+                else:
+                    # Use individual player's averages from bat_career_df
+                    overall_avg = bat_career_df['Avg'].iloc[0]
+                    overall_sr = bat_career_df['SR'].iloc[0]
+
+                # Add horizontal line for average
+                fig.add_trace(
+                    go.Scatter(
+                        x=homeaway_avg_stats_df['HomeOrAway'],
+                        y=[overall_avg] * len(homeaway_avg_stats_df),
+                        mode='lines',
+                        name='Career Average',
+                        line=dict(color='black', width=2, dash='dash'),
+                        showlegend=True
+                    ),
+                    row=1, col=1
+                )
+
+                # Add horizontal line for strike rate
+                fig.add_trace(
+                    go.Scatter(
+                        x=homeaway_avg_stats_df['HomeOrAway'],
+                        y=[overall_sr] * len(homeaway_avg_stats_df),
+                        mode='lines',
+                        name='Career SR',
+                        line=dict(color='black', width=2, dash='dash'),
+                        showlegend=True
+                    ),
+                    row=1, col=2
+                )
+
+                # Update layout
+                fig.update_layout(
+                    height=500,
+                    margin=dict(l=50, r=50, t=70, b=50),
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+
+                # Update axes
+                fig.update_yaxes(title_text="Average", col=1)
+                fig.update_yaxes(title_text="Strike Rate", col=2)
+
+                # Cache the home/away chart
+                cache_dataframe(homeaway_chart_cache_key, fig)
+
+            # Display chart title
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance by Home/Away</h3>", unsafe_allow_html=True)
+            
+            # Display the bar chart (full width)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add year-by-year home/away comparison charts
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home vs Away Performance Trends by Year</h3>", unsafe_allow_html=True)
+            
+            # Cache key for home/away yearly trends
+            homeaway_yearly_cache_key = f"{cache_key}_homeaway_yearly"
+            homeaway_yearly_fig = get_cached_dataframe(homeaway_yearly_cache_key)
+            
+            if homeaway_yearly_fig is None:
+                # Group data by Year and HomeOrAway to get yearly stats for home and away
+                yearly_homeaway_stats = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum',
+                    'File Name': 'nunique'
+                }).reset_index()
+                
+                # Calculate metrics
+                yearly_homeaway_stats['Average'] = (yearly_homeaway_stats['Runs'] / yearly_homeaway_stats['Out']).round(2).fillna(0)
+                yearly_homeaway_stats['Strike_Rate'] = ((yearly_homeaway_stats['Runs'] / yearly_homeaway_stats['Balls']) * 100).round(2).fillna(0)
+                yearly_homeaway_stats['Matches'] = yearly_homeaway_stats['File Name']
+                
+                # Sort by year
+                yearly_homeaway_stats = yearly_homeaway_stats.sort_values('Year')
+                
+                # Create subplots: one for average, one for strike rate
+                homeaway_yearly_fig = make_subplots(rows=1, cols=2, 
+                                                   subplot_titles=("Average by Year (Home vs Away)", 
+                                                                  "Strike Rate by Year (Home vs Away)"))
+                
+                # Define colors for home, away, and neutral
+                colors = {
+                    'Home': '#1f77b4',   # Blue
+                    'Away': '#d62728',   # Red
+                    'Neutral': '#2ca02c'  # Green
+                }
+                
+                # Add traces for Average
+                for location in yearly_homeaway_stats['HomeOrAway'].unique():
+                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
+                    
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=location_data['Year'],
+                            y=location_data['Average'],
+                            mode='lines+markers',
+                            name=f"{location} Avg",
+                            line=dict(color=colors.get(location, '#7f7f7f')),
+                            marker=dict(size=8),
+                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
+                            hovertemplate='Year: %{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>',
+                            legendgroup=location
+                        ),
+                        row=1, col=1
+                    )
+                
+                # Add traces for Strike Rate
+                for location in yearly_homeaway_stats['HomeOrAway'].unique():
+                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
+                    
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=location_data['Year'],
+                            y=location_data['Strike_Rate'],
+                            mode='lines+markers',
+                            name=f"{location} SR",
+                            line=dict(color=colors.get(location, '#7f7f7f'), dash='dot'),
+                            marker=dict(size=8),
+                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
+                            hovertemplate='Year: %{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>',
+                            legendgroup=location,
+                            showlegend=False  # Don't duplicate legend entries
+                        ),
+                        row=1, col=2
+                    )
+                
+                # Add career average reference line
+                if 'All' in name_choice and len(name_choice) == 1:
+                    overall_avg = yearly_homeaway_stats['Average'].mean()
+                    overall_sr = yearly_homeaway_stats['Strike_Rate'].mean()
+                else:
+                    overall_avg = bat_career_df['Avg'].iloc[0]
+                    overall_sr = bat_career_df['SR'].iloc[0]
+                
+                years_range = yearly_homeaway_stats['Year'].unique()
+                if len(years_range) >= 2:
+                    min_year = min(years_range)
+                    max_year = max(years_range)
+                    
+                    # Add reference line for average
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=[min_year, max_year],
+                            y=[overall_avg, overall_avg],
+                            mode='lines',
+                            name='Career Average',
+                            line=dict(color='black', width=2, dash='dash'),
+                            legendgroup='reference'
+                        ),
+                        row=1, col=1
+                    )
+                    
+                    # Add reference line for strike rate
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=[min_year, max_year],
+                            y=[overall_sr, overall_sr],
+                            mode='lines',
+                            name='Career SR',
+                            line=dict(color='black', width=2, dash='dash'),
+                            legendgroup='reference',
+                            showlegend=False  # Don't duplicate legend entries
+                        ),
+                        row=1, col=2
+                    )
+                
+                # Update layout
+                homeaway_yearly_fig.update_layout(
+                    height=500,
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+                
+                # Update axes
+                homeaway_yearly_fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)',
+                                               tickmode='linear', dtick=1)  # Ensure only whole years are displayed
+                homeaway_yearly_fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
+                homeaway_yearly_fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
+                
+                # Cache the home/away yearly chart
+                cache_dataframe(homeaway_yearly_cache_key, homeaway_yearly_fig)
+            
+            # Display the line charts
+            st.plotly_chart(homeaway_yearly_fig, use_container_width=True)
+
+        # Cumulative Stats Tab
+        with tabs[9]:
             # Cache key for cumulative stats data
             cumulative_cache_key = f"{cache_key}_cumulative_stats"
             cumulative_stats_df = get_cached_dataframe(cumulative_cache_key) if REDIS_AVAILABLE else None
@@ -2031,7 +2432,7 @@ def display_bat_view():
                 st.plotly_chart(fig3, use_container_width=True)
 
         # Block Stats Tab
-        with tabs[9]:
+        with tabs[10]:
             # Cache key for block statistics
             block_stats_cache_key = f"{cache_key}_block_stats"
             block_stats_df = get_cached_dataframe(block_stats_cache_key)
@@ -2179,7 +2580,7 @@ def display_bat_view():
             st.plotly_chart(fig, key="final_bar_chart")  # Added unique key
 
         # Renamed from "Visualizations" to "Distributions" Tab
-        with tabs[10]:
+        with tabs[11]:
             # Advanced metrics caching
             advanced_metrics_cache_key = f"{cache_key}_advanced_metrics"
             advanced_metrics = get_cached_dataframe(advanced_metrics_cache_key)
@@ -2438,7 +2839,7 @@ def display_bat_view():
             #st.plotly_chart(fig)
 
         # New Percentile tab - moved from Visualizations tab
-        with tabs[11]:
+        with tabs[12]:
             # Create percentile analysis
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Percentile Analysis (Min 10 Matches)</h3>", unsafe_allow_html=True)
             
