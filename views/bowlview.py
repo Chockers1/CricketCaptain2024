@@ -56,12 +56,20 @@ def display_bowl_view():
             bowl_df = st.session_state['bowl_df'].copy()
             bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
             bowl_df['Year'] = bowl_df['Date'].dt.year
-            
+            # Add HomeOrAway column
+            bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+
         except Exception as e:
-            st.error(f"Error processing dates. Using original dates.")
+            st.error(f"Error processing dates or adding HomeOrAway column. Using original dates.")
             bowl_df = st.session_state['bowl_df'].copy()
             bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
             bowl_df['Year'] = bowl_df['Date'].dt.year
+            # Add HomeOrAway column even if date parsing fails partially
+            if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
+                 bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+            else:
+                 st.warning("Could not determine Home/Away status due to missing columns.")
+                 bowl_df['HomeOrAway'] = 'Unknown' # Default value
 
         # Add data validation check and reset filters if needed
         if 'prev_bowl_teams' not in st.session_state:
@@ -291,7 +299,7 @@ def display_bowl_view():
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
             "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats"
+            "Block Stats", "Home/Away Stats" # Added new tab
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
@@ -1141,7 +1149,7 @@ def display_bowl_view():
             innings_summary['WPM'] = (innings_summary['Wickets'] / innings_summary['Matches']).round(2)
 
             # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
+            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']). size().reset_index(name='5W')
             innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left')
             innings_summary['5W'] = innings_summary['5W'].fillna(0).astype(int)
 
@@ -1681,6 +1689,522 @@ def display_bowl_view():
                 # Display title and graph
                 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
                 st.plotly_chart(fig, use_container_width=True)
+
+        ###-------------------------------------HOME/AWAY STATS-------------------------------------###
+        # Home/Away Stats Tab
+        with tabs[10]: # New tab index
+            # Calculate home/away statistics
+            match_wickets_ha = filtered_df.groupby(['Name', 'HomeOrAway', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+            # ten_wickets_ha calculation moved down
+
+            bowlhomeaway_df = filtered_df.groupby(['Name', 'HomeOrAway']).agg({
+                'File Name': 'nunique',
+                'Bowler_Balls': 'sum',
+                'Maidens': 'sum',
+                'Bowler_Runs': 'sum',
+                'Bowler_Wkts': 'sum'
+            }).reset_index()
+
+            # Check if bowlhomeaway_df is empty or HomeOrAway column is missing after initial group by
+            if bowlhomeaway_df.empty or 'HomeOrAway' not in bowlhomeaway_df.columns:
+                st.warning("No Home/Away data available for the selected filters.")
+                # Create an empty structure or skip the rest of the tab
+                bowlhomeaway_df = pd.DataFrame(columns=[ # Define expected columns
+                    'Name', 'Home/Away', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
+                    'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
+                ])
+                # Skip further processing for this tab if no base data
+                st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
+
+            else: # Proceed if bowlhomeaway_df is valid
+
+                bowlhomeaway_df.columns = ['Name', 'Home/Away', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+
+                # Calculate home/away metrics
+                bowlhomeaway_df['Overs'] = (bowlhomeaway_df['Balls'] // 6) + (bowlhomeaway_df['Balls'] % 6) / 10
+                bowlhomeaway_df['Avg'] = (bowlhomeaway_df['Runs'] / bowlhomeaway_df['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
+                bowlhomeaway_df['Strike Rate'] = (bowlhomeaway_df['Balls'] / bowlhomeaway_df['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
+                bowlhomeaway_df['Economy Rate'] = (bowlhomeaway_df['Runs'] / bowlhomeaway_df['Overs'].replace(0, np.nan)).replace([np.inf, -np.inf], np.nan).round(2)
+
+
+                # Add additional statistics safely
+                five_wickets_ha = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'HomeOrAway']).size().reset_index(name='5W')
+                # Check if 'HomeOrAway' exists in both dataframes before merging
+                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in five_wickets_ha.columns:
+                    bowlhomeaway_df = bowlhomeaway_df.merge(five_wickets_ha, on=['Name', 'HomeOrAway'], how='left')
+                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no 5W found)
+                    bowlhomeaway_df['5W'] = 0
+                else: # HomeOrAway missing from the main aggregated df, add 5W column anyway
+                    bowlhomeaway_df['5W'] = 0
+                bowlhomeaway_df['5W'] = bowlhomeaway_df['5W'].fillna(0).astype(int)
+
+
+                # Safely merge 10W stats
+                ten_wickets_ha = match_wickets_ha[match_wickets_ha['Bowler_Wkts'] >= 10].groupby(['Name', 'HomeOrAway']).size().reset_index(name='10W')
+                # Check if 'HomeOrAway' exists in both dataframes before merging
+                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in ten_wickets_ha.columns:
+                    bowlhomeaway_df = bowlhomeaway_df.merge(ten_wickets_ha, on=['Name', 'HomeOrAway'], how='left')
+                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no 10W found)
+                    bowlhomeaway_df['10W'] = 0
+                else: # HomeOrAway missing from the main aggregated df, add 10W column anyway
+                    bowlhomeaway_df['10W'] = 0
+                bowlhomeaway_df['10W'] = bowlhomeaway_df['10W'].fillna(0).astype(int)
+
+
+                bowlhomeaway_df['WPM'] = (bowlhomeaway_df['Wickets'] / bowlhomeaway_df['Matches']).replace([np.inf, -np.inf], np.nan).round(2)
+
+                pom_counts_ha = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby(['Name', 'HomeOrAway'])['File Name'].nunique().reset_index(name='POM')
+                # Safely merge POM stats
+                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in pom_counts_ha.columns:
+                    bowlhomeaway_df = bowlhomeaway_df.merge(pom_counts_ha, on=['Name', 'HomeOrAway'], how='left')
+                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no POM found)
+                    bowlhomeaway_df['POM'] = 0
+                else: # HomeOrAway missing from the main aggregated df, add POM column anyway
+                    bowlhomeaway_df['POM'] = 0
+                bowlhomeaway_df['POM'] = bowlhomeaway_df['POM'].fillna(0).astype(int)
+
+
+                bowlhomeaway_df = bowlhomeaway_df.replace([np.inf, -np.inf], np.nan)
+                bowlhomeaway_df = bowlhomeaway_df.sort_values(['Name', 'Home/Away'])
+
+                # Final column ordering
+                bowlhomeaway_df = bowlhomeaway_df[[
+                    'Name', 'Home/Away', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
+                    'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
+                ]]
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+                st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
+
+                ###-------------------------------------HOME/AWAY GRAPHS----------------------------------------###
+                # Create subplots for Bowling Average, Strike Rate, and Economy Rate by Home/Away
+                fig_ha_metrics = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate"))
+
+                # Handle 'All' selection
+                if 'All' in name_choice:
+                    # Check if HomeOrAway column exists and has data before grouping
+                    if 'HomeOrAway' in filtered_df.columns and not filtered_df['HomeOrAway'].isnull().all():
+                        all_players_ha_stats = filtered_df.groupby('HomeOrAway').agg({
+                            'Bowler_Runs': 'sum',
+                            'Bowler_Wkts': 'sum',
+                            'Bowler_Balls': 'sum'
+                        }).reset_index()
+
+                        # Proceed only if all_players_ha_stats is not empty
+                        if not all_players_ha_stats.empty:
+                            all_players_ha_stats['Avg'] = (all_players_ha_stats['Bowler_Runs'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                            all_players_ha_stats['SR'] = (all_players_ha_stats['Bowler_Balls'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                            # Ensure Bowler_Balls/6 is not zero before division
+                            all_players_ha_stats['Econ'] = (all_players_ha_stats['Bowler_Runs'] / (all_players_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+
+
+                            all_color = '#f84e4e' if not individual_players else 'black'
+
+                            # Add traces for 'All'
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=all_players_ha_stats['HomeOrAway'],
+                                y=all_players_ha_stats['Avg'],
+                                name='All Players',
+                                legendgroup='All',
+                                marker=dict(color=all_color),
+                                showlegend=True
+                            ), row=1, col=1)
+
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=all_players_ha_stats['HomeOrAway'],
+                                y=all_players_ha_stats['SR'],
+                                name='All Players',
+                                legendgroup='All',
+                                marker=dict(color=all_color),
+                                showlegend=False
+                            ), row=1, col=2)
+
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=all_players_ha_stats['HomeOrAway'],
+                                y=all_players_ha_stats['Econ'],
+                                name='All Players',
+                                legendgroup='All',
+                                marker=dict(color=all_color),
+                                showlegend=False
+                            ), row=1, col=3)
+                    else:
+                        st.warning("Not enough data to display 'All Players' Home/Away metrics.")
+
+
+                # Add individual player traces
+                for i, name in enumerate(individual_players):
+                     # Check if HomeOrAway column exists and has data for the player before grouping
+                    player_df_ha = filtered_df[(filtered_df['Name'] == name) & ('HomeOrAway' in filtered_df.columns) & (filtered_df['HomeOrAway'].notnull())]
+                    if not player_df_ha.empty:
+                        player_ha_stats = player_df_ha.groupby('HomeOrAway').agg({
+                            'Bowler_Runs': 'sum',
+                            'Bowler_Wkts': 'sum',
+                            'Bowler_Balls': 'sum'
+                        }).reset_index()
+
+                        # Proceed only if player_ha_stats is not empty
+                        if not player_ha_stats.empty:
+                            player_ha_stats['Avg'] = (player_ha_stats['Bowler_Runs'] / player_ha_stats['Bowler_Wkts']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+                            player_ha_stats['SR'] = (player_ha_stats['Bowler_Balls'] / player_ha_stats['Bowler_Wkts']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+                            # Ensure Bowler_Balls/6 is not zero before division
+                            player_ha_stats['Econ'] = (player_ha_stats['Bowler_Runs'] / (player_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+
+
+                            color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=player_ha_stats['HomeOrAway'],
+                                y=player_ha_stats['Avg'],
+                                name=name,
+                                legendgroup=name,
+                                marker_color=color,
+                                showlegend=True
+                            ), row=1, col=1)
+
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=player_ha_stats['HomeOrAway'],
+                                y=player_ha_stats['SR'],
+                                name=name,
+                                legendgroup=name,
+                                marker_color=color,
+                                showlegend=False
+                            ), row=1, col=2)
+
+                            fig_ha_metrics.add_trace(go.Bar(
+                                x=player_ha_stats['HomeOrAway'],
+                                y=player_ha_stats['Econ'],
+                                name=name,
+                                legendgroup=name,
+                                marker_color=color,
+                                showlegend=False
+                            ), row=1, col=3)
+                    # else: # Optional: Add a warning if a specific player has no Home/Away data
+                    #     st.warning(f"Not enough data to display Home/Away metrics for {name}.")
+
+
+                # Update layout
+                fig_ha_metrics.update_layout(
+                    title="<b>Home/Away Performance Metrics</b>",
+                    title_x=0.5,
+                    showlegend=True,
+                    yaxis_title="Average (Runs/Wicket)",
+                    yaxis2_title="Strike Rate (Balls/Wicket)",
+                    yaxis3_title="Economy Rate (Runs/Over)",
+                    height=500,
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    barmode='group',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top", # Anchor legend to its top
+                        y=-0.15,       # Position below the plot area (adjust as needed)
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+
+                fig_ha_metrics.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Home/Away")
+                fig_ha_metrics.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+                st.plotly_chart(fig_ha_metrics, use_container_width=True)
+
+                # Create wickets per Home/Away chart
+                fig_ha_wickets = go.Figure()
+
+                # Add wickets per Home/Away for 'All' if selected
+                if 'All' in name_choice:
+                     # Check if HomeOrAway column exists and has data before grouping
+                    if 'HomeOrAway' in filtered_df.columns and not filtered_df['HomeOrAway'].isnull().all():
+                        wickets_all_ha = filtered_df.groupby('HomeOrAway')['Bowler_Wkts'].sum().reset_index()
+                        # Proceed only if wickets_all_ha is not empty
+                        if not wickets_all_ha.empty:
+                            all_color = '#f84e4e' if not individual_players else 'black'
+
+                            fig_ha_wickets.add_trace(
+                                go.Bar(
+                                    x=wickets_all_ha['HomeOrAway'],
+                                    y=wickets_all_ha['Bowler_Wkts'],
+                                    name='All Players',
+                                    marker_color=all_color
+                                )
+                            )
+                    # else: # Optional warning handled in the metrics chart already
+                    #     pass
+
+
+                # Add individual player wickets
+                for i, name in enumerate(individual_players):
+                    # Check if HomeOrAway column exists and has data for the player before grouping
+                    player_df_ha_wickets = filtered_df[(filtered_df['Name'] == name) & ('HomeOrAway' in filtered_df.columns) & (filtered_df['HomeOrAway'].notnull())]
+                    if not player_df_ha_wickets.empty:
+                        player_wickets_ha = player_df_ha_wickets.groupby('HomeOrAway')['Bowler_Wkts'].sum().reset_index()
+                        # Proceed only if player_wickets_ha is not empty
+                        if not player_wickets_ha.empty:
+                            color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+
+                            fig_ha_wickets.add_trace(
+                                go.Bar(
+                                    x=player_wickets_ha['HomeOrAway'],
+                                    y=player_wickets_ha['Bowler_Wkts'],
+                                    name=name,
+                                    marker_color=color
+                                )
+                            )
+                    # else: # Optional warning handled in the metrics chart already
+                    #     pass
+
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Home vs Away</h3>", unsafe_allow_html=True)
+
+                fig_ha_wickets.update_layout(
+                    showlegend=True,
+                    height=500,
+                    xaxis_title='Home/Away',
+                    yaxis_title='Wickets',
+                    margin=dict(l=50, r=50, t=70, b=50),
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    barmode='group'
+                )
+
+                fig_ha_wickets.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                fig_ha_wickets.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+                st.plotly_chart(fig_ha_wickets, use_container_width=True)
+
+                ###-------------------------------------SEASON GRAPHS (Modified for Home/Away)----------------------------------------###
+                st.markdown("<hr>", unsafe_allow_html=True) # Add a separator
+                st.markdown("<h2 style='color:#f04f53; text-align: center;'>Season Trends (Home vs Away)</h2>", unsafe_allow_html=True) # Updated Title
+
+                # Create subplots for Bowling Average, Strike Rate, and Economy Rate
+                fig_season_metrics_ha = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate")) # Renamed fig
+
+                # Handle 'All' selection
+                if 'All' in name_choice:
+                    # Group by Year and HomeOrAway
+                    all_players_stats_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                        'Bowler_Runs': 'sum',
+                        'Bowler_Wkts': 'sum',
+                        'Bowler_Balls': 'sum'
+                    }).reset_index()
+
+                    # Check for division by zero or NaN results
+                    all_players_stats_ha['Avg'] = (all_players_stats_ha['Bowler_Runs'] / all_players_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    all_players_stats_ha['SR'] = (all_players_stats_ha['Bowler_Balls'] / all_players_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    all_players_stats_ha['Econ'] = (all_players_stats_ha['Bowler_Runs'] / (all_players_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
+
+                    # Use streamlit red if only 'All' selected, black if names also selected
+                    all_color = '#f84e4e' if not individual_players else 'black'
+
+                    # Add traces for 'All' - Home and Away separately
+                    for ha_status in ['Home', 'Away']:
+                        data_subset = all_players_stats_ha[all_players_stats_ha['HomeOrAway'] == ha_status]
+                        if not data_subset.empty:
+                            line_style = 'solid' if ha_status == 'Home' else 'dash'
+                            legend_name = f'All Players - {ha_status}'
+                            show_legend_main = True # Show both Home and Away in legend for the first plot
+
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Avg'],
+                                mode='lines+markers',
+                                name=legend_name,
+                                legendgroup='All',
+                                line=dict(color=all_color, dash=line_style),
+                                marker=dict(color=all_color, size=8),
+                                showlegend=show_legend_main # Apply change here
+                            ), row=1, col=1)
+
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['SR'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup='All',
+                                line=dict(color=all_color, dash=line_style),
+                                marker=dict(color=all_color, size=8),
+                                showlegend=False # Keep False for SR plot
+                            ), row=1, col=2)
+
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Econ'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup='All',
+                                line=dict(color=all_color, dash=line_style),
+                                marker=dict(color=all_color, size=8),
+                                showlegend=False # Keep False for Econ plot
+                            ), row=1, col=3)
+
+                # Add individual player traces
+                for i, name in enumerate(individual_players):
+                    player_stats = filtered_df[filtered_df['Name'] == name]
+                    # Group by Year and HomeOrAway
+                    player_yearly_stats_ha = player_stats.groupby(['Year', 'HomeOrAway']).agg({
+                        'Bowler_Runs': 'sum',
+                        'Bowler_Wkts': 'sum',
+                        'Bowler_Balls': 'sum'
+                    }).reset_index()
+
+                    # Check for division by zero or NaN results
+                    player_yearly_stats_ha['Avg'] = (player_yearly_stats_ha['Bowler_Runs'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    player_yearly_stats_ha['SR'] = (player_yearly_stats_ha['Bowler_Balls'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    player_yearly_stats_ha['Econ'] = (player_yearly_stats_ha['Bowler_Runs'] / (player_yearly_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
+
+                    # First player gets streamlit red, others get random colors
+                    base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+
+                    # Add traces for player - Home and Away separately
+                    for ha_status in ['Home', 'Away']:
+                        data_subset = player_yearly_stats_ha[player_yearly_stats_ha['HomeOrAway'] == ha_status]
+                        if not data_subset.empty:
+                            line_style = 'solid' if ha_status == 'Home' else 'dash'
+                            legend_name = f'{name} - {ha_status}'
+                            show_legend_main = True # Show both Home and Away in legend for the first plot
+
+                            # Add bowling average trace
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Avg'],
+                                mode='lines+markers',
+                                name=legend_name,
+                                legendgroup=name, # Group by player name
+                                line=dict(color=base_color, dash=line_style),
+                                marker=dict(color=base_color, size=8),
+                                showlegend=show_legend_main # Apply change here
+                            ), row=1, col=1)
+
+                            # Add strike rate trace
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['SR'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup=name,
+                                line=dict(color=base_color, dash=line_style),
+                                marker=dict(color=base_color, size=8),
+                                showlegend=False # Keep False for SR plot
+                            ), row=1, col=2)
+
+                            # Add economy rate trace
+                            fig_season_metrics_ha.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Econ'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup=name,
+                                line=dict(color=base_color, dash=line_style),
+                                marker=dict(color=base_color, size=8),
+                                showlegend=False # Keep False for Econ plot
+                            ), row=1, col=3)
+
+                # Update layout
+                fig_season_metrics_ha.update_layout( # Use renamed fig
+                    title="<b>Season Performance Metrics (Home vs Away)</b>", # Updated title
+                    title_x=0.5,
+                    showlegend=True,
+                    yaxis_title="Average (Runs/Wicket)",
+                    yaxis2_title="Strike Rate (Balls/Wicket)",
+                    yaxis3_title="Economy Rate (Runs/Over)",
+                    height=550, # Increased height slightly for legend space
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top", # Anchor legend to its top
+                        y=-0.15,       # Position below the plot area (adjust as needed)
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+
+                fig_season_metrics_ha.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Year")
+                fig_season_metrics_ha.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+                st.plotly_chart(fig_season_metrics_ha, use_container_width=True) # Use renamed fig
+
+                # Create wickets per year chart (Home vs Away)
+                fig_season_wickets_ha = go.Figure() # Renamed variable
+
+                # Add wickets per year for 'All' if selected
+                if 'All' in name_choice:
+                    # Group by Year and HomeOrAway
+                    wickets_all_ha = filtered_df.groupby(['Year', 'HomeOrAway'])['Bowler_Wkts'].sum().reset_index()
+                    all_color = '#f84e4e' if not individual_players else 'black'
+
+                    # Add traces for 'All' - Home and Away separately
+                    for ha_status in ['Home', 'Away']:
+                        data_subset = wickets_all_ha[wickets_all_ha['HomeOrAway'] == ha_status]
+                        if not data_subset.empty:
+                            legend_name = f'All Players - {ha_status}'
+                            show_legend_main = True # Show both Home and Away in legend
+
+                            fig_season_wickets_ha.add_trace( # Use renamed variable
+                                go.Bar(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Bowler_Wkts'],
+                                    name=legend_name,
+                                    legendgroup='All', # Group by 'All'
+                                    marker_color=all_color,
+                                    opacity=1.0 if ha_status == 'Home' else 0.7, # Differentiate Home/Away bars
+                                    showlegend=show_legend_main # Apply change here
+                                )
+                            )
+
+                # Add individual player wickets
+                for i, name in enumerate(individual_players):
+                    # Group by Year and HomeOrAway
+                    player_wickets_ha = filtered_df[filtered_df['Name'] == name].groupby(['Year', 'HomeOrAway'])['Bowler_Wkts'].sum().reset_index()
+                    base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+
+                    # Add traces for player - Home and Away separately
+                    for ha_status in ['Home', 'Away']:
+                        data_subset = player_wickets_ha[player_wickets_ha['HomeOrAway'] == ha_status]
+                        if not data_subset.empty:
+                            legend_name = f'{name} - {ha_status}'
+                            show_legend_main = True # Show both Home and Away in legend
+
+                            fig_season_wickets_ha.add_trace( # Use renamed variable
+                                go.Bar(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Bowler_Wkts'],
+                                    name=legend_name,
+                                    legendgroup=name, # Group by player name
+                                    marker_color=base_color,
+                                    opacity=1.0 if ha_status == 'Home' else 0.7, # Differentiate Home/Away bars
+                                    showlegend=show_legend_main # Apply change here
+                                )
+                            )
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year (Home vs Away)</h3>", unsafe_allow_html=True) # Updated title
+
+                fig_season_wickets_ha.update_layout( # Use renamed variable
+                    showlegend=True,
+                    height=550, # Increased height slightly for legend space
+                    xaxis_title='Year',
+                    yaxis_title='Wickets',
+                    margin=dict(l=50, r=50, t=70, b=50),
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    barmode='group', # Keep as group to see Home/Away side-by-side per player/year
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top", # Anchor legend to its top
+                        y=-0.15,       # Position below the plot area (adjust as needed)
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+
+                fig_season_wickets_ha.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)') # Use renamed variable
+                fig_season_wickets_ha.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)') # Use renamed variable
+
+                st.plotly_chart(fig_season_wickets_ha, use_container_width=True) # Use renamed variable
 
 # Display the bowling view
 display_bowl_view()
