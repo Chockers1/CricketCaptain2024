@@ -299,7 +299,7 @@ def display_bowl_view():
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
             "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats", "Home/Away Stats" # Added new tab
+            "Block Stats", "Home/Away Stats", "Records" # Added Records tab
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
@@ -1476,11 +1476,10 @@ def display_bowl_view():
                     'Cumulative Average', 'Cumulative SR', 'Cumulative Econ'
                 ]
                 
-                # Only include columns that exist in the DataFrame
+                     # Only include columns that exist in the DataFrame
                 final_columns = [col for col in column_order if col in df_bowl.columns]
                 df_bowl = df_bowl[final_columns]
-
-                # Handle infinities and NaNs
+             # Handle infinities and NaNs
                 df_bowl = df_bowl.replace([np.inf, -np.inf], np.nan)
 
                 # Display the bowling statistics
@@ -2205,6 +2204,351 @@ def display_bowl_view():
                 fig_season_wickets_ha.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)') # Use renamed variable
 
                 st.plotly_chart(fig_season_wickets_ha, use_container_width=True) # Use renamed variable
+
+        ###-------------------------------------RECORDS TAB-------------------------------------###
+        # Records Tab
+        with tabs[11]:
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Bowling Records</h2>", unsafe_allow_html=True)
+            
+            # Create columns for layout
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # --- Best Bowling in an Innings ---
+                # Select relevant columns and sort by Wickets (descending) then Runs (ascending)
+                best_bowling_df = filtered_df[['Name', 'Bowl_Team', 'Bowler_Wkts', 'Bowler_Runs', 'Bowler_Balls', 'Bat_Team', 'Year']].copy()
+                
+                # Calculate overs correctly from balls
+                best_bowling_df['Overs'] = (best_bowling_df['Bowler_Balls'] // 6) + (best_bowling_df['Bowler_Balls'] % 6) / 10
+                best_bowling_df['Overs'] = best_bowling_df['Overs'].round(1)  # Round to 1 decimal place
+                
+                best_bowling_df = best_bowling_df.sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True]).head(10)
+                
+                # Calculate bowling figures string (e.g., "5/32")
+                best_bowling_df['Bowling_Figures'] = best_bowling_df['Bowler_Wkts'].astype(str) + '/' + best_bowling_df['Bowler_Runs'].astype(str)
+
+                # Add Rank column
+                best_bowling_df.insert(0, 'Rank', range(1, 1 + len(best_bowling_df)))
+
+                # Rename columns
+                best_bowling_df = best_bowling_df.rename(columns={'Bat_Team': 'Opponent', 'Bowl_Team': 'Team'})
+
+                # Reorder columns
+                best_bowling_df = best_bowling_df[['Rank', 'Name', 'Team', 'Bowling_Figures', 'Overs', 'Opponent', 'Year']]
+
+                # Display the Best Bowling header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling in an Innings</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
+
+            with col2:
+                # --- Most Economical Spells (min overs by format) ---
+                # Make a copy of the filtered dataframe with only needed columns to avoid any issues
+                eco_df = filtered_df[['Name', 'Bowl_Team', 'Match_Format', 'Bowler_Runs', 'Bowler_Balls', 'Bowler_Wkts', 'Bat_Team', 'Year']].copy()
+                
+                # Set minimum overs required based on format
+                def min_overs_required(format_name):
+                    if format_name in ['T20', 'T20 Over International', '20 Over International']:
+                        return 4  # T20 formats: min 4 overs
+                    elif format_name in ['One Day International', 'List A']:
+                        return 10  # ODI formats: min 10 overs
+                    else:
+                        return 15  # Test/FC formats: min 15 overs
+
+                # Add column for minimum overs
+                eco_df['Min_Overs'] = eco_df['Match_Format'].apply(min_overs_required)
+                
+                # Calculate overs properly from balls
+                eco_df['Overs'] = (eco_df['Bowler_Balls'] // 6) + (eco_df['Bowler_Balls'] % 6) / 10
+                eco_df['Overs'] = eco_df['Overs'].round(1)  # Round to 1 decimal place
+
+                # Filter for spells meeting minimum over requirements
+                eco_df = eco_df[eco_df['Overs'] >= eco_df['Min_Overs']]
+                
+                # Calculate economy rate - using correctly calculated overs value
+                eco_df['Economy'] = (eco_df['Bowler_Runs'] / eco_df['Overs']).round(2)
+                
+                # Sort by Economy (ascending)
+                eco_df = eco_df.sort_values(by='Economy', ascending=True).head(10)
+                
+                # Add Rank column
+                eco_df.insert(0, 'Rank', range(1, 1 + len(eco_df)))
+                
+                # Create the final dataframe for display with properly renamed columns
+                display_df = pd.DataFrame({
+                    'Rank': eco_df['Rank'],
+                    'Name': eco_df['Name'],
+                    'Team': eco_df['Bowl_Team'],  # Add Team column
+                    'Economy': eco_df['Economy'],
+                    'Overs': eco_df['Overs'],
+                    'Runs': eco_df['Bowler_Runs'],
+                    'Wickets': eco_df['Bowler_Wkts'],
+                    'Opponent': eco_df['Bat_Team'],
+                    'Format': eco_df['Match_Format'],
+                    'Year': eco_df['Year']
+                })
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Economical Spells</h3>", unsafe_allow_html=True)
+                # Display the final dataframe
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # Match bowling records section
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Bowling Records</h2>", unsafe_allow_html=True)
+            
+            # Create columns for layout - use two columns now
+            col3, col4 = st.columns(2)
+
+            with col3:
+                # --- Best Match Bowling Figures ---
+                # Group by player, match file and calculate total wickets and runs
+                match_bowling = filtered_df.groupby(['Name', 'File Name', 'Bat_Team', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum',  # Use Bowler_Balls instead of Overs
+                    'Year': 'first',
+                    'Bowl_Team': 'first'  # Add Bowl_Team for display
+                }).reset_index()
+                
+                # Calculate overs from balls
+                match_bowling['Overs'] = (match_bowling['Bowler_Balls'] // 6) + (match_bowling['Bowler_Balls'] % 6) / 10
+                match_bowling['Overs'] = match_bowling['Overs'].round(1)  # Round to 1 decimal place
+                
+                # Sort by wickets (descending) then runs (ascending)
+                match_bowling = match_bowling.sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True]).head(10)
+                
+                # Calculate match bowling figures
+                match_bowling['Match_Figures'] = match_bowling['Bowler_Wkts'].astype(str) + '/' + match_bowling['Bowler_Runs'].astype(str)
+                
+                # Add rank column
+                match_bowling.insert(0, 'Rank', range(1, 1 + len(match_bowling)))
+                
+                # Rename columns
+                match_bowling = match_bowling.rename(columns={
+                    'Bat_Team': 'Opponent', 
+                    'Bowl_Team': 'Team',
+                    'Bowler_Wkts': 'Wickets',
+                    'Bowler_Runs': 'Runs',
+                    'Match_Format': 'Format'
+                })
+                
+                # Select and reorder columns - drop Bowler_Balls from display
+                match_bowling_df = match_bowling[['Rank', 'Name', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Team', 'Opponent', 'Format', 'Year']]
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(match_bowling_df, use_container_width=True, hide_index=True)
+
+            with col4:
+                # --- Most Expensive Bowling Figures ---
+                # Use the same grouped data but sort by most runs (descending)
+                # Group by player, match file and calculate total wickets and runs
+                expensive_bowling = filtered_df.groupby(['Name', 'File Name', 'Bat_Team', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum',
+                    'Year': 'first',
+                    'Bowl_Team': 'first'
+                }).reset_index()
+                
+                # Calculate overs from balls
+                expensive_bowling['Overs'] = (expensive_bowling['Bowler_Balls'] // 6) + (expensive_bowling['Bowler_Balls'] % 6) / 10
+                expensive_bowling['Overs'] = expensive_bowling['Overs'].round(1)
+                
+                # Sort by runs (descending) - most expensive first
+                expensive_bowling = expensive_bowling.sort_values(by='Bowler_Runs', ascending=False).head(10)
+                
+                # Calculate match bowling figures
+                expensive_bowling['Match_Figures'] = expensive_bowling['Bowler_Wkts'].astype(str) + '/' + expensive_bowling['Bowler_Runs'].astype(str)
+                
+                # Add rank column
+                expensive_bowling.insert(0, 'Rank', range(1, 1 + len(expensive_bowling)))
+                
+                # Rename columns
+                expensive_bowling = expensive_bowling.rename(columns={
+                    'Bat_Team': 'Opponent',
+                    'Bowl_Team': 'Team',
+                    'Bowler_Wkts': 'Wickets',
+                    'Bowler_Runs': 'Runs',
+                    'Match_Format': 'Format'
+                })
+                
+                # Select and reorder columns
+                expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Team', 'Opponent', 'Format', 'Year']]
+                
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Expensive Bowling Figures</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(expensive_bowling_df, use_container_width=True, hide_index=True)
+
+            # Seasonal Records Section
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
+            
+            # Create two rows with two columns each for the four seasonal stats
+            row1_col1, row1_col2 = st.columns(2)
+            row2_col1, row2_col2 = st.columns(2)
+
+            with row1_col1:
+                # --- Most Wickets in a Season by Format ---
+                # Group by player, year, format
+                season_wickets = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'File Name': 'nunique',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                
+                # Calculate average and economy - ensure proper overs calculation from balls
+                season_wickets['Overs'] = (season_wickets['Bowler_Balls'] // 6) + (season_wickets['Bowler_Balls'] % 6) / 10
+                season_wickets['Average'] = (season_wickets['Bowler_Runs'] / season_wickets['Bowler_Wkts']).round(2)
+                season_wickets['Economy'] = (season_wickets['Bowler_Runs'] / season_wickets['Overs']).round(2)
+                
+                # Sort by wickets and get top seasons
+                season_wickets = season_wickets.sort_values(by='Bowler_Wkts', ascending=False).head(10)
+                
+                # Add rank column
+                season_wickets.insert(0, 'Rank', range(1, 1 + len(season_wickets)))
+                
+                # Rename columns
+                season_wickets = season_wickets.rename(columns={
+                    'Match_Format': 'Format',
+                    'Bowler_Wkts': 'Wickets',
+                    'File Name': 'Matches',
+                    'Bowler_Runs': 'Runs'
+                })
+                
+                # Select and reorder columns
+                season_wickets_df = season_wickets[['Rank', 'Name', 'Year', 'Format', 'Matches', 'Wickets', 'Average', 'Economy']]
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Wickets in a Season</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(season_wickets_df, use_container_width=True, hide_index=True)
+
+            with row1_col2:
+                # --- Best Bowling Average in a Season (min 15 wickets) ---
+                # Group by player, year, format
+                season_avg = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'File Name': 'nunique',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                
+                # Filter for at least 15 wickets
+                season_avg = season_avg[season_avg['Bowler_Wkts'] >= 15]
+                
+                # Calculate average and economy - ensure proper overs calculation
+                season_avg['Overs'] = (season_avg['Bowler_Balls'] // 6) + (season_avg['Bowler_Balls'] % 6) / 10
+                season_avg['Average'] = (season_avg['Bowler_Runs'] / season_avg['Bowler_Wkts']).round(2)
+                season_avg['SR'] = (season_avg['Bowler_Balls'] / season_avg['Bowler_Wkts']).round(2)
+                
+                # Sort by average (ascending)
+                season_avg = season_avg.sort_values(by='Average', ascending=True).head(10)
+                
+                # Add rank column
+                season_avg.insert(0, 'Rank', range(1, 1 + len(season_avg)))
+                
+                # Rename columns
+                season_avg = season_avg.rename(columns={
+                    'Match_Format': 'Format',
+                    'Bowler_Wkts': 'Wickets',
+                    'File Name': 'Matches',
+                    'Bowler_Runs': 'Runs'
+                })
+                
+                # Select and reorder columns
+                season_avg_df = season_avg[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Average', 'SR', 'Matches']]
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling Average in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(season_avg_df, use_container_width=True, hide_index=True)
+                
+            with row2_col1:
+                # --- Best Strike Rate in a Season (min 15 wickets) ---
+                # Group by player, year, format
+                season_sr = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'File Name': 'nunique',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                
+                # Filter for at least 15 wickets
+                season_sr = season_sr[season_sr['Bowler_Wkts'] >= 15]
+                
+                # Calculate average and economy - ensure proper overs calculation
+                season_sr['Overs'] = (season_sr['Bowler_Balls'] // 6) + (season_sr['Bowler_Balls'] % 6) / 10
+                season_sr['Average'] = (season_sr['Bowler_Runs'] / season_sr['Bowler_Wkts']).round(2)
+                season_sr['SR'] = (season_sr['Bowler_Balls'] / season_sr['Bowler_Wkts']).round(2)
+                season_sr['Economy'] = (season_sr['Bowler_Runs'] / season_sr['Overs']).round(2)
+                
+                # Sort by strike rate (ascending)
+                season_sr = season_sr.sort_values(by='SR', ascending=True).head(10)
+                
+                # Add rank column
+                season_sr.insert(0, 'Rank', range(1, 1 + len(season_sr)))
+                
+                # Rename columns
+                season_sr = season_sr.rename(columns={
+                    'Match_Format': 'Format',
+                    'Bowler_Wkts': 'Wickets',
+                    'File Name': 'Matches',
+                    'Bowler_Runs': 'Runs',
+                    'SR': 'Strike Rate'
+                })
+                
+                # Select and reorder columns
+                season_sr_df = season_sr[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Strike Rate', 'Average', 'Matches']]
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Strike Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(season_sr_df, use_container_width=True, hide_index=True)
+                
+            with row2_col2:
+                # --- Best Economy Rate in a Season (min 15 wickets) ---
+                # Group by player, year, format
+                season_econ = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
+                    'Bowler_Wkts': 'sum',
+                    'File Name': 'nunique',
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                
+                # Filter for at least 15 wickets
+                season_econ = season_econ[season_econ['Bowler_Wkts'] >= 15]
+                
+                # Calculate average and economy - ensure proper overs calculation
+                season_econ['Overs'] = (season_econ['Bowler_Balls'] // 6) + (season_econ['Bowler_Balls'] % 6) / 10
+                season_econ['Economy'] = (season_econ['Bowler_Runs'] / season_econ['Overs']).round(2)
+                season_econ['Average'] = (season_econ['Bowler_Runs'] / season_econ['Bowler_Wkts']).round(2)
+                season_econ['SR'] = (season_econ['Bowler_Balls'] / season_econ['Bowler_Wkts']).round(2)
+                
+                # Sort by economy rate (ascending)
+                season_econ = season_econ.sort_values(by='Economy', ascending=True).head(10)
+                
+                # Add rank column
+                season_econ.insert(0, 'Rank', range(1, 1 + len(season_econ)))
+                
+                # Rename columns
+                season_econ = season_econ.rename(columns={
+                    'Match_Format': 'Format',
+                    'Bowler_Wkts': 'Wickets',
+                    'File Name': 'Matches',
+                    'Bowler_Runs': 'Runs'
+                })
+                
+                # Select and reorder columns
+                season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Economy Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(season_econ_df, use_container_width=True, hide_index=True)
 
 # Display the bowling view
 display_bowl_view()
