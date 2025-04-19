@@ -10,6 +10,8 @@ import json
 import pickle
 from datetime import timedelta
 from functools import wraps
+import time
+import subprocess
 
 # Add this CSS styling at the beginning of the file, after imports
 st.markdown("""
@@ -124,11 +126,12 @@ def display_bat_view():
     # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         # Store the start time to measure performance
-        import time
         start_time = time.time()
-        
+
         bat_df = st.session_state['bat_df']
-        
+        # Ensure match_df is also available if needed for the new tab
+        match_df = st.session_state.get('match_df', pd.DataFrame())
+
         # Pre-process data once at the beginning
         if 'processed_bat_df' not in st.session_state:
             # Ensure comp column exists
@@ -463,13 +466,13 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Added "Home/Away" tab
+        # Create tabs for different views - Added "Win/Loss record" tab
         tabs = main_container.tabs([
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
             "Innings Stats", "Position Stats", "Home/Away Stats",
             "Cumulative Stats", "Block Stats", "Distributions", "Percentile",
-            "Records"  # Changed from "Best" to "Records"
+            "Records", "Win/Loss record"  # Added new tab
         ])
         
         # Career Stats Tab
@@ -3909,6 +3912,100 @@ def display_bat_view():
                 st.dataframe(best_career_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # col26 is empty
+
+        # Win/Loss record Tab
+        with tabs[14]:
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Win/Loss Record</h3>", unsafe_allow_html=True)
+
+            # Cache key for win/loss data
+            wl_cache_key = f"{cache_key}_wl_data"
+            wl_df = get_cached_dataframe(wl_cache_key)
+
+            if wl_df is None:
+                if not filtered_df.empty and not match_df.empty and 'File Name' in filtered_df.columns and 'File Name' in match_df.columns:
+                    # 1. Get unique File Names from the filtered batting data
+                    unique_files_df = filtered_df[['File Name']].drop_duplicates()
+
+                    # 2. Merge unique File Names with match_df to get unique match results
+                    match_results_df = pd.merge(unique_files_df, match_df, on='File Name', how='left', suffixes=('', '_match_orig'))
+
+                    # 3. Merge the original filtered_df (with player names) onto the unique match results
+                    wl_df = pd.merge(filtered_df, match_results_df, on='File Name', how='left', suffixes=('_bat', '_match'))
+
+                    # Cache the merged dataframe
+                    if REDIS_AVAILABLE:
+                        cache_dataframe(wl_cache_key, wl_df)
+                else:
+                    wl_df = pd.DataFrame()  # Create empty df if merge is not possible
+
+            if not wl_df.empty:
+                # --- Create winloss_df summary ---
+                try:
+                    # Drop duplicates at the File Name and Name level before aggregation
+                    # This ensures each player's participation in a match is counted only once for win/loss stats
+                    wl_agg_base = wl_df[['Name', 'File Name', 'HomeOrAway', 'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win']].drop_duplicates()
+
+                    winloss_df = wl_agg_base.groupby('Name').agg(
+                        Home_Matches=pd.NamedAgg(column='HomeOrAway', aggfunc=lambda x: (x == 'Home').sum()),
+                        Away_Matches=pd.NamedAgg(column='HomeOrAway', aggfunc=lambda x: (x == 'Away').sum()),
+                        Home_Win=pd.NamedAgg(column='Home_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Win=pd.NamedAgg(column='Away_Won', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Lost=pd.NamedAgg(column='Away_Won', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Lost=pd.NamedAgg(column='Home_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Draw=pd.NamedAgg(column='Home_Drawn', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Draw=pd.NamedAgg(column='Away_Drawn', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Tie=pd.NamedAgg(column='Tie', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Tie=pd.NamedAgg(column='Tie', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Innings_Win=pd.NamedAgg(column='Innings_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (wl_agg_base.loc[x.index, 'Home_Win'] == 1) & (x == 1)).sum()),
+                        Away_Innings_Win=pd.NamedAgg(column='Innings_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (wl_agg_base.loc[x.index, 'Away_Won'] == 1) & (x == 1)).sum())
+                    ).reset_index()
+
+                    # Calculate combined columns
+                    winloss_df['Total Matches'] = winloss_df['Home_Matches'] + winloss_df['Away_Matches']
+                    winloss_df['Total Win'] = winloss_df['Home_Win'] + winloss_df['Away_Win']
+                    winloss_df['Total Lost'] = winloss_df['Home_Lost'] + winloss_df['Away_Lost']
+                    winloss_df['Total Draw'] = winloss_df['Home_Draw'] + winloss_df['Away_Draw']
+                    winloss_df['Total Tie'] = winloss_df['Home_Tie'] + winloss_df['Away_Tie']
+                    winloss_df['Total Innings Win'] = winloss_df['Home_Innings_Win'] + winloss_df['Away_Innings_Win']
+
+                    # Calculate percentage columns, handling division by zero
+                    winloss_df['Win %'] = (winloss_df['Total Win'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+                    winloss_df['Lost %'] = (winloss_df['Total Lost'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+                    winloss_df['Draw %'] = (winloss_df['Total Draw'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+
+                    # Reorder columns for display: Name, Totals (with percentages), Home, Away
+                    winloss_df = winloss_df[
+                        ['Name', 'Total Matches', 'Total Win', 'Win %', 'Total Lost', 'Lost %', 'Total Draw', 'Draw %', 'Total Tie', 'Total Innings Win',
+                        'Home_Matches', 'Home_Win', 'Home_Lost', 'Home_Draw', 'Home_Tie', 'Home_Innings_Win',
+                        'Away_Matches', 'Away_Win', 'Away_Lost', 'Away_Draw', 'Away_Tie', 'Away_Innings_Win']
+                    ]
+
+                    #st.markdown("#### Win/Loss Summary by Player (winloss_df)")
+                    # Display up to 50 rows with increased height
+                    st.dataframe(
+                        winloss_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=800,
+                        column_config={
+                            "Name": st.column_config.Column("Name", pinned=True),
+                            "Win %": st.column_config.NumberColumn("Win %", format="%d%%"),
+                            "Lost %": st.column_config.NumberColumn("Lost %", format="%d%%"),
+                            "Draw %": st.column_config.NumberColumn("Draw %", format="%d%%"),
+                        }
+                    )
+                    st.divider()  # Add separator
+                except KeyError as e:
+                    st.error(f"Error creating win/loss summary: Missing column - {e}. Please ensure the match data includes win/loss/draw/tie information.")
+                except Exception as e:
+                    st.error(f"An unexpected error occurred while creating the win/loss summary: {e}")
+
+                # --- Display wl_df_display (original merged data with columns dropped) ---
+                columns_to_display = ['Name', 'Home Team', 'Away Team', 'Match_Result', 'HomeOrAway', 'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win']
+                available_cols = [col for col in columns_to_display if col in wl_df.columns]
+                
+
+# ...existing code...
 
     else:
         st.warning("Please upload a file first.")
