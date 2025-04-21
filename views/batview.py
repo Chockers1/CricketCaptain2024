@@ -10,6 +10,8 @@ import json
 import pickle
 from datetime import timedelta
 from functools import wraps
+import time
+import subprocess
 
 # Add this CSS styling at the beginning of the file, after imports
 st.markdown("""
@@ -124,11 +126,12 @@ def display_bat_view():
     # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         # Store the start time to measure performance
-        import time
         start_time = time.time()
-        
+
         bat_df = st.session_state['bat_df']
-        
+        # Ensure match_df is also available if needed for the new tab
+        match_df = st.session_state.get('match_df', pd.DataFrame())
+
         # Pre-process data once at the beginning
         if 'processed_bat_df' not in st.session_state:
             # Ensure comp column exists
@@ -146,6 +149,13 @@ def display_bat_view():
             
             # Convert Year to int once
             bat_df['Year'] = bat_df['Year'].astype(int)
+            
+            # Add HomeOrAway column to designate home or away matches
+            bat_df['HomeOrAway'] = 'Neutral'  # Default value
+            # Where Home Team equals Batting Team
+            bat_df.loc[bat_df['Home Team'] == bat_df['Bat_Team_y'], 'HomeOrAway'] = 'Home'
+            # Where Away Team equals Batting Team
+            bat_df.loc[bat_df['Away Team'] == bat_df['Bat_Team_y'], 'HomeOrAway'] = 'Away'
             
             st.session_state['processed_bat_df'] = bat_df
         else:
@@ -389,6 +399,14 @@ def display_bat_view():
             mask &= filtered_df['Position'].between(position_choice[0], position_choice[1])
             
             filtered_df = filtered_df[mask]
+
+            # Ensure HomeOrAway column exists in the filtered DataFrame
+            if 'HomeOrAway' not in filtered_df.columns:
+                filtered_df['HomeOrAway'] = 'Neutral'  # Default value
+                # Where Home Team equals Batting Team
+                filtered_df.loc[filtered_df['Home Team'] == filtered_df['Bat_Team_y'], 'HomeOrAway'] = 'Home'
+                # Where Away Team equals Batting Team
+                filtered_df.loc[filtered_df['Away Team'] == filtered_df['Bat_Team_y'], 'HomeOrAway'] = 'Away'
             
             # Group-based filters using a more efficient approach
             player_stats = filtered_df.groupby('Name').agg({
@@ -448,12 +466,13 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Added "Percentile" tab and renamed "Visualizations" to "Distributions"
+        # Create tabs for different views - Added "Win/Loss record" tab
         tabs = main_container.tabs([
             "Career Stats", "Format Stats", "Season Stats", 
             "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats", "Distributions", "Percentile"
+            "Innings Stats", "Position Stats", "Home/Away Stats",
+            "Cumulative Stats", "Block Stats", "Distributions", "Percentile",
+            "Records", "Win/Loss record"  # Added new tab
         ])
         
         # Career Stats Tab
@@ -919,7 +938,8 @@ def display_bat_view():
             )
             
             # Update axes
-            fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', 
+                             tickmode='linear', dtick=1)  # Ensure only whole years are displayed
             fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
             fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
             
@@ -1113,7 +1133,7 @@ def display_bat_view():
             )
 
             # Update axes
-            fig.update_xaxes(title_text="Year", gridcolor='lightgray')
+            fig.update_xaxes(title_text="Year", gridcolor='lightgray', tickmode='linear', dtick=1)  # Ensure only whole years are displayed
             fig.update_yaxes(title_text="Average", gridcolor='lightgray', col=1)
             fig.update_yaxes(title_text="Strike Rate", gridcolor='lightgray', col=2)
 
@@ -1890,8 +1910,393 @@ def display_bat_view():
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
 
-        # Cumulative Stats Tab
+        # Home/Away Stats Tab
         with tabs[8]:
+            # Cache key for home/away statistics
+            homeaway_cache_key = f"{cache_key}_homeaway_stats"
+            homeaway_stats_df = get_cached_dataframe(homeaway_cache_key)
+
+            if homeaway_stats_df is None:
+                # Calculate statistics by HomeOrAway designation
+                homeaway_stats_df = filtered_df.groupby(['Name', 'HomeOrAway']).agg({
+                    'File Name': 'nunique',
+                    'Batted': 'sum',
+                    'Out': 'sum',
+                    'Not Out': 'sum',    
+                    'Balls': 'sum',
+                    'Runs': ['sum', 'max'],
+                    '4s': 'sum',
+                    '6s': 'sum',
+                    '50s': 'sum',
+                    '100s': 'sum',
+                    '200s': 'sum',
+                    '<25&Out': 'sum',
+                    'Caught': 'sum',
+                    'Bowled': 'sum',
+                    'LBW': 'sum',
+                    'Run Out': 'sum',
+                    'Stumped': 'sum',
+                    'Total_Runs': 'sum',
+                    'Overs': 'sum',
+                    'Wickets': 'sum',
+                    'Team Balls': 'sum'
+                }).reset_index()
+
+                # Flatten multi-level columns
+                homeaway_stats_df.columns = ['Name', 'HomeOrAway', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                          'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
+                                          '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                                          'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+                
+                # Create Career totals (aggregated across all locations)
+                career_stats = filtered_df.groupby(['Name']).agg({
+                    'File Name': 'nunique',
+                    'Batted': 'sum',
+                    'Out': 'sum',
+                    'Not Out': 'sum',    
+                    'Balls': 'sum',
+                    'Runs': ['sum', 'max'],
+                    '4s': 'sum',
+                    '6s': 'sum',
+                    '50s': 'sum',
+                    '100s': 'sum',
+                    '200s': 'sum',
+                    '<25&Out': 'sum',
+                    'Caught': 'sum',
+                    'Bowled': 'sum',
+                    'LBW': 'sum',
+                    'Run Out': 'sum',
+                    'Stumped': 'sum',
+                    'Total_Runs': 'sum',
+                    'Overs': 'sum',
+                    'Wickets': 'sum',
+                    'Team Balls': 'sum'
+                }).reset_index()
+                
+                # Flatten multi-level columns for career stats
+                career_stats.columns = ['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
+                                      'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
+                                      '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
+                                      'Team Runs', 'Overs', 'Wickets', 'Team Balls']
+                
+                # Add "Career" as location identifier
+                career_stats.insert(1, 'HomeOrAway', 'Career')
+                
+                # Concatenate career stats with home/away stats
+                homeaway_stats_df = pd.concat([career_stats, homeaway_stats_df], ignore_index=True)
+
+                # Calculate average runs per out, strike rate, and balls per out
+                homeaway_stats_df['Avg'] = (homeaway_stats_df['Runs'] / homeaway_stats_df['Out']).round(2).fillna(0)
+                homeaway_stats_df['SR'] = ((homeaway_stats_df['Runs'] / homeaway_stats_df['Balls']) * 100).round(2).fillna(0)
+                homeaway_stats_df['BPO'] = (homeaway_stats_df['Balls'] / homeaway_stats_df['Out']).round(2).fillna(0)
+
+                # Calculate new columns for team statistics
+                homeaway_stats_df['Team Avg'] = (homeaway_stats_df['Team Runs'] / homeaway_stats_df['Wickets']).round(2).fillna(0)
+                homeaway_stats_df['Team SR'] = (homeaway_stats_df['Team Runs'] / homeaway_stats_df['Team Balls'] * 100).round(2).fillna(0)
+
+                # Calculate P+ Avg and P+ SR
+                homeaway_stats_df['P+ Avg'] = (homeaway_stats_df['Avg'] / homeaway_stats_df['Team Avg'] * 100).round(2).fillna(0)
+                homeaway_stats_df['P+ SR'] = (homeaway_stats_df['SR'] / homeaway_stats_df['Team SR'] * 100).round(2).fillna(0)
+
+                # Calculate BPB (Balls Per Boundary)
+                homeaway_stats_df['BPB'] = (homeaway_stats_df['Balls'] / (homeaway_stats_df['4s'] + homeaway_stats_df['6s']).replace(0, 1)).round(2)
+
+                # Calculate new statistics
+                homeaway_stats_df['50+PI'] = (((homeaway_stats_df['50s'] + homeaway_stats_df['100s']) / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['100PI'] = ((homeaway_stats_df['100s'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['<25&OutPI'] = ((homeaway_stats_df['<25&Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+
+                # Calculate dismissal percentages
+                homeaway_stats_df['Caught%'] = ((homeaway_stats_df['Caught'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Bowled%'] = ((homeaway_stats_df['Bowled'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['LBW%'] = ((homeaway_stats_df['LBW'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Run Out%'] = ((homeaway_stats_df['Run Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Stumped%'] = ((homeaway_stats_df['Stumped'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+                homeaway_stats_df['Not Out%'] = ((homeaway_stats_df['Not Out'] / homeaway_stats_df['Inns']) * 100).round(2).fillna(0)
+
+                # Reorder columns
+                homeaway_stats_df = homeaway_stats_df[['Name', 'HomeOrAway', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
+                                                'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', 
+                                                '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
+                                                'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
+                
+                # Sort by Name and then put Career first, followed by Home, Away, and Neutral
+                homeaway_stats_df['HomeOrAway_order'] = homeaway_stats_df['HomeOrAway'].map({'Career': 0, 'Home': 1, 'Away': 2, 'Neutral': 3})
+                homeaway_stats_df = homeaway_stats_df.sort_values(by=['Name', 'HomeOrAway_order']).drop('HomeOrAway_order', axis=1)
+                
+                # Cache the computed home/away statistics
+                cache_dataframe(homeaway_cache_key, homeaway_stats_df)
+
+            # Display the Home/Away Stats header
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+            
+            # Display the full dataframe first
+            st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Cache key for home/away averages
+            homeaway_avg_cache_key = f"{cache_key}_homeaway_averages"
+            homeaway_avg_stats_df = get_cached_dataframe(homeaway_avg_cache_key)
+
+            if homeaway_avg_stats_df is None:
+                # Calculate average runs by home/away
+                homeaway_avg_stats_df = filtered_df.groupby('HomeOrAway').agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum',
+                    'File Name': 'nunique'
+                }).reset_index()
+
+                # Calculate averages and strike rates
+                homeaway_avg_stats_df['Avg'] = (homeaway_avg_stats_df['Runs'] / homeaway_avg_stats_df['Out']).round(2)
+                homeaway_avg_stats_df['SR'] = ((homeaway_avg_stats_df['Runs'] / homeaway_avg_stats_df['Balls']) * 100).round(2)
+                homeaway_avg_stats_df['Matches'] = homeaway_avg_stats_df['File Name']
+                
+                # Cache the home/away averages
+                cache_dataframe(homeaway_avg_cache_key, homeaway_avg_stats_df)
+
+            # Create a bar chart for Average runs by home/away
+            homeaway_chart_cache_key = f"{cache_key}_homeaway_chart"
+            fig = get_cached_dataframe(homeaway_chart_cache_key)
+
+            if fig is None:
+                # Create subplots: one for average, one for strike rate
+                fig = make_subplots(rows=1, cols=2, subplot_titles=("Average by Home/Away", "Strike Rate by Home/Away"))
+
+                # Add Average bars
+                fig.add_trace(
+                    go.Bar(
+                        x=homeaway_avg_stats_df['HomeOrAway'], 
+                        y=homeaway_avg_stats_df['Avg'], 
+                        name='Average', 
+                        marker_color='#f84e4e',
+                        text=homeaway_avg_stats_df['Matches'].apply(lambda x: f"{x} matches"),
+                        hovertemplate='%{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>'
+                    ),
+                    row=1, col=1
+                )
+
+                # Add Strike Rate bars
+                fig.add_trace(
+                    go.Bar(
+                        x=homeaway_avg_stats_df['HomeOrAway'], 
+                        y=homeaway_avg_stats_df['SR'], 
+                        name='Strike Rate', 
+                        marker_color='#4e84f8',
+                        text=homeaway_avg_stats_df['Matches'].apply(lambda x: f"{x} matches"),
+                        hovertemplate='%{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>'
+                    ),
+                    row=1, col=2
+                )
+
+                # Calculate the appropriate averages based on selection
+                if 'All' in name_choice and len(name_choice) == 1:
+                    # Calculate overall averages across all data
+                    overall_avg = homeaway_avg_stats_df['Avg'].mean()
+                    overall_sr = homeaway_avg_stats_df['SR'].mean()
+                else:
+                    # Use individual player's averages from bat_career_df
+                    overall_avg = bat_career_df['Avg'].iloc[0]
+                    overall_sr = bat_career_df['SR'].iloc[0]
+
+                # Add horizontal line for average
+                fig.add_trace(
+                    go.Scatter(
+                        x=homeaway_avg_stats_df['HomeOrAway'],
+                        y=[overall_avg] * len(homeaway_avg_stats_df),
+                        mode='lines',
+                        name='Career Average',
+                        line=dict(color='black', width=2, dash='dash'),
+                        showlegend=True
+                    ),
+                    row=1, col=1
+                )
+
+                # Add horizontal line for strike rate
+                fig.add_trace(
+                    go.Scatter(
+                        x=homeaway_avg_stats_df['HomeOrAway'],
+                        y=[overall_sr] * len(homeaway_avg_stats_df),
+                        mode='lines',
+                        name='Career SR',
+                        line=dict(color='black', width=2, dash='dash'),
+                        showlegend=True
+                    ),
+                    row=1, col=2
+                )
+
+                # Update layout
+                fig.update_layout(
+                    height=500,
+                    margin=dict(l=50, r=50, t=70, b=50),
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+
+                # Update axes
+                fig.update_yaxes(title_text="Average", col=1)
+                fig.update_yaxes(title_text="Strike Rate", col=2)
+
+                # Cache the home/away chart
+                cache_dataframe(homeaway_chart_cache_key, fig)
+
+            # Display chart title
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance by Home/Away</h3>", unsafe_allow_html=True)
+            
+            # Display the bar chart (full width)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add year-by-year home/away comparison charts
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home vs Away Performance Trends by Year</h3>", unsafe_allow_html=True)
+            
+            # Cache key for home/away yearly trends
+            homeaway_yearly_cache_key = f"{cache_key}_homeaway_yearly"
+            homeaway_yearly_fig = get_cached_dataframe(homeaway_yearly_cache_key)
+            
+            if homeaway_yearly_fig is None:
+                # Group data by Year and HomeOrAway to get yearly stats for home and away
+                yearly_homeaway_stats = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                    'Runs': 'sum',
+                    'Out': 'sum',
+                    'Balls': 'sum',
+                    'File Name': 'nunique'
+                }).reset_index()
+                
+                # Calculate metrics
+                yearly_homeaway_stats['Average'] = (yearly_homeaway_stats['Runs'] / yearly_homeaway_stats['Out']).round(2).fillna(0)
+                yearly_homeaway_stats['Strike_Rate'] = ((yearly_homeaway_stats['Runs'] / yearly_homeaway_stats['Balls']) * 100).round(2).fillna(0)
+                yearly_homeaway_stats['Matches'] = yearly_homeaway_stats['File Name']
+                
+                # Sort by year
+                yearly_homeaway_stats = yearly_homeaway_stats.sort_values('Year')
+                
+                # Create subplots: one for average, one for strike rate
+                homeaway_yearly_fig = make_subplots(rows=1, cols=2, 
+                                                   subplot_titles=("Average by Year (Home vs Away)", 
+                                                                  "Strike Rate by Year (Home vs Away)"))
+                
+                # Define colors for home, away, and neutral
+                colors = {
+                    'Home': '#1f77b4',   # Blue
+                    'Away': '#d62728',   # Red
+                    'Neutral': '#2ca02c'  # Green
+                }
+                
+                # Add traces for Average
+                for location in yearly_homeaway_stats['HomeOrAway'].unique():
+                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
+                    
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=location_data['Year'],
+                            y=location_data['Average'],
+                            mode='lines+markers',
+                            name=f"{location} Avg",
+                            line=dict(color=colors.get(location, '#7f7f7f')),
+                            marker=dict(size=8),
+                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
+                            hovertemplate='Year: %{x}<br>Average: %{y:.2f}<br>%{text}<extra></extra>',
+                            legendgroup=location
+                        ),
+                        row=1, col=1
+                    )
+                
+                # Add traces for Strike Rate
+                for location in yearly_homeaway_stats['HomeOrAway'].unique():
+                    location_data = yearly_homeaway_stats[yearly_homeaway_stats['HomeOrAway'] == location]
+                    
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=location_data['Year'],
+                            y=location_data['Strike_Rate'],
+                            mode='lines+markers',
+                            name=f"{location} SR",
+                            line=dict(color=colors.get(location, '#7f7f7f'), dash='dot'),
+                            marker=dict(size=8),
+                            text=location_data['Matches'].apply(lambda x: f"{x} matches"),
+                            hovertemplate='Year: %{x}<br>Strike Rate: %{y:.2f}<br>%{text}<extra></extra>',
+                            legendgroup=location,
+                            showlegend=False  # Don't duplicate legend entries
+                        ),
+                        row=1, col=2
+                    )
+                
+                # Add career average reference line
+                if 'All' in name_choice and len(name_choice) == 1:
+                    overall_avg = yearly_homeaway_stats['Average'].mean()
+                    overall_sr = yearly_homeaway_stats['Strike_Rate'].mean()
+                else:
+                    overall_avg = bat_career_df['Avg'].iloc[0]
+                    overall_sr = bat_career_df['SR'].iloc[0]
+                
+                years_range = yearly_homeaway_stats['Year'].unique()
+                if len(years_range) >= 2:
+                    min_year = min(years_range)
+                    max_year = max(years_range)
+                    
+                    # Add reference line for average
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=[min_year, max_year],
+                            y=[overall_avg, overall_avg],
+                            mode='lines',
+                            name='Career Average',
+                            line=dict(color='black', width=2, dash='dash'),
+                            legendgroup='reference'
+                        ),
+                        row=1, col=1
+                    )
+                    
+                    # Add reference line for strike rate
+                    homeaway_yearly_fig.add_trace(
+                        go.Scatter(
+                            x=[min_year, max_year],
+                            y=[overall_sr, overall_sr],
+                            mode='lines',
+                            name='Career SR',
+                            line=dict(color='black', width=2, dash='dash'),
+                            legendgroup='reference',
+                            showlegend=False  # Don't duplicate legend entries
+                        ),
+                        row=1, col=2
+                    )
+                
+                # Update layout
+                homeaway_yearly_fig.update_layout(
+                    height=500,
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+                
+                # Update axes
+                homeaway_yearly_fig.update_xaxes(title_text="Year", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)',
+                                               tickmode='linear', dtick=1)  # Ensure only whole years are displayed
+                homeaway_yearly_fig.update_yaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
+                homeaway_yearly_fig.update_yaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
+                
+                # Cache the home/away yearly chart
+                cache_dataframe(homeaway_yearly_cache_key, homeaway_yearly_fig)
+            
+            # Display the line charts
+            st.plotly_chart(homeaway_yearly_fig, use_container_width=True)
+
+        # Cumulative Stats Tab
+        with tabs[9]:
             # Cache key for cumulative stats data
             cumulative_cache_key = f"{cache_key}_cumulative_stats"
             cumulative_stats_df = get_cached_dataframe(cumulative_cache_key) if REDIS_AVAILABLE else None
@@ -2031,7 +2436,7 @@ def display_bat_view():
                 st.plotly_chart(fig3, use_container_width=True)
 
         # Block Stats Tab
-        with tabs[9]:
+        with tabs[10]:
             # Cache key for block statistics
             block_stats_cache_key = f"{cache_key}_block_stats"
             block_stats_df = get_cached_dataframe(block_stats_cache_key)
@@ -2179,7 +2584,7 @@ def display_bat_view():
             st.plotly_chart(fig, key="final_bar_chart")  # Added unique key
 
         # Renamed from "Visualizations" to "Distributions" Tab
-        with tabs[10]:
+        with tabs[11]:
             # Advanced metrics caching
             advanced_metrics_cache_key = f"{cache_key}_advanced_metrics"
             advanced_metrics = get_cached_dataframe(advanced_metrics_cache_key)
@@ -2438,7 +2843,7 @@ def display_bat_view():
             #st.plotly_chart(fig)
 
         # New Percentile tab - moved from Visualizations tab
-        with tabs[11]:
+        with tabs[12]:
             # Create percentile analysis
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Percentile Analysis (Min 10 Matches)</h3>", unsafe_allow_html=True)
             
@@ -2537,10 +2942,1073 @@ def display_bat_view():
                         
                         st.plotly_chart(fig, use_container_width=True)
 
-        # Print execution time (useful for performance monitoring)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        print(f"Execution time: {execution_time:.2f} seconds")
+        # Records Tab (now Records Tab)
+        with tabs[13]:
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Single Innings Bests</h2>", unsafe_allow_html=True)
+            # Create columns for layout
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # --- Top 10 Highest Scores ---
+                best_inns_cache_key = f"{cache_key}_best_innings"
+                best_inns_df = get_cached_dataframe(best_inns_cache_key)
+
+                if best_inns_df is None:
+                    # Select relevant columns and sort by Runs
+                    best_inns_df = filtered_df[['Name', 'Runs', 'Balls', 'Bowl_Team_y', 'Year']].copy()
+                    best_inns_df = best_inns_df.sort_values(by='Runs', ascending=False).head(10)
+
+                    # Add Rank column
+                    best_inns_df.insert(0, 'Rank', range(1, 1 + len(best_inns_df)))
+
+                    # Rename columns
+                    best_inns_df = best_inns_df.rename(columns={'Bowl_Team_y': 'Opponent'})
+
+                    # Reorder columns
+                    best_inns_df = best_inns_df[['Rank', 'Name', 'Runs', 'Balls', 'Opponent', 'Year']] # Year was already added
+
+                    # Cache the best innings data
+                    cache_dataframe(best_inns_cache_key, best_inns_df)
+
+                # Display the Best Innings header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Highest Scores</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(best_inns_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col2:
+                # --- Top 10 Best Strike Rate (Innings, min 50 runs) ---
+                best_inns_sr_cache_key = f"{cache_key}_best_inns_sr_min50"
+                best_inns_sr_df = get_cached_dataframe(best_inns_sr_cache_key)
+
+                if best_inns_sr_df is None:
+                    # Filter for innings with at least 50 runs
+                    inns_min_50 = filtered_df[filtered_df['Runs'] >= 50].copy()
+
+                    # Calculate SR, handle division by zero
+                    inns_min_50['SR'] = ((inns_min_50['Runs'] / inns_min_50['Balls'].replace(0, np.nan)) * 100).round(2)
+
+                    # Select relevant columns and sort by SR
+                    best_inns_sr_df = inns_min_50[['Name', 'Runs', 'Balls', 'SR', 'Bowl_Team_y', 'Year']].copy()
+                    best_inns_sr_df = best_inns_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_inns_sr_df.insert(0, 'Rank', range(1, 1 + len(best_inns_sr_df)))
+
+                    # Rename columns
+                    best_inns_sr_df = best_inns_sr_df.rename(columns={'Bowl_Team_y': 'Opponent'})
+
+                    # Reorder columns
+                    best_inns_sr_df = best_inns_sr_df[['Rank', 'Name', 'SR', 'Runs', 'Balls', 'Opponent', 'Year']]
+
+                    # Cache the data
+                    cache_dataframe(best_inns_sr_cache_key, best_inns_sr_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Inns, Min 50 Runs)</h3>", unsafe_allow_html=True)
+                # Display the dataframe
+                st.dataframe(best_inns_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+
+            # --- Seasonal Bests ---
+            st.divider()
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
+            col3, col4 = st.columns(2)
+
+            with col3:
+                # --- Top 10 Most Runs in a Season by Format ---
+                best_season_runs_cache_key = f"{cache_key}_best_season_runs"
+                best_season_runs_df = get_cached_dataframe(best_season_runs_cache_key)
+
+                if best_season_runs_df is None:
+                    # Group by Name, Year, Match_Format and sum Runs
+                    season_runs_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum')
+                    ).reset_index()
+
+                    # Sort by Runs descending and get top 10
+                    best_season_runs_df = season_runs_df.sort_values(by='Runs', ascending=False).head(10)
+
+                    # Add Rank column
+                    best_season_runs_df.insert(0, 'Rank', range(1, 1 + len(best_season_runs_df)))
+
+                    # Reorder columns
+                    best_season_runs_df = best_season_runs_df[['Rank', 'Name', 'Year', 'Match_Format', 'Runs']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_runs_cache_key, best_season_runs_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most Runs (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col4:
+                # --- Top 10 Best Average Per Season by Format ---
+                best_season_avg_cache_key = f"{cache_key}_best_season_avg"
+                best_season_avg_df = get_cached_dataframe(best_season_avg_cache_key)
+
+                if best_season_avg_df is None:
+                    # Group by Name, Year, Match_Format and sum Runs/Out
+                    season_avg_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Out=('Out', 'sum')
+                    ).reset_index()
+
+                    # Calculate Average, handle division by zero
+                    season_avg_df['Average'] = (season_avg_df['Runs'] / season_avg_df['Out'].replace(0, np.nan)).round(2)
+
+                    # Sort by Average descending (NaNs will be pushed to the bottom) and get top 10
+                    best_season_avg_df = season_avg_df.sort_values(by='Average', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_avg_df.insert(0, 'Rank', range(1, 1 + len(best_season_avg_df)))
+
+                    # Reorder columns
+                    best_season_avg_df = best_season_avg_df[['Rank', 'Name', 'Year', 'Match_Format', 'Average', 'Runs', 'Out']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_avg_cache_key, best_season_avg_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Average (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Create new row
+            st.divider() # Add a visual separator
+            col5, col6 = st.columns(2)
+
+            with col5:
+                # --- Top 10 Best SR Per Season by Format ---
+                best_season_sr_cache_key = f"{cache_key}_best_season_sr"
+                best_season_sr_df = get_cached_dataframe(best_season_sr_cache_key)
+
+                if best_season_sr_df is None:
+                    # Group by Name, Year, Match_Format and sum Runs/Balls
+                    season_sr_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Balls=('Balls', 'sum')
+                    ).reset_index()
+
+                    # Calculate SR, handle division by zero
+                    season_sr_df['SR'] = ((season_sr_df['Runs'] / season_sr_df['Balls'].replace(0, np.nan)) * 100).round(2)
+
+                    # Sort by SR descending and get top 10
+                    best_season_sr_df = season_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_sr_df.insert(0, 'Rank', range(1, 1 + len(best_season_sr_df)))
+
+                    # Reorder columns
+                    best_season_sr_df = best_season_sr_df[['Rank', 'Name', 'Year', 'Match_Format', 'SR', 'Runs', 'Balls']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_sr_cache_key, best_season_sr_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col6:
+                # --- Top 10 Best BPO Per Season by Format ---
+                best_season_bpo_cache_key = f"{cache_key}_best_season_bpo"
+                best_season_bpo_df = get_cached_dataframe(best_season_bpo_cache_key)
+
+                if best_season_bpo_df is None:
+                    # Group by Name, Year, Match_Format and sum Balls/Out
+                    season_bpo_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Balls=('Balls', 'sum'),
+                        Out=('Out', 'sum')
+                    ).reset_index()
+
+                    # Calculate BPO, handle division by zero
+                    season_bpo_df['BPO'] = (season_bpo_df['Balls'] / season_bpo_df['Out'].replace(0, np.nan)).round(2)
+
+                    # Sort by BPO descending (higher is better) and get top 10
+                    best_season_bpo_df = season_bpo_df.sort_values(by='BPO', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_bpo_df.insert(0, 'Rank', range(1, 1 + len(best_season_bpo_df)))
+
+                    # Reorder columns
+                    best_season_bpo_df = best_season_bpo_df[['Rank', 'Name', 'Year', 'Match_Format', 'BPO', 'Balls', 'Out']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_bpo_cache_key, best_season_bpo_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best BPO (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_bpo_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Create new row
+            st.divider()
+            col7, col8 = st.columns(2)
+
+            with col7:
+                # --- Top 10 Highest Runs Per Match (Season by Format) ---
+                best_season_rpm_cache_key = f"{cache_key}_best_season_rpm"
+                best_season_rpm_df = get_cached_dataframe(best_season_rpm_cache_key)
+
+                if best_season_rpm_df is None:
+                    # Group by Name, Year, Match_Format and aggregate Runs and Matches
+                    season_rpm_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Matches=('File Name', 'nunique') # Count unique matches
+                    ).reset_index()
+
+                    # Calculate Runs Per Match, handle division by zero
+                    season_rpm_df['Runs Per Match'] = (season_rpm_df['Runs'] / season_rpm_df['Matches'].replace(0, np.nan)).round(2)
+
+                    # Sort by Runs Per Match descending and get top 10
+                    best_season_rpm_df = season_rpm_df.sort_values(by='Runs Per Match', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_rpm_df.insert(0, 'Rank', range(1, 1 + len(best_season_rpm_df)))
+
+                    # Reorder columns
+                    best_season_rpm_df = best_season_rpm_df[['Rank', 'Name', 'Year', 'Match_Format', 'Runs Per Match', 'Runs', 'Matches']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_rpm_cache_key, best_season_rpm_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Runs Per Match (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_rpm_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col8:
+                # --- Top 10 Most 50s Per Season by Format ---
+                best_season_50s_cache_key = f"{cache_key}_best_season_50s"
+                best_season_50s_df = get_cached_dataframe(best_season_50s_cache_key)
+
+                if best_season_50s_df is None:
+                    # Ensure '50s' column exists
+                    if '50s' not in filtered_df.columns:
+                        filtered_df['50s'] = ((filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)).astype(int)
+
+                    # Group by Name, Year, Match_Format and sum 50s
+                    season_50s_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Fifties=('50s', 'sum')
+                    ).reset_index()
+
+                    # Sort by Fifties descending and get top 10
+                    best_season_50s_df = season_50s_df.sort_values(by='Fifties', ascending=False).head(10)
+
+                    # Add Rank column
+                    best_season_50s_df.insert(0, 'Rank', range(1, 1 + len(best_season_50s_df)))
+
+                    # Reorder columns
+                    best_season_50s_df = best_season_50s_df[['Rank', 'Name', 'Year', 'Match_Format', 'Fifties']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_50s_cache_key, best_season_50s_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 50s (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_50s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Create new row
+            st.divider()
+            col9, col10 = st.columns(2)
+
+            with col9:
+                # --- Top 10 Most 100s Per Season by Format ---
+                best_season_100s_cache_key = f"{cache_key}_best_season_100s"
+                best_season_100s_df = get_cached_dataframe(best_season_100s_cache_key)
+
+                if best_season_100s_df is None:
+                    # Ensure '100s' column exists from pre-processing or calculate it
+                    if '100s' not in filtered_df.columns:
+                        filtered_df['100s'] = (filtered_df['Runs'] >= 100).astype(int) # Recalculate if missing
+
+                    # Group by Name, Year, Match_Format and sum 100s
+                    season_100s_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Hundreds=('100s', 'sum') # Use the correct column name '100s'
+                    ).reset_index()
+
+                    # Sort by Hundreds descending and get top 10
+                    best_season_100s_df = season_100s_df.sort_values(by='Hundreds', ascending=False).head (10)
+
+                    # Add Rank column
+                    best_season_100s_df.insert(0, 'Rank', range(1, 1 + len(best_season_100s_df)))
+
+                    # Reorder columns
+                    best_season_100s_df = best_season_100s_df[['Rank', 'Name', 'Year', 'Match_Format', 'Hundreds']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_100s_cache_key, best_season_100s_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 100s (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_100s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col10:
+                # --- Top 10 Most POM Per Season ---
+                best_season_pom_cache_key = f"{cache_key}_best_season_pom"
+                best_season_pom_df = get_cached_dataframe(best_season_pom_cache_key)
+
+                if best_season_pom_df is None:
+                    # Filter for POM awards and count unique matches per player per year and format
+                    pom_df = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']]
+                    # Group by Name, Year, and Match_Format
+                    season_pom_df = pom_df.groupby(['Name', 'Year', 'Match_Format'])['File Name'].nunique().reset_index(name='POM')
+
+                    # Sort by POM descending and get top 10
+                    best_season_pom_df = season_pom_df.sort_values(by='POM', ascending=False).head(10)
+
+                    # Add Rank column
+                    best_season_pom_df.insert(0, 'Rank', range(1, 1 + len(best_season_pom_df)))
+
+                    # Reorder columns - Added Match_Format
+                    best_season_pom_df = best_season_pom_df[['Rank', 'Name', 'Year', 'Match_Format', 'POM']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_pom_cache_key, best_season_pom_df)
+
+                # Display the header - Updated title
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most POM (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Create new row
+            st.divider()
+            col11, col12 = st.columns(2)
+
+            with col11:
+                # --- Top 10 Highest Boundary % Per Season (by Format) ---
+                best_season_boundary_pct_cache_key = f"{cache_key}_best_season_boundary_pct"
+                best_season_boundary_pct_df = get_cached_dataframe(best_season_boundary_pct_cache_key)
+
+                if best_season_boundary_pct_df is None:
+                    # Group by Name, Year, Match_Format and aggregate Runs, 4s, 6s
+                    season_boundary_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Fours=('4s', 'sum'),
+                        Sixes=('6s', 'sum')
+                    ).reset_index()
+
+                    # Calculate Boundary Runs and Boundary Percentage
+                    season_boundary_df['Boundary Runs'] = (season_boundary_df['Fours'] * 4) + (season_boundary_df['Sixes'] * 6)
+                    season_boundary_df['Boundary %'] = ((season_boundary_df['Boundary Runs'] / season_boundary_df['Runs'].replace(0, np.nan)) * 100).round(2)
+
+                    # Sort by Boundary % descending and get top 10
+                    best_season_boundary_pct_df = season_boundary_df.sort_values(by='Boundary %', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_boundary_pct_df.insert(0, 'Rank', range(1, 1 + len(best_season_boundary_pct_df)))
+
+                    # Reorder columns
+                    best_season_boundary_pct_df = best_season_boundary_pct_df[['Rank', 'Name', 'Year', 'Match_Format', 'Boundary %', 'Boundary Runs', 'Runs']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_boundary_pct_cache_key, best_season_boundary_pct_df)
+
+                # Display the header
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Boundary % (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+
+            # --- Calculate Seasonal Match Averages and SR ---
+            # This calculation needs to happen before the Match+ sections, but doesn't need its own column
+            seasonal_match_metrics_cache_key = f"{cache_key}_seasonal_match_metrics_by_format"
+            seasonal_match_metrics = get_cached_dataframe(seasonal_match_metrics_cache_key)
+
+            if seasonal_match_metrics is None:
+                # Calculate file-level stats per year and format (match-level stats)
+                file_stats_seasonal = filtered_df.groupby(['File Name', 'Year', 'Match_Format']).agg({ # Added Match_Format
+                    'Total_Runs': 'first',
+                    'Team Balls': 'first',
+                    'Wickets': 'first'
+                }).reset_index()
+
+                # Calculate match-level metrics per year and format
+                file_stats_seasonal['Match_Avg'] = file_stats_seasonal['Total_Runs'] / file_stats_seasonal['Wickets'].replace(0, np.nan)
+                file_stats_seasonal['Match_SR'] = (file_stats_seasonal['Total_Runs'] / file_stats_seasonal['Team Balls'].replace(0, np.nan)) * 100
+
+                # Calculate the average of these match metrics per season and format
+                seasonal_match_metrics = file_stats_seasonal.groupby(['Year', 'Match_Format']).agg( # Added Match_Format
+                    Avg_Match_Avg=('Match_Avg', 'mean'),
+                    Avg_Match_SR=('Match_SR', 'mean')
+                ).reset_index()
+
+                # Round the calculated seasonal averages
+                seasonal_match_metrics['Avg_Match_Avg'] = seasonal_match_metrics['Avg_Match_Avg'].round(2)
+                seasonal_match_metrics['Avg_Match_SR'] = seasonal_match_metrics['Avg_Match_SR'].round(2)
+
+                cache_dataframe(seasonal_match_metrics_cache_key, seasonal_match_metrics)
+
+            with col12:
+                # --- Top 10 Best Match+ Avg Per Season ---
+                best_season_match_plus_avg_cache_key = f"{cache_key}_best_season_match_plus_avg_by_format"
+                best_season_match_plus_avg_df = get_cached_dataframe(best_season_match_plus_avg_cache_key)
+
+                if best_season_match_plus_avg_df is None:
+                    # Group player stats by Name, Year, and Match_Format
+                    player_seasonal_stats = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg( # Added Match_Format
+                        Runs=('Runs', 'sum'),
+                        Out=('Out', 'sum')
+                    ).reset_index()
+
+                    # Calculate player's seasonal average
+                    player_seasonal_stats['Player_Avg'] = (player_seasonal_stats['Runs'] / player_seasonal_stats['Out'].replace(0, np.nan)).round(2)
+
+                    # Merge with seasonal match metrics on Year and Match_Format
+                    merged_stats = pd.merge(player_seasonal_stats, seasonal_match_metrics, on=['Year', 'Match_Format'], how='left') # Merge on both
+
+                    # Calculate Match+ Avg
+                    merged_stats['Match+ Avg'] = ((merged_stats['Player_Avg'] / merged_stats['Avg_Match_Avg'].replace(0, np.nan)) * 100).round(2)
+
+                    # Sort by Match+ Avg descending and get top 10
+                    best_season_match_plus_avg_df = merged_stats.sort_values(by='Match+ Avg', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_match_plus_avg_df.insert(0, 'Rank', range(1, 1 + len(best_season_match_plus_avg_df)))
+
+                    # Reorder columns - Added Match_Format
+                    best_season_match_plus_avg_df = best_season_match_plus_avg_df[['Rank', 'Name', 'Year', 'Match_Format', 'Match+ Avg', 'Player_Avg', 'Avg_Match_Avg']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_match_plus_avg_cache_key, best_season_match_plus_avg_df)
+
+                # Display the header - Updated title
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ Avg (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # Create new row for the last seasonal item
+            st.divider()
+            col13, col14 = st.columns(2) # Use two columns, leave one empty
+
+            with col13:
+                # --- Top 10 Best Match+ SR Per Season ---
+                best_season_match_plus_sr_cache_key = f"{cache_key}_best_season_match_plus_sr_by_format"
+                best_season_match_plus_sr_df = get_cached_dataframe(best_season_match_plus_sr_cache_key)
+
+                if best_season_match_plus_sr_df is None:
+                    # Group player stats by Name, Year, and Match_Format
+                    player_seasonal_stats_sr = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg( # Added Match_Format
+                        Runs=('Runs', 'sum'),
+                        Balls=('Balls', 'sum')
+                    ).reset_index()
+
+                    # Calculate player's seasonal SR
+                    player_seasonal_stats_sr['Player_SR'] = ((player_seasonal_stats_sr['Runs'] / player_seasonal_stats_sr['Balls'].replace(0, np.nan)) * 100).round(2)
+
+                    # Merge with seasonal match metrics on Year and Match_Format
+                    merged_stats_sr = pd.merge(player_seasonal_stats_sr, seasonal_match_metrics, on=['Year', 'Match_Format'], how='left') # Merge on both
+
+                    # Calculate Match+ SR
+                    merged_stats_sr['Match+ SR'] = ((merged_stats_sr['Player_SR'] / merged_stats_sr['Avg_Match_SR'].replace(0, np.nan)) * 100).round(2)
+
+                    # Sort by Match+ SR descending and get top 10
+                    best_season_match_plus_sr_df = merged_stats_sr.sort_values(by='Match+ SR', ascending=False, na_position='last').head(10)
+
+                    # Add Rank column
+                    best_season_match_plus_sr_df.insert(0, 'Rank', range(1, 1 + len(best_season_match_plus_sr_df)))
+
+                    # Reorder columns - Added Match_Format
+                    best_season_match_plus_sr_df = best_season_match_plus_sr_df[['Rank', 'Name', 'Year', 'Match_Format', 'Match+ SR', 'Player_SR', 'Avg_Match_SR']]
+
+                    # Cache the data
+                    cache_dataframe(best_season_match_plus_sr_cache_key, best_season_match_plus_sr_df)
+
+                # Display the header - Updated title
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ SR (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the dataframe
+                st.dataframe(best_season_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # col14 is empty
+
+
+            # --- Career Bests ---
+            st.divider()
+            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Career Bests (by Format)</h2>", unsafe_allow_html=True)
+            col15, col16 = st.columns(2)
+
+            with col15:
+                # --- Top 10 Most Runs (Career by Format) ---
+                best_career_runs_cache_key = f"{cache_key}_best_career_runs"
+                best_career_runs_df = get_cached_dataframe(best_career_runs_cache_key)
+
+                if best_career_runs_df is None:
+                    # Use original bat_df for career calculations to ensure we get true career totals
+                    # regardless of year filtering applied elsewhere
+                    career_df = bat_df.copy()
+                    
+                    # Apply non-year filters to maintain consistency with other filters
+                    if name_choice and 'All' not in name_choice:
+                        career_df = career_df[career_df['Name'].isin(name_choice)]
+                    if bat_team_choice and 'All' not in bat_team_choice:
+                        career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                    if bowl_team_choice and 'All' not in bowl_team_choice:
+                        career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                    if match_format_choice and 'All' not in match_format_choice:
+                        career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                    if comp_choice and 'All' not in comp_choice:
+                        career_df = career_df[career_df['comp'].isin(comp_choice)]
+                        
+                    # Group by Name and Match_Format for career total (no Year grouping)
+                    career_runs_df = career_df.groupby(['Name', 'Match_Format']).agg({
+                        'Runs': 'sum'  # Sum of all runs for each player in each format across all years
+                    }).reset_index()
+                    
+                    # Sort by Runs descending and get top 10
+                    best_career_runs_df = career_runs_df.sort_values(by='Runs', ascending=False).head(10)
+                    best_career_runs_df.insert(0, 'Rank', range(1, 1 + len(best_career_runs_df)))
+                    best_career_runs_df = best_career_runs_df[['Rank', 'Name', 'Match_Format', 'Runs']]
+                    cache_dataframe(best_career_runs_cache_key, best_career_runs_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most Runs</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col16:
+                # --- Top 10 Best Average (Career by Format, min 10 inns) ---
+                best_career_avg_cache_key = f"{cache_key}_best_career_avg_min10inns"
+                best_career_avg_df = get_cached_dataframe(best_career_avg_cache_key)
+
+                if best_career_avg_df is None:
+                    # Use the same career_df for batting average calculations
+                    # This ensures consistency between career stats sections
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for true career totals
+                    career_avg_df = career_df.groupby(['Name', 'Match_Format']).agg({
+                        'Runs': 'sum',
+                        'Out': 'sum',
+                        'Batted': 'sum'  # Count innings
+                    }).reset_index()
+                    
+                    # Apply min innings filter AFTER aggregation
+                    career_avg_df = career_avg_df[career_avg_df['Batted'] >= 10]
+                    # Calculate Average, handle division by zero
+                    career_avg_df['Average'] = (career_avg_df['Runs'] / career_avg_df['Out'].replace(0, np.nan)).round(2)
+                    # Sort and get top 10
+                    best_career_avg_df = career_avg_df.sort_values(by='Average', ascending=False, na_position='last').head(10)
+                    best_career_avg_df.insert(0, 'Rank', range(1, 1 + len(best_career_avg_df)))
+                    best_career_avg_df = best_career_avg_df[['Rank', 'Name', 'Match_Format', 'Average', 'Runs', 'Out', 'Batted']]
+                    # Rename column for clarity
+                    best_career_avg_df = best_career_avg_df.rename(columns={'Batted': 'Inns'})
+                    cache_dataframe(best_career_avg_cache_key, best_career_avg_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Average (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            st.divider()
+            col17, col18 = st.columns(2)
+
+            with col17:
+                # --- Top 10 Best SR (Career by Format, min 500 balls) ---
+                best_career_sr_cache_key = f"{cache_key}_best_career_sr_min500b"
+                best_career_sr_df = get_cached_dataframe(best_career_sr_cache_key)
+
+                if best_career_sr_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_sr_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Balls=('Balls', 'sum')
+                    ).reset_index()
+                    # Apply min balls filter AFTER aggregation
+                    career_sr_df = career_sr_df[career_sr_df['Balls'] >= 500]
+                    career_sr_df['SR'] = ((career_sr_df['Runs'] / career_sr_df['Balls'].replace(0, np.nan)) * 100).round(2)
+                    best_career_sr_df = career_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
+                    best_career_sr_df.insert(0, 'Rank', range(1, 1 + len(best_career_sr_df)))
+                    best_career_sr_df = best_career_sr_df[['Rank', 'Name', 'Match_Format', 'SR', 'Runs', 'Balls']]
+                    cache_dataframe(best_career_sr_cache_key, best_career_sr_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Min 500 Balls)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col18:
+                # --- Top 10 Best BPO (Career by Format, min 10 inns) ---
+                best_career_bpo_cache_key = f"{cache_key}_best_career_bpo_min10inns"
+                best_career_bpo_df = get_cached_dataframe(best_career_bpo_cache_key)
+
+                if best_career_bpo_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_bpo_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Balls=('Balls', 'sum'),
+                        Out=('Out', 'sum'),
+                        Inns=('Batted', 'sum')
+                    ).reset_index()
+                    # Apply min innings filter AFTER aggregation
+                    career_bpo_df = career_bpo_df[career_bpo_df['Inns'] >= 10]
+                    career_bpo_df['BPO'] = (career_bpo_df['Balls'] / career_bpo_df['Out'].replace(0, np.nan)).round(2)
+                    best_career_bpo_df = career_bpo_df.sort_values(by='BPO', ascending=False, na_position='last').head(10)
+                    best_career_bpo_df.insert(0, 'Rank', range(1, 1 + len(best_career_bpo_df)))
+                    best_career_bpo_df = best_career_bpo_df[['Rank', 'Name', 'Match_Format', 'BPO', 'Balls', 'Out', 'Inns']]
+                    cache_dataframe(best_career_bpo_cache_key, best_career_bpo_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best BPO (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_bpo_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            st.divider()
+            col19, col20 = st.columns(2)
+
+            with col19:
+                # --- Top 10 Highest Runs Per Match (Career by Format, min 10 matches) ---
+                best_career_rpm_cache_key = f"{cache_key}_best_career_rpm_min10m"
+                best_career_rpm_df = get_cached_dataframe(best_career_rpm_cache_key)
+
+                if best_career_rpm_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_rpm_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Matches=('File Name', 'nunique')
+                    ).reset_index()
+                    # Apply min matches filter AFTER aggregation
+                    career_rpm_df = career_rpm_df[career_rpm_df['Matches'] >= 10]
+                    career_rpm_df['Runs Per Match'] = (career_rpm_df['Runs'] / career_rpm_df['Matches'].replace(0, np.nan)).round(2)
+                    best_career_rpm_df = career_rpm_df.sort_values(by='Runs Per Match', ascending=False, na_position='last').head(10)
+                    best_career_rpm_df.insert(0, 'Rank', range(1, 1 + len(best_career_rpm_df)))
+                    best_career_rpm_df = best_career_rpm_df[['Rank', 'Name', 'Match_Format', 'Runs Per Match', 'Runs', 'Matches']]
+                    cache_dataframe(best_career_rpm_cache_key, best_career_rpm_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Runs Per Match (Min 10 Matches)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_rpm_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col20:
+                # --- Top 10 Most 50s (Career by Format) ---
+                best_career_50s_cache_key = f"{cache_key}_best_career_50s"
+                best_career_50s_df = get_cached_dataframe(best_career_50s_cache_key)
+
+                if best_career_50s_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_50s_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Fifties=('50s', 'sum')
+                    ).reset_index()
+                    best_career_50s_df = career_50s_df.sort_values(by='Fifties', ascending=False).head(10)
+                    best_career_50s_df.insert(0, 'Rank', range(1, 1 + len(best_career_50s_df)))
+                    best_career_50s_df = best_career_50s_df[['Rank', 'Name', 'Match_Format', 'Fifties']]
+                    cache_dataframe(best_career_50s_cache_key, best_career_50s_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 50s</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_50s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            st.divider()
+            col21, col22 = st.columns(2)
+
+            with col21:
+                # --- Top 10 Most 100s (Career by Format) ---
+                best_career_100s_cache_key = f"{cache_key}_best_career_100s"
+                best_career_100s_df = get_cached_dataframe(best_career_100s_cache_key)
+
+                if best_career_100s_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_100s_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Hundreds=('100s', 'sum')
+                    ).reset_index()
+                    best_career_100s_df = career_100s_df.sort_values(by='Hundreds', ascending=False).head(10)
+                    best_career_100s_df.insert(0, 'Rank', range(1, 1 + len(best_career_100s_df)))
+                    best_career_100s_df = best_career_100s_df[['Rank', 'Name', 'Match_Format', 'Hundreds']]
+                    cache_dataframe(best_career_100s_cache_key, best_career_100s_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 100s</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_100s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            with col22:
+                # --- Top 10 Most POM (Career by Format) ---
+                best_career_pom_cache_key = f"{cache_key}_best_career_pom"
+                best_career_pom_df = get_cached_dataframe(best_career_pom_cache_key)
+
+                if best_career_pom_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Filter for POM awards first using career_df
+                    pom_df_career = career_df[career_df['Player_of_the_Match'] == career_df['Name']]
+                    # Group by Name and Match_Format only for career total
+                    career_pom_df = pom_df_career.groupby(['Name', 'Match_Format'])['File Name'].nunique().reset_index(name='POM')
+                    best_career_pom_df = career_pom_df.sort_values(by='POM', ascending=False).head(10)
+                    best_career_pom_df.insert(0, 'Rank', range(1, 1 + len(best_career_pom_df)))
+                    best_career_pom_df = best_career_pom_df[['Rank', 'Name', 'Match_Format', 'POM']]
+                    cache_dataframe(best_career_pom_cache_key, best_career_pom_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most POM</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            st.divider()
+            col23, col24 = st.columns(2)
+
+            with col23:
+                # --- Top 10 Highest Boundary % (Career by Format, min 500 runs) ---
+                best_career_boundary_pct_cache_key = f"{cache_key}_best_career_boundary_pct_min500r"
+                best_career_boundary_pct_df = get_cached_dataframe(best_career_boundary_pct_cache_key)
+
+                if best_career_boundary_pct_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    career_boundary_df = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Fours=('4s', 'sum'),
+                        Sixes=('6s', 'sum')
+                    ).reset_index()
+                    # Apply min runs filter AFTER aggregation
+                    career_boundary_df = career_boundary_df[career_boundary_df['Runs'] >= 500]
+                    career_boundary_df['Boundary Runs'] = (career_boundary_df['Fours'] * 4) + (career_boundary_df['Sixes'] * 6)
+                    career_boundary_df['Boundary %'] = ((career_boundary_df['Boundary Runs'] / career_boundary_df['Runs'].replace(0, np.nan)) * 100).round(2)
+                    best_career_boundary_pct_df = career_boundary_df.sort_values(by='Boundary %', ascending=False, na_position='last').head(10)
+                    best_career_boundary_pct_df.insert(0, 'Rank', range(1, 1 + len(best_career_boundary_pct_df)))
+                    best_career_boundary_pct_df = best_career_boundary_pct_df[['Rank', 'Name', 'Match_Format', 'Boundary %', 'Boundary Runs', 'Runs']]
+                    cache_dataframe(best_career_boundary_pct_cache_key, best_career_boundary_pct_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Boundary % (Min 500 Runs)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+
+            # --- Calculate Overall Match Averages and SR per Format ---
+            # This calculation remains the same - it's based on all matches in the dataset per format
+            overall_match_metrics_cache_key = f"{cache_key}_overall_match_metrics_by_format"
+            overall_match_metrics = get_cached_dataframe(overall_match_metrics_cache_key)
+
+            if overall_match_metrics is None:
+                # Use the original unfiltered bat_df for overall calculations
+                file_stats_overall = bat_df.groupby(['File Name', 'Match_Format']).agg({
+                    'Total_Runs': 'first',
+                    'Team Balls': 'first',
+                    'Wickets': 'first'
+                }).reset_index()
+                file_stats_overall['Match_Avg'] = file_stats_overall['Total_Runs'] / file_stats_overall['Wickets'].replace(0, np.nan)
+                file_stats_overall['Match_SR'] = (file_stats_overall['Total_Runs'] / file_stats_overall['Team Balls'].replace(0, np.nan)) * 100
+                # Group by format to get the average match avg/sr across all matches of that format
+                overall_match_metrics = file_stats_overall.groupby(['Match_Format']).agg(
+                    Overall_Avg_Match_Avg=('Match_Avg', 'mean'),
+                    Overall_Avg_Match_SR=('Match_SR', 'mean')
+                ).reset_index()
+                overall_match_metrics['Overall_Avg_Match_Avg'] = overall_match_metrics['Overall_Avg_Match_Avg'].round(2)
+                overall_match_metrics['Overall_Avg_Match_SR'] = overall_match_metrics['Overall_Avg_Match_SR'].round(2)
+                cache_dataframe(overall_match_metrics_cache_key, overall_match_metrics)
+
+
+            with col24:
+                # --- Top 10 Best Match+ Avg (Career by Format, min 10 inns) ---
+                best_career_match_plus_avg_cache_key = f"{cache_key}_best_career_match_plus_avg_min10inns"
+                best_career_match_plus_avg_df = get_cached_dataframe(best_career_match_plus_avg_cache_key)
+
+                if best_career_match_plus_avg_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    player_career_stats_avg = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Out=('Out', 'sum'),
+                        Inns=('Batted', 'sum')
+                    ).reset_index()
+                    # Apply min innings filter AFTER aggregation
+                    player_career_stats_avg = player_career_stats_avg[player_career_stats_avg['Inns'] >= 10]
+                    player_career_stats_avg['Player_Avg'] = (player_career_stats_avg['Runs'] / player_career_stats_avg['Out'].replace(0, np.nan)).round(2)
+                    # Merge with overall format metrics
+                    merged_career_avg = pd.merge(player_career_stats_avg, overall_match_metrics, on='Match_Format', how='left')
+                    merged_career_avg['Match+ Avg'] = ((merged_career_avg['Player_Avg'] / merged_career_avg['Overall_Avg_Match_Avg'].replace(0, np.nan)) * 100).round(2)
+                    best_career_match_plus_avg_df = merged_career_avg.sort_values(by='Match+ Avg', ascending=False, na_position='last').head(10)
+                    best_career_match_plus_avg_df.insert(0, 'Rank', range(1, 1 + len(best_career_match_plus_avg_df)))
+                    best_career_match_plus_avg_df = best_career_match_plus_avg_df[['Rank', 'Name', 'Match_Format', 'Match+ Avg', 'Player_Avg', 'Overall_Avg_Match_Avg', 'Inns']]
+                    cache_dataframe(best_career_match_plus_avg_cache_key, best_career_match_plus_avg_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ Avg (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            st.divider()
+            col25, col26 = st.columns(2) # Use two columns, leave one empty
+
+            with col25:
+                # --- Top 10 Best Match+ SR (Career by Format, min 500 balls) ---
+                best_career_match_plus_sr_cache_key = f"{cache_key}_best_career_match_plus_sr_min500b"
+                best_career_match_plus_sr_df = get_cached_dataframe(best_career_match_plus_sr_cache_key)
+
+                if best_career_match_plus_sr_df is None:
+                    # Ensure we have career_df for consistent career calculations
+                    if not 'career_df' in locals():
+                        # Use original bat_df for career calculations to ensure we get true career totals
+                        # regardless of year filtering applied elsewhere
+                        career_df = bat_df.copy()
+                        
+                        # Apply non-year filters to maintain consistency with other filters
+                        if name_choice and 'All' not in name_choice:
+                            career_df = career_df[career_df['Name'].isin(name_choice)]
+                        if bat_team_choice and 'All' not in bat_team_choice:
+                            career_df = career_df[career_df['Bat_Team_y'].isin(bat_team_choice)]
+                        if bowl_team_choice and 'All' not in bowl_team_choice:
+                            career_df = career_df[career_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                        if match_format_choice and 'All' not in match_format_choice:
+                            career_df = career_df[career_df['Match_Format'].isin(match_format_choice)]
+                        if comp_choice and 'All' not in comp_choice:
+                            career_df = career_df[career_df['comp'].isin(comp_choice)]
+                    
+                    # Group by Name and Match_Format only for career total
+                    player_career_stats_sr = career_df.groupby(['Name', 'Match_Format']).agg(
+                        Runs=('Runs', 'sum'),
+                        Balls=('Balls', 'sum')
+                    ).reset_index()
+                    # Apply min balls filter AFTER aggregation
+                    player_career_stats_sr = player_career_stats_sr[player_career_stats_sr['Balls'] >= 500]
+                    player_career_stats_sr['Player_SR'] = ((player_career_stats_sr['Runs'] / player_career_stats_sr['Balls'].replace(0, np.nan)) * 100).round(2)
+                    # Merge with overall format metrics
+                    merged_career_sr = pd.merge(player_career_stats_sr, overall_match_metrics, on='Match_Format', how='left')
+                    merged_career_sr['Match+ SR'] = ((merged_career_sr['Player_SR'] / merged_career_sr['Overall_Avg_Match_SR'].replace(0, np.nan)) * 100).round(2)
+                    best_career_match_plus_sr_df = merged_career_sr.sort_values(by='Match+ SR', ascending=False, na_position='last').head(10)
+                    best_career_match_plus_sr_df.insert(0, 'Rank', range(1, 1 + len(best_career_match_plus_sr_df)))
+                    best_career_match_plus_sr_df = best_career_match_plus_sr_df[['Rank', 'Name', 'Match_Format', 'Match+ SR', 'Player_SR', 'Overall_Avg_Match_SR', 'Balls']]
+                    cache_dataframe(best_career_match_plus_sr_cache_key, best_career_match_plus_sr_df)
+
+                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ SR (Min 500 Balls)</h3>", unsafe_allow_html=True)
+                st.dataframe(best_career_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+            # col26 is empty
+
+        # Win/Loss record Tab
+        with tabs[14]:
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Win/Loss Record</h3>", unsafe_allow_html=True)
+
+            # Cache key for win/loss data
+            wl_cache_key = f"{cache_key}_wl_data"
+            wl_df = get_cached_dataframe(wl_cache_key)
+
+            if wl_df is None:
+                if not filtered_df.empty and not match_df.empty and 'File Name' in filtered_df.columns and 'File Name' in match_df.columns:
+                    # 1. Get unique File Names from the filtered batting data
+                    unique_files_df = filtered_df[['File Name']].drop_duplicates()
+
+                    # 2. Merge unique File Names with match_df to get unique match results
+                    match_results_df = pd.merge(unique_files_df, match_df, on='File Name', how='left', suffixes=('', '_match_orig'))
+
+                    # 3. Merge the original filtered_df (with player names) onto the unique match results
+                    wl_df = pd.merge(filtered_df, match_results_df, on='File Name', how='left', suffixes=('_bat', '_match'))
+
+                    # Cache the merged dataframe
+                    if REDIS_AVAILABLE:
+                        cache_dataframe(wl_cache_key, wl_df)
+                else:
+                    wl_df = pd.DataFrame()  # Create empty df if merge is not possible
+
+            if not wl_df.empty:
+                # --- Create winloss_df summary ---
+                try:
+                    # Drop duplicates at the File Name and Name level before aggregation
+                    # This ensures each player's participation in a match is counted only once for win/loss stats
+                    wl_agg_base = wl_df[['Name', 'File Name', 'HomeOrAway', 'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win']].drop_duplicates()
+
+                    winloss_df = wl_agg_base.groupby('Name').agg(
+                        Home_Matches=pd.NamedAgg(column='HomeOrAway', aggfunc=lambda x: (x == 'Home').sum()),
+                        Away_Matches=pd.NamedAgg(column='HomeOrAway', aggfunc=lambda x: (x == 'Away').sum()),
+                        Home_Win=pd.NamedAgg(column='Home_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Win=pd.NamedAgg(column='Away_Won', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Lost=pd.NamedAgg(column='Away_Won', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Lost=pd.NamedAgg(column='Home_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Draw=pd.NamedAgg(column='Home_Drawn', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Draw=pd.NamedAgg(column='Away_Drawn', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Tie=pd.NamedAgg(column='Tie', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (x == 1)).sum()),
+                        Away_Tie=pd.NamedAgg(column='Tie', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (x == 1)).sum()),
+                        Home_Innings_Win=pd.NamedAgg(column='Innings_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Home') & (wl_agg_base.loc[x.index, 'Home_Win'] == 1) & (x == 1)).sum()),
+                        Away_Innings_Win=pd.NamedAgg(column='Innings_Win', aggfunc=lambda x: ((wl_agg_base.loc[x.index, 'HomeOrAway'] == 'Away') & (wl_agg_base.loc[x.index, 'Away_Won'] == 1) & (x == 1)).sum())
+                    ).reset_index()
+
+                    # Calculate combined columns
+                    winloss_df['Total Matches'] = winloss_df['Home_Matches'] + winloss_df['Away_Matches']
+                    winloss_df['Total Win'] = winloss_df['Home_Win'] + winloss_df['Away_Win']
+                    winloss_df['Total Lost'] = winloss_df['Home_Lost'] + winloss_df['Away_Lost']
+                    winloss_df['Total Draw'] = winloss_df['Home_Draw'] + winloss_df['Away_Draw']
+                    winloss_df['Total Tie'] = winloss_df['Home_Tie'] + winloss_df['Away_Tie']
+                    winloss_df['Total Innings Win'] = winloss_df['Home_Innings_Win'] + winloss_df['Away_Innings_Win']
+
+                    # Calculate percentage columns, handling division by zero
+                    winloss_df['Win %'] = (winloss_df['Total Win'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+                    winloss_df['Lost %'] = (winloss_df['Total Lost'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+                    winloss_df['Draw %'] = (winloss_df['Total Draw'] / winloss_df['Total Matches'].replace(0, np.nan) * 100).fillna(0).astype(int)
+
+                    # Reorder columns for display: Name, Totals (with percentages), Home, Away
+                    winloss_df = winloss_df[
+                        ['Name', 'Total Matches', 'Total Win', 'Win %', 'Total Lost', 'Lost %', 'Total Draw', 'Draw %', 'Total Tie', 'Total Innings Win',
+                        'Home_Matches', 'Home_Win', 'Home_Lost', 'Home_Draw', 'Home_Tie', 'Home_Innings_Win',
+                        'Away_Matches', 'Away_Win', 'Away_Lost', 'Away_Draw', 'Away_Tie', 'Away_Innings_Win']
+                    ]
+
+                    #st.markdown("#### Win/Loss Summary by Player (winloss_df)")
+                    # Display up to 50 rows with increased height
+                    st.dataframe(
+                        winloss_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=800,
+                        column_config={
+                            "Name": st.column_config.Column("Name", pinned=True),
+                            "Win %": st.column_config.NumberColumn("Win %", format="%d%%"),
+                            "Lost %": st.column_config.NumberColumn("Lost %", format="%d%%"),
+                            "Draw %": st.column_config.NumberColumn("Draw %", format="%d%%"),
+                        }
+                    )
+                    st.divider()  # Add separator
+                except KeyError as e:
+                    st.error(f"Error creating win/loss summary: Missing column - {e}. Please ensure the match data includes win/loss/draw/tie information.")
+                except Exception as e:
+                    st.error(f"An unexpected error occurred while creating the win/loss summary: {e}")
+
+                # --- Display wl_df_display (original merged data with columns dropped) ---
+                columns_to_display = ['Name', 'Home Team', 'Away Team', 'Match_Result', 'HomeOrAway', 'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win']
+                available_cols = [col for col in columns_to_display if col in wl_df.columns]
+                
+
+# ...existing code...
+
+    else:
+        st.warning("Please upload a file first.")
 
 # Call the function to display the batting view
 display_bat_view()

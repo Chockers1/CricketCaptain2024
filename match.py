@@ -3,33 +3,50 @@ import re
 import os
 
 def process_match_data(directory_path):
+    """
+    Process match data from text files to extract metadata about cricket matches.
+    
+    Args:
+        directory_path: Path to directory containing match scorecard text files
+    
+    Returns:
+        DataFrame containing match metadata (teams, results, dates, etc.)
+    """
     # Initialize an empty list to hold DataFrames for each file
+    # Each file will become a row in the final DataFrame
     dataframes = []
 
     # Loop through all files in the specified directory
     for filename in os.listdir(directory_path):
+        # Process only text files - these contain the match data
         if filename.endswith('.txt'):
             file_path = os.path.join(directory_path, filename)
 
-            # Open and read the file
+            # Open and read the file with UTF-8 encoding to handle special characters
             with open(file_path, 'r', encoding='utf-8') as file:
                 file_content = file.read()
 
+            # Extract match header from line 2 (format: "TeamA v TeamB")
             match_header = file_content.splitlines()[1].strip()
             home_team, away_team = match_header.split(' v ')
 
+            # Extract competition and date from line 3
+            # Format: "Competition Name - Date"
             line_3 = file_content.splitlines()[2].strip()
 
             try:
+                # Split on the last occurrence of " - " to handle competition names that contain " - "
                 competition, date = line_3.rsplit(' - ', 1)
             except ValueError:
+                # Log error and skip file if format is incorrect
                 print(f"Error processing file: {filename}")
                 print(f"Line 3 content: {line_3}")
                 continue
 
+            # Remove any format details in parentheses
             competition = competition.split('(')[0].strip()
 
-            # Determine match format
+            # Determine match format based on competition name
             if 'Test' in line_3:
                 match_format = 'Test Match'
             elif 'One Day International' in line_3 or 'World Cup -' in line_3 or 'Champions Cup' in line_3 or 'ODI Tournament' in line_3 or 'Asia Trophy ODI' in line_3:
@@ -47,44 +64,50 @@ def process_match_data(directory_path):
             elif 'Challenge Trophy' in line_3 or 'One Day Cup' in line_3 or 'One Day Friendly' in line_3 or 'Dean Jones Trophy' in line_3:
                 match_format = 'One Day'
             else:
-                match_format = 'Unknown'  # Default value if no match found
+                # Default if no recognized format
+                match_format = 'Unknown'
 
-            # Extract "Player of the Match" and match result
+            # Extract "Player of the Match" and match result from end of file
             lines = file_content.splitlines()
-            pom = None
-            match_result = None
-            inns_win = 0  # Default value is 0 unless "innings" is found in the result line
+            pom = None              # Player of the Match
+            match_result = None     # Match result text
+            inns_win = 0            # Flag for innings victory (default: no)
 
+            # Scan backwards through the file for results info
             for line in reversed(lines):
                 if "Man of the match:" in line:
+                    # Extract Player of the Match name
                     pom = line.split(":")[1].strip()
                 elif "Match tied" in line:
                     match_result = "Match tied"
                 elif "Match drawn" in line or "won" in line or "lost" in line:
+                    # Store the full result text
                     match_result = line.strip()
+                    # Check if this was an innings victory
                     if "innings" in match_result.lower():
-                        inns_win = 1  # Set `inns_win` to 1 if "innings" is found
+                        inns_win = 1
 
-            # Initialize new columns
+            # Initialize result flag variables (all default to 0/False)
             home_win = home_lost = home_drawn = away_won = away_lost = away_drawn = Tie = 0
 
-            # Determine match result conditions
+            # Set appropriate flags based on match result
             if match_result:
                 if "Match tied" in match_result:
-                    Tie = 1
+                    Tie = 1  # Tie flag
                 elif "Match drawn" in match_result:
-                    home_drawn = 1
+                    home_drawn = 1  # Both teams get a draw
                     away_drawn = 1
                 elif home_team in match_result and "won" in match_result:
-                    home_win = 1
-                    away_lost = 1
+                    home_win = 1    # Home team won
+                    away_lost = 1   # Away team lost
                 elif away_team in match_result and "won" in match_result:
-                    away_won = 1
-                    home_lost = 1
+                    away_won = 1    # Away team won
+                    home_lost = 1   # Home team lost
 
-            # Extract margin from the third-to-last line
+            # Extract margin of victory from the third-to-last line
             line_bottom_3 = file_content.splitlines()[-3].strip()
 
+            # Check for abandoned matches (marked with *)
             if '*' in line_bottom_3:
                 margin = "Match abandoned"
                 home_drawn = 1
@@ -96,49 +119,52 @@ def process_match_data(directory_path):
             margin_runs = None
             margin_wickets = None
 
-            # Extract numeric values for margin_runs and margin_wickets
+            # Extract numeric margin values using regex
             if "run" in margin:
+                # Extract number of runs from margins like "123 runs"
                 runs_match = re.search(r'(\d+)\s*run[s]?', margin)
                 if runs_match:
                     margin_runs = int(runs_match.group(1))
 
             if "wicket" in margin:
+                # Extract number of wickets from margins like "5 wickets"
                 wickets_match = re.search(r'(\d+)\s*wicket[s]?', margin)
                 if wickets_match:
                     margin_wickets = int(wickets_match.group(1))
 
-            # Store extracted data in a dictionary
+            # Store all extracted data in a dictionary
             match_data = {
-                "File Name": filename,
-                "Home_Team": home_team,
-                "Away_Team": away_team,
-                "Date": date,
-                "Competition": competition,
-                "Match_Format": match_format,
-                "Player_of_the_Match": pom,
-                "Match_Result": match_result,
-                "Margin": margin,
-                "Innings_Win": inns_win,
-                "Home_Win": home_win,
-                "Away_Won": away_won,
-                "Home_Lost": home_lost,
-                "Away_Lost": away_lost,
-                "Home_Drawn": home_drawn,
-                "Away_Drawn": away_drawn,
-                "Tie": Tie,
-                "Margin_Runs": margin_runs,
-                "Margin_Wickets": margin_wickets
+                "File Name": filename,           # Filename to link with other tables
+                "Home_Team": home_team,          # Home team
+                "Away_Team": away_team,          # Away team
+                "Date": date,                    # Match date
+                "Competition": competition,      # Competition name
+                "Match_Format": match_format,    # Format (Test, ODI, T20, etc.)
+                "Player_of_the_Match": pom,      # Player of the Match
+                "Match_Result": match_result,    # Full result text
+                "Margin": margin,                # Margin of victory text
+                "Innings_Win": inns_win,         # Flag for innings victory
+                "Home_Win": home_win,            # Home team won flag
+                "Away_Won": away_won,            # Away team won flag
+                "Home_Lost": home_lost,          # Home team lost flag
+                "Away_Lost": away_lost,          # Away team lost flag
+                "Home_Drawn": home_drawn,        # Home team drawn flag
+                "Away_Drawn": away_drawn,        # Away team drawn flag
+                "Tie": Tie,                      # Match tied flag
+                "Margin_Runs": margin_runs,      # Run margin (if applicable)
+                "Margin_Wickets": margin_wickets # Wicket margin (if applicable)
             }
 
-            # Append the match data to the DataFrame
+            # Append the match data to our list of DataFrames
             dataframes.append(pd.DataFrame([match_data]))
 
-    # Concatenate all DataFrames and reset the index
+    # Combine all individual file DataFrames into one master DataFrame
     if dataframes:
         final_df = pd.concat(dataframes, ignore_index=True)
         
-        # Ensure that only one competition is selected when processing matches
+        # Define a function to standardize competition names
         def transform_competition(row):
+            # Define mappings for Test trophy names based on participating teams
             test_trophies = {
                 ('Australia', 'England'): 'The Ashes',
                 ('England', 'Australia'): 'The Ashes',
@@ -163,7 +189,9 @@ def process_match_data(directory_path):
             }
 
             comp = row['Competition']
+            # Apply different transformations based on competition name patterns
             if 'Test Match' in comp:
+                # Use specific trophy names for Test matches between certain teams
                 team_pair = (row['Home_Team'], row['Away_Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
@@ -183,30 +211,39 @@ def process_match_data(directory_path):
             elif '20 Over International' in comp:
                 return 'T20I'
             else:
+                # Default: use original competition name
                 return comp
 
-        # Apply the competition transformation
+        # Apply competition name transformation
         try:
             final_df['comp'] = final_df.apply(transform_competition, axis=1)
         except Exception as e:
+            # Log error and fall back to original competition name
             print(f"Error creating comp column: {e}")
             final_df['comp'] = final_df['Competition']
 
+        # Verify comp column exists before proceeding
         if 'comp' not in final_df.columns:
             print("Warning: comp column not created, using Competition instead")
             final_df['comp'] = final_df['Competition']
 
-        # Save the DataFrame to a CSV file
+        # Save the DataFrame to a CSV file for use by other scripts
         csv_path = os.path.join(directory_path, "match_data.csv")
         final_df.to_csv(csv_path, index=False)
         print(f"Match data saved to {csv_path}")
         
-        return final_df  # Return the final DataFrame
+        return final_df  # Return the processed DataFrame
     else:
         print("No match data found.")
         return pd.DataFrame()  # Return an empty DataFrame if no data found
 
+# Code that runs when this script is executed directly (not imported)
 if __name__ == "__main__":
+    # Define directory path for match scorecard files
     directory_path = r"C:\Users\rtayl\AppData\Roaming\Childish Things\Cricket Captain 2024\Saves\Scorecards"
+    
+    # Process match data
     match_df = process_match_data(directory_path)
+    
+    # Display the processed data
     print(match_df)

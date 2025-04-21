@@ -4,7 +4,19 @@ import re
 import traceback
 
 def process_bowl_stats(directory_path, game_df, match_df):
+    """
+    Process bowling statistics from text files and merge with game data.
+    
+    Args:
+        directory_path: Path to directory containing bowling statistics text files
+        game_df: DataFrame containing game-level information
+        match_df: DataFrame containing match-level information
+    
+    Returns:
+        DataFrame containing processed bowling statistics
+    """
     try:
+        # Log the start of processing and input data dimensions
         print("Starting bowl stats processing")
         print(f"Directory path: {directory_path}")
         print(f"game_df shape: {game_df.shape}")
@@ -13,124 +25,153 @@ def process_bowl_stats(directory_path, game_df, match_df):
         print(f"match_df columns: {match_df.columns}")
 
         # Initialize an empty list to hold DataFrames for each file
+        # Each file will become a DataFrame, and they'll all be combined at the end
         dataframes = []
 
         # Loop through all files in the specified directory
         for filename in os.listdir(directory_path):
-            if filename.endswith('.txt'):  # Process only text files
+            # Process only text files - these contain the match bowling data
+            if filename.endswith('.txt'):
                 file_path = os.path.join(directory_path, filename)
 
-                # Open and read the file
+                # Open and read the file with UTF-8 encoding to handle special characters
                 with open(file_path, 'r', encoding='utf-8') as file:
                     file_content = file.read()
 
-                # Split file content into lines
+                # Split file content into separate lines for processing
                 file_lines = file_content.splitlines()
 
-                # Initialize variables
-                Row_No = 0
-                Inns = 0
-                Line_no = 0
-                Bat_Team = ""
-                Bowl_Team = ""
-                innings_data = []  # A list to collect the rows of data for players
+                # Initialize variables for tracking position in the file
+                Row_No = 0           # Current row number being processed
+                Inns = 0             # Current innings (1-4 for Test matches, 1-2 for limited overs)
+                Line_no = 0          # Track separator lines to determine innings
+                Bat_Team = ""        # Team currently batting
+                Bowl_Team = ""       # Team currently bowling
+                innings_data = []    # List to collect bowler data rows
                 
-                # Initialize match data for innings
+                # Process the file line by line
                 for i, line in enumerate(file_lines):
                     Row_No += 1
 
-                    # Extract Home_Team and Away_Team from Row 2 (assuming it's in "TeamA v TeamB" format)
+                    # Extract Home_Team and Away_Team from Row 2 (format: "TeamA v TeamB")
                     if Row_No == 2:
                         teams = line.split(" v ")
                         if len(teams) == 2:
                             Home_Team = teams[0].strip()
                             Away_Team = teams[1].strip()
 
-                    # Check if the line contains a separator "-------------"
+                    # Check for bowling separator lines 
+                    # Note: Bowling data appears after lines 3, 7, 11, 15
                     if "-------------" in line:
                         Line_no += 1
-                        if Line_no in [3, 7, 11, 15]:  # Increment innings based on separators
-                            Inns += 1
+                        if Line_no in [3, 7, 11, 15]:  # Increment innings based on bowling data separators
+                            Inns += 1  # Increment innings counter
 
-                            # Determine Bat_Team and Bowl_Team
-                            Bat_Team = line.split('-')[0].strip()  # Assuming the batting team is on the left of the separator
+                            # Extract batting team name from left side of separator
+                            Bat_Team = line.split('-')[0].strip()
+                            # Determine bowling team (if not batting, must be bowling)
                             Bowl_Team = Away_Team if Bat_Team == Home_Team else Home_Team
 
-                            # Initialize position and bowler data
+                            # Initialize bowling position counter for this innings
                             position = 1
 
-                            # Extract bowler statistics
-                            for j in range(11):  # Loop through the maximum 11 players
+                            # Process up to 11 bowlers (maximum in a cricket team)
+                            for j in range(11):
+                                # Avoid index errors at end of file
                                 if i + j + 1 >= len(file_lines):
-                                    break  # Avoid index out of range
+                                    break
 
-                                player_line = file_lines[i + j + 1]  # Getting lines for each player
-                                if player_line.strip() == "":  # Check for empty lines
-                                    continue  # Skip empty lines
+                                # Get the line containing bowler data
+                                player_line = file_lines[i + j + 1]
+                                if player_line.strip() == "":  # Skip empty lines
+                                    continue
 
-                                # Adjust regex pattern to accurately capture the bowler statistics
+                                # Use regex to extract bowler stats from the line
+                                # Format: Name Overs Maidens Runs Wickets Economy
                                 bowler_match = re.search(
                                     r"^(?P<Name>.+?)\s+(?P<Overs>\d+(\.\d+)?)\s+(?P<Maidens>\d+)\s+(?P<Runs>\d+)\s+(?P<Wickets>\d+)\s+(?P<Econ>\d+(\.\d+)?)$",
                                     player_line
                                 )
+                                
                                 if bowler_match:
-                                    Name = bowler_match.group('Name').strip()  # Bowler's Name
-                                    Overs = float(bowler_match.group('Overs'))  # Overs
-                                    Maidens = int(bowler_match.group('Maidens'))  # Maidens
-                                    Runs = int(bowler_match.group('Runs'))  # Runs
-                                    Wickets = int(bowler_match.group('Wickets'))  # Wickets
-                                    Econ = float(bowler_match.group('Econ'))  # Economy rate
+                                    # Extract bowler data from regex match
+                                    Name = bowler_match.group('Name').strip()
+                                    Overs = float(bowler_match.group('Overs'))
+                                    Maidens = int(bowler_match.group('Maidens'))
+                                    Runs = int(bowler_match.group('Runs'))
+                                    Wickets = int(bowler_match.group('Wickets'))
+                                    Econ = float(bowler_match.group('Econ'))
 
-                                    # Append the bowler data to innings_data
-                                    innings_data.append([filename, Inns, Bat_Team, Bowl_Team, position, Name, Overs, Maidens, Runs, Wickets, Econ])
-                                    position += 1
+                                    # Add bowler data to innings_data list
+                                    innings_data.append([
+                                        filename, Inns, Bat_Team, Bowl_Team, position, 
+                                        Name, Overs, Maidens, Runs, Wickets, Econ
+                                    ])
+                                    position += 1  # Increment bowling position
                                 else:
-                                    # Handle cases where the regex doesn't match
+                                    # If regex doesn't match, skip this line
                                     continue
 
-                            # If fewer than 11 players, fill in empty rows for remaining players
-                            for k in range(len(innings_data), 11):
-                                innings_data.append([filename, Inns, Bat_Team, Bowl_Team, position, '', 0, 0, 0, 0, 0])
+                            # If fewer than 11 bowlers, fill in empty rows for remaining positions
+                            # This ensures consistent team size across all innings
+                            for k in range(position, 12):  # Fill up to position 11 (index starts at 1)
+                                innings_data.append([
+                                    filename, Inns, Bat_Team, Bowl_Team, position, 
+                                    '', 0, 0, 0, 0, 0
+                                ])
                                 position += 1
 
-                # Convert to a DataFrame for easier manipulation
-                df_innings = pd.DataFrame(innings_data, columns=['File Name', 'Innings', 'Bat Team', 'Bowl Team', 'Position', 'Name', 'Bowler_Overs', 'Maidens', 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Econ'])
+                # Convert innings data to DataFrame with appropriate column names
+                df_innings = pd.DataFrame(
+                    innings_data, 
+                    columns=[
+                        'File Name', 'Innings', 'Bat Team', 'Bowl Team', 'Position', 
+                        'Name', 'Bowler_Overs', 'Maidens', 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Econ'
+                    ]
+                )
 
-                # Add the DataFrame to the list
+                # Add this file's DataFrame to our list
                 dataframes.append(df_innings)
 
-        # Combine all DataFrames from the text files into a single DataFrame
+        # Combine all individual file DataFrames into one master DataFrame
         final_innings_df = pd.concat(dataframes, ignore_index=True)
 
-        # Create bowl_df from final_innings_df
+        # Create bowling DataFrame from the final innings data
         bowl_df = final_innings_df
 
         # Step 1: Merge with match_df to get Home_Team and Away_Team
+        # This adds match-level team information
         bowl_df = bowl_df.merge(
             match_df[['File Name', 'Home_Team', 'Away_Team']],
             on='File Name',
-            how='left'
+            how='left'  # Left join to keep all bowling records
         )
 
         # Step 2: Drop the 'Bat Team' and 'Bowl Team' columns from bowl_df
+        # These will be replaced with the standardized columns from game_df
         bowl_df_dropped = bowl_df.drop(columns=['Bat Team', 'Bowl Team'])
 
-        # Step 3: Merge bowl_df_dropped with game_df based on 'File Name' and 'Innings'
+        # Step 3: Merge with game_df to get additional match information
+        # This adds innings-specific data like total runs, overs, wickets, etc.
         merged_df = bowl_df_dropped.merge(
-            game_df[['File Name', 'Innings', 'Bat_Team', 'Bowl_Team', 'Total_Runs', 'Overs', 'Wickets', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Date']],
+            game_df[['File Name', 'Innings', 'Bat_Team', 'Bowl_Team', 'Total_Runs', 'Overs', 'Wickets', 
+                    'Competition', 'Match_Format', 'Player_of_the_Match', 'Date']],
             on=['File Name', 'Innings'],
-            how='left'  # Use 'left' to keep all entries from bowl_df_dropped
+            how='left'  # Left join to keep all bowling records
         )
 
         bowl_df = merged_df
 
-        # Add the specified columns
+        # Add derived boolean column to indicate bowler participation
         bowl_df['Bowled'] = 1
+
+        # Add milestone bowling performance indicators
         bowl_df['5Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if 5 <= x < 10 else 0)
         bowl_df['10Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 10 else 0)
 
-        # Calculate Balls from Overs based on format
+        # Function to calculate balls and adjust overs/economy based on match format
         def calculate_balls_and_overs(row):
+            # Special calculation for The Hundred format (5-ball overs)
             if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
                 # For The Hundred, balls are the same as the overs value
                 balls = row['Bowler_Overs']
@@ -144,7 +185,8 @@ def process_bowl_stats(directory_path, game_df, match_df):
                     'Bowler_Econ': economy
                 })
             else:
-                # Regular format calculation
+                # Regular format calculation (6-ball overs)
+                # Convert overs to balls: whole_overs * 6 + partial_overs
                 balls = int(row['Bowler_Overs']) * 6 + round((row['Bowler_Overs'] - int(row['Bowler_Overs'])) * 10)
                 return pd.Series({
                     'Bowler_Balls': balls, 
@@ -152,28 +194,36 @@ def process_bowl_stats(directory_path, game_df, match_df):
                     'Bowler_Econ': row['Bowler_Econ']
                 })
 
-        # Apply the calculation
+        # Apply the ball and over calculation to all rows
         ball_over_calc = bowl_df.apply(calculate_balls_and_overs, axis=1)
         bowl_df['Bowler_Balls'] = ball_over_calc['Bowler_Balls']
         bowl_df['Bowler_Overs'] = ball_over_calc['Bowler_Overs']
         bowl_df['Bowler_Econ'] = ball_over_calc['Bowler_Econ']
 
-        # Remove rows where the 'Name' column is blank
+        # Remove rows where the 'Name' column is blank (empty bowler entries)
         bowl_df = bowl_df[bowl_df['Name'].str.strip() != '']
 
-        # Calculate additional statistics
+        # Calculate additional bowling metrics
+        # Runs per over - useful for comparing economy across formats
         bowl_df['Runs_Per_Over'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Overs']
-        bowl_df['Balls_Per_Wicket'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)  # Avoid division by zero
+
+        # Balls per wicket - how many balls bowled per wicket taken
+        # Replace 0 wickets with 1 to avoid division by zero
+        bowl_df['Balls_Per_Wicket'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)
+
+        # Dot ball percentage - percentage of balls that were maidens (no runs)
+        # Each maiden is 6 dot balls (or 5 in The Hundred)
         bowl_df['Dot_Ball_Percentage'] = (bowl_df['Maidens'] * 6) / bowl_df['Bowler_Balls'] * 100
 
-        # Calculate Strike Rate (balls per wicket)
-        bowl_df['Strike_Rate'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)  # Avoid division by zero
+        # Strike rate - balls per wicket
+        bowl_df['Strike_Rate'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)
 
-        # Calculate Average (runs per wicket)
-        bowl_df['Average'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Wkts'].replace(0, 1)  # Avoid division by zero
+        # Bowling average - runs conceded per wicket
+        bowl_df['Average'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Wkts'].replace(0, 1)
 
-        # Add the comp column with modified competition names
+        # Transform competition names to standardized format
         def transform_competition(row):
+            # Define mappings for Test trophy names based on participating teams
             test_trophies = {
                 ('Australia', 'England'): 'The Ashes',
                 ('England', 'Australia'): 'The Ashes',
@@ -198,7 +248,9 @@ def process_bowl_stats(directory_path, game_df, match_df):
             }
 
             comp = row['Competition']
+            # Apply different transformations based on competition name patterns
             if 'Test Match' in comp:
+                # Use specific trophy names for Test matches between certain teams
                 team_pair = (row['Home_Team'], row['Away_Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
@@ -218,37 +270,48 @@ def process_bowl_stats(directory_path, game_df, match_df):
             elif '20 Over International' in comp:
                 return 'T20I'
             else:
+                # Default: use original competition name
                 return comp
 
+        # Apply competition name transformation
         try:
             bowl_df['comp'] = bowl_df.apply(transform_competition, axis=1)
         except Exception as e:
+            # Log error and fall back to original competition name
             print(f"Error creating comp column: {e}")
             bowl_df['comp'] = bowl_df['Competition']
 
+        # Verify comp column exists before returning
         if 'comp' not in bowl_df.columns:
             print("Warning: comp column not created, using Competition instead")
             bowl_df['comp'] = bowl_df['Competition']
 
+        # Log successful completion and return statistics
         print("Bowl stats processing completed successfully")
         print(f"Final bowl_df shape: {bowl_df.shape}")
         print(f"Final bowl_df columns: {bowl_df.columns}")
 
+        # Return the fully processed bowling statistics DataFrame
         return bowl_df
 
     except Exception as e:
+        # Catch and log any errors that occur during processing
         print(f"Error in bowl stats processing: {str(e)}")
-        print(traceback.format_exc())
+        print(traceback.format_exc())  # Print full traceback for debugging
         return None
 
+# Code that runs when this script is executed directly (not imported)
 if __name__ == "__main__":
+    # Define directory path for bowling statistics files
     directory_path = r"C:\Users\rtayl\AppData\Roaming\Childish Things\Cricket Captain 2024\Saves\Scorecards"
     
     # Load game_df and match_df from CSV files
     game_csv_path = os.path.join(directory_path, "game_data.csv")
     match_csv_path = os.path.join(directory_path, "match_data.csv")
     
+    # Check if required data files exist before proceeding
     if os.path.exists(game_csv_path) and os.path.exists(match_csv_path):
+        # Load the data files into DataFrames
         game_df = pd.read_csv(game_csv_path)
         match_df = pd.read_csv(match_csv_path)
         print("Loaded game and match data from CSV files")
@@ -256,7 +319,10 @@ if __name__ == "__main__":
         print("game_data.csv or match_data.csv not found. Please run match.py and game.py first.")
         exit()
 
+    # Process bowling stats
     bowl_df = process_bowl_stats(directory_path, game_df, match_df)
+    
+    # If processing was successful, display results and save to CSV
     if bowl_df is not None:
         print(bowl_df.head(50))
         
@@ -267,7 +333,7 @@ if __name__ == "__main__":
     else:
         print("Failed to process bowl stats")
 
-# Add these lines at the end of the file
+# Code for direct file execution and debugging
 directory_path = r"C:\Users\rtayl\AppData\Roaming\Childish Things\Cricket Captain 2024\Saves\Scorecards"
 game_csv_path = os.path.join(directory_path, "game_data.csv")
 match_csv_path = os.path.join(directory_path, "match_data.csv")
