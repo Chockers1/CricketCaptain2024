@@ -97,7 +97,7 @@ def load_data(uploaded_files):
 st.markdown(
     """
     <h1 style="text-align: center; color: #f04f53; font-size: 2em; white-space: nowrap;">
-    Welcome to Ultimate Cricket Captain 2024 Dashboard</h1>
+    Welcome to Ultimate Cricket Captain 2025 Dashboard</h1>
     """,
     unsafe_allow_html=True
 )
@@ -106,8 +106,8 @@ st.markdown(
 st.markdown(
     """
     <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
-        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.21:</span>
-        <span style="color: white;"> Updated layout for Batting & Bowling Tabs </span>
+        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.22:</span>
+        <span style="color: white;"> New Batting and Bowling tabs, and minor bug fixes </span>
     </div>
     """,
     unsafe_allow_html=True
@@ -116,7 +116,7 @@ st.markdown(
 st.markdown(
     """
     <div style="text-align: center; max-width: 1200px; margin: auto;">
-        <p>Thank you for subscribing to The Ultimate Cricket Captain 2024 Dashboard. 
+        <p>Thank you for subscribing to The Ultimate Cricket Captain 2025 Dashboard. 
         Explore comprehensive statistics and performance metrics from your saves and take your game to the next level:</p>
     </div>
     """,
@@ -132,8 +132,8 @@ st.markdown(
             <li><strong>In your Cricket Captain game,</strong> go into any scorecard you want the data from and click save.</li>
             <li><strong>Locate the .txt files</strong> which contain the scorecard data:
                 <ul>
-                    <li><em>Windows:</em> <code>C:\\Users\\[USER NAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2021</code></li>
-                    <li><em>MAC:</em> <code>~/Library/Containers/com.childishthings.cricketcaptain2021mac/Data/Library/Application Support/Cricket Captain 2021/childish things/cricket captain 2021/saves</code></li>
+                    <li><em>Windows:</em> <code>C:\\Users\\[USER NAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025</code></li>
+                    <li><em>MAC:</em> <code>~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves</code></li>
                 </ul>
             </li>
             <li><strong>Select the browse files button</strong> </li>
@@ -150,10 +150,18 @@ st.markdown(
 # Channel link at the bottom
 st.markdown("""
 <div style='text-align: center; margin-top: 20px;'>
-    <a href='https://www.youtube.com/@RobTaylor1985' target='_blank' 
+    <a href='https://www.youtube.com/@Robscricket' target='_blank' 
     style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold;'>
-    Watch My Cricket Captain 2024 Saves</a>
+    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
+    Watch My Cricket Captain 2025 Saves</a>
+    <a href='https://youtu.be/ykn5jal7ZdY' target='_blank' 
+    style='background-color: #f04f53; color: white; padding: 10px 20px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
+    Real Name Fix - PC / Mac</a>
+    <a href='https://youtu.be/MenffAx4KoQ' target='_blank' 
+    style='background-color: #f04f53; color: white; padding: 10px 20px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
+    Real Name Fix - Mobile</a>
 </div>
 """, unsafe_allow_html=True)
 
