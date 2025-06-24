@@ -6,8 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
 
-def display_ar_view():
-    # Custom styling
+def display_ar_view():    # Custom styling
     st.markdown("""
     <style>
     .stSlider p { color: #f04f53 !important; }
@@ -20,6 +19,13 @@ def display_ar_view():
         # Make copies of original dataframes
         bat_df = st.session_state['bat_df'].copy()
         bowl_df = st.session_state['bowl_df'].copy()
+
+        # Check if only one scorecard is loaded
+        unique_matches_bat = bat_df['File Name'].nunique()
+        unique_matches_bowl = bowl_df['File Name'].nunique()
+        if unique_matches_bat <= 1 or unique_matches_bowl <= 1:
+            st.warning("⚠️ Please upload more than 1 scorecard to use the all-rounder statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            return
 
         # Create Year columns from Date with safer date parsing
         try:

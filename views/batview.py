@@ -122,8 +122,7 @@ def get_filtered_options(df, column, selected_filters=None):
     
     return ['All'] + sorted(filtered_df[column].unique().tolist())
 
-def display_bat_view():
-    # Check if bat_df is available in session state
+def display_bat_view():    # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         # Store the start time to measure performance
         start_time = time.time()
@@ -131,6 +130,11 @@ def display_bat_view():
         bat_df = st.session_state['bat_df']
         # Ensure match_df is also available if needed for the new tab
         match_df = st.session_state.get('match_df', pd.DataFrame())
+          # Check if there's only one scorecard loaded
+        unique_matches = bat_df['File Name'].nunique()
+        if unique_matches <= 1:
+            st.warning("⚠️ Please upload more than 1 scorecard to use the batting statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            return
 
         # Pre-process data once at the beginning
         if 'processed_bat_df' not in st.session_state:
@@ -293,37 +297,46 @@ def display_bat_view():
                    max_value=11, 
                    value=(1, 11),
                    label_visibility='collapsed',
-                   key='position_slider')
-
-        # Runs range slider
+                   key='position_slider')        # Runs range slider
         with col7:
             st.markdown("<p style='text-align: center;'>Runs Range</p>", unsafe_allow_html=True)
-            runs_range = st.slider('', 
-                            min_value=1, 
-                            max_value=max_runs, 
-                            value=(1, max_runs),
-                            label_visibility='collapsed',
-                            key='runs_slider')
-
-        # Matches range slider
+            if max_runs == 1:
+                st.markdown(f"<p style='text-align: center;'>{max_runs}</p>", unsafe_allow_html=True)
+                runs_range = (1, 1)
+            else:
+                runs_range = st.slider('', 
+                                min_value=1, 
+                                max_value=max_runs, 
+                                value=(1, max_runs),
+                                label_visibility='collapsed',
+                                key='runs_slider')# Matches range slider
         with col8:
             st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
-            matches_range = st.slider('', 
-                                min_value=1, 
-                                max_value=max_matches, 
-                                value=(1, max_matches),
-                                label_visibility='collapsed',
-                                key='matches_slider')
-
-        # Average range slider
+            if max_matches == 1:
+                st.markdown(f"<p style='text-align: center;'>{max_matches}</p>", unsafe_allow_html=True)
+                matches_range = (1, 1)
+            else:
+                matches_range = st.slider('', 
+                                    min_value=1, 
+                                    max_value=max_matches, 
+                                    value=(1, max_matches),
+                                    label_visibility='collapsed',
+                                    key='matches_slider')        # Average range slider
         with col9:
             st.markdown("<p style='text-align: center;'>Average Range</p>", unsafe_allow_html=True)
-            avg_range = st.slider('', 
-                            min_value=0.0, 
-                            max_value=max_avg, 
-                            value=(0.0, max_avg),
-                            label_visibility='collapsed',
-                            key='avg_slider')
+            if max_avg == 0 or pd.isna(max_avg):
+                st.markdown("<p style='text-align: center;'>N/A</p>", unsafe_allow_html=True)
+                avg_range = (0.0, 0.0)
+            elif max_avg == 0.0:
+                st.markdown(f"<p style='text-align: center;'>{max_avg:.1f}</p>", unsafe_allow_html=True)
+                avg_range = (0.0, 0.0)
+            else:
+                avg_range = st.slider('', 
+                                min_value=0.0, 
+                                max_value=max_avg, 
+                                value=(0.0, max_avg),
+                                label_visibility='collapsed',
+                                key='avg_slider')
 
         # Strike rate range slider
         with col10:

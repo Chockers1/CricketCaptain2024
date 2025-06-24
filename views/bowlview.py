@@ -86,10 +86,14 @@ def display_bowl_view():
                 'match_format': ['All'],
                 'comp': ['All']  # Initialize 'comp' filter
             }
-            st.session_state.prev_bowl_teams = current_bowl_teams
-
-        ###-------------------------------------HEADER AND FILTERS-------------------------------------###
+            st.session_state.prev_bowl_teams = current_bowl_teams        ###-------------------------------------HEADER AND FILTERS-------------------------------------###
         st.markdown("<h1 style='color:#f04f53; text-align: center;'>Bowling Statistics</h1>", unsafe_allow_html=True)
+        
+        # Check if only one scorecard is loaded
+        unique_matches = bowl_df['File Name'].nunique()
+        if unique_matches <= 1:
+            st.warning("⚠️ Please upload more than 1 scorecard to use the bowling statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            return
         
         # Initialize session state for filters if not exists
         if 'bowl_filter_state' not in st.session_state:
@@ -2543,12 +2547,13 @@ def display_bowl_view():
                 })
                 
                 # Select and reorder columns
-                season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]
-
-                # Display the header
+                season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]                # Display the header
                 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Economy Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_econ_df, use_container_width=True, hide_index=True)
+
+    else:
+        st.error("No bowling data available. Please upload scorecards first.")
 
 # Display the bowling view
 display_bowl_view()
