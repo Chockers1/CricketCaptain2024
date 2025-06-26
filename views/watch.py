@@ -6,9 +6,13 @@ import requests
 import re
 
 def get_latest_video_id():
+    # Since YouTube scraping is unreliable, we'll use a fallback approach
+    # You can manually update this with your latest video ID when needed
+    fallback_video_id = "tQ3hMyWFHn8"  # Replace with your actual latest video ID
+    
     try:
-        # Get the channel page
-        response = requests.get('https://www.youtube.com/@RobTaylor1985/videos')
+        # Attempt to get the channel page (this may not work reliably)
+        response = requests.get('https://www.youtube.com/@RobTaylor1985/videos', timeout=5)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             # Look for the first video link
@@ -17,8 +21,10 @@ def get_latest_video_id():
                 video_id = re.search(r'"videoId":"([^"]+)"', script_tag.string).group(1)
                 return video_id
     except Exception as e:
-        st.error(f"Error fetching latest video: {e}")
-    return None
+        print(f"Error fetching latest video (using fallback): {e}")
+    
+    # Return fallback video ID if scraping fails
+    return fallback_video_id
 
 def get_playlist_videos(playlist_id):
     api_key = 'YOUR_YOUTUBE_API_KEY'  # Replace with your YouTube Data API key
@@ -71,45 +77,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Latest Video Section - with column wrapper for width control
-st.markdown("<h2 class='section-header' style='color:#f04f53;'>Latest Video</h2>", unsafe_allow_html=True)
-col1, col2, col3 = st.columns([1,2,1])  # Create columns for centering
-with col2:
-    st.markdown("<div class='video-section'>", unsafe_allow_html=True)
-    video_id = get_latest_video_id()
-    if video_id:
-        st.markdown(f"""
-        <iframe class="video-frame"
-        src="https://www.youtube.com/embed/{video_id}" 
-        frameborder="0" 
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-        allowfullscreen></iframe>
-        """, unsafe_allow_html=True)
-    else:
-        # Fallback to channel link if video fetch fails
-        st.markdown("""
-        <div style='text-align: center; padding: 20px;'>
-            <p>Unable to load latest video. Click below to visit the channel:</p>
-            <a href='https://www.youtube.com/@RobTaylor1985/videos' target='_blank'>View Latest Videos</a>
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# Alternative approach using a direct link
+# Channel link at the top
 st.markdown("""
-<div style='text-align: center; margin: 10px 0 30px;'>
-    <a href='https://www.youtube.com/@RobTaylor1985/videos' target='_blank' 
-    style='color: #666; text-decoration: none; font-size: 0.9em;'>
-    View all recent videos →</a>
-</div>
-""", unsafe_allow_html=True)
-
-# Channel link at the bottom
-st.markdown("""
-<div style='text-align: center; margin-top: 20px;'>
+<div style='text-align: center; margin: 30px 0;'>
     <a href='https://www.youtube.com/@RobTaylor1985' target='_blank' 
-    style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold;'>
+    style='background-color: #f04f53; color: white; padding: 15px 30px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 18px;'>
     Visit YouTube Channel</a>
 </div>
 """, unsafe_allow_html=True)
@@ -137,6 +110,19 @@ with col2:
     st.markdown("""
     <iframe class="playlist-container"
     src="https://www.youtube.com/embed/videoseries?list=PLw134D7uCGyjOeobNkICmzRFf64kCkuKD" 
+    frameborder="0" allowfullscreen></iframe>
+    """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Second row for Career Rebuilds
+col3, col4 = st.columns(2)
+
+with col3:
+    st.markdown("<div class='video-section'>", unsafe_allow_html=True)
+    st.markdown("<h3 class='section-header' style='color:#f04f53;'>South Africa</h3>", unsafe_allow_html=True)
+    st.markdown("""
+    <iframe class="playlist-container"
+    src="https://www.youtube.com/embed/QHnxvTANMj0" 
     frameborder="0" allowfullscreen></iframe>
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -186,6 +172,19 @@ with col4:
     st.markdown("""
     <iframe class="playlist-container"
     src="https://www.youtube.com/embed/videoseries?list=PLw134D7uCGyivxSUSgwSzs4bow3K7R9gc" 
+    frameborder="0" allowfullscreen></iframe>
+    """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Third row for Domestic Rebuilds
+col5, col6 = st.columns(2)
+
+with col5:
+    st.markdown("<div class='video-section'>", unsafe_allow_html=True)
+    st.markdown("<h3 class='section-header' style='color:#f04f53;'>Impossible Challenge</h3>", unsafe_allow_html=True)
+    st.markdown("""
+    <iframe class="playlist-container"
+    src="https://www.youtube.com/embed/tQ3hMyWFHn8" 
     frameborder="0" allowfullscreen></iframe>
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
