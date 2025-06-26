@@ -162,6 +162,10 @@ st.markdown("""
     style='background-color: #f04f53; color: white; padding: 10px 20px; 
     text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
     Real Name Fix - Mobile</a>
+    <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
+    style='background-color: #f04f53; color: white; padding: 10px 20px; 
+    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
+    Player Editor Tutorial</a>
 </div>
 """, unsafe_allow_html=True)
 
