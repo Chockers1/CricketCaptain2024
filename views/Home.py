@@ -13,16 +13,27 @@ from bat import process_bat_stats
 from bowl import process_bowl_stats
 
 def load_data(uploaded_files):
-    # Total number of files
+    """Process uploaded scorecard files with modern progress tracking"""
     total_files = len(uploaded_files)
     
-    # Create a progress bar
-    progress_bar = st.progress(0, text=f"Processing 0 out of {total_files} matches...")
-    
+    # Modern progress container
+    progress_container = st.container()
+    with progress_container:
+        st.markdown("""
+            <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
+                        padding: 20px; border-radius: 15px; margin: 20px 0;">
+                <h3 style="color: white; margin: 0; text-align: center;">
+                    🏏 Processing Cricket Data
+                </h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
     try:
-        # Create a temporary directory to store uploaded files
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Save uploaded files to temporary directory with progress tracking
+            # File upload phase
             processed_files = 0
             processed_files_list = []
             
@@ -32,261 +43,366 @@ def load_data(uploaded_files):
                     f.write(uploaded_file.getbuffer())
                 processed_files_list.append(file_path)
                 
-                # Update progress
                 processed_files += 1
-                progress_percentage = int((processed_files / total_files) * 100)
-                progress_bar.progress(progress_percentage, 
-                    text=f"Processing {processed_files} out of {total_files} matches...")
+                progress = processed_files / total_files * 0.2  # 20% for file processing
+                progress_bar.progress(progress)
+                status_text.text(f"📁 Uploading files... {processed_files}/{total_files}")
             
-            # Display initial message about number of matches
-            st.info(f"Uploaded {total_files} match scorecards to process")
+            # Success message for upload
+            st.success(f"✅ Successfully uploaded {total_files} match scorecards")
             
-            # Process match data
-            st.write("Processing match data...")
+            # Process match data (20-40%)
+            status_text.text("🔄 Processing match data...")
+            progress_bar.progress(0.3)
             match_df = process_match_data(temp_dir)
+            
             if match_df is not None and not match_df.empty:
-                st.success("Match data processed successfully.")
                 st.session_state['match_df'] = match_df
-
-                # Process game stats
-                st.write("Processing game stats...")
+                st.success("✅ Match data processed successfully")
+                
+                # Process game stats (40-60%)
+                status_text.text("📊 Processing game statistics...")
+                progress_bar.progress(0.5)
                 game_df = process_game_stats(temp_dir, match_df)
+                
                 if game_df is not None and not game_df.empty:
-                    st.success("Game stats processed successfully.")
                     st.session_state['game_df'] = game_df
-
-                    # Process bowling stats
-                    st.write("Processing bowling stats...")
+                    st.success("✅ Game statistics processed successfully")
+                    
+                    # Process bowling stats (60-80%)
+                    status_text.text("🎯 Processing bowling statistics...")
+                    progress_bar.progress(0.7)
                     bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
+                    
                     if bowl_df is not None and not bowl_df.empty:
-                        st.success("Bowling stats processed successfully.")
-                        st.session_state['bowl_df'] = bowl_df                        # Process batting stats
-                        st.write("Processing batting stats...")
+                        st.session_state['bowl_df'] = bowl_df
+                        st.success("✅ Bowling statistics processed successfully")
+                        
+                        # Process batting stats (80-100%)
+                        status_text.text("🏏 Processing batting statistics...")
+                        progress_bar.progress(0.9)
                         bat_df = process_bat_stats(temp_dir, game_df, match_df)
+                        
                         if bat_df is not None and not bat_df.empty:
-                            st.success("Batting stats processed successfully.")
                             st.session_state['bat_df'] = bat_df
+                            st.success("✅ Batting statistics processed successfully")
                             
-                            # Create duplicates DataFrame - check available columns first
-                            st.write(f"Available columns in bat_df: {list(bat_df.columns)}")                            # Try to create duplicates with error handling
-                            try:
-                                # Create base duplicates DataFrame
-                                duplicates_base = bat_df[['Name', 'Bat_Team_y', 'Year', 'Competition']].copy()
-                                
-                                # Find players who played for multiple teams in same year/competition
-                                # Group by Name, Year, Competition and count unique teams
-                                team_counts = duplicates_base.groupby(['Name', 'Year', 'Competition'])['Bat_Team_y'].nunique()
-                                multi_team_players = team_counts[team_counts > 1].reset_index()
-                                multi_team_players.columns = ['Name', 'Year', 'Competition', 'Team_Count']
-                                
-                                # Get the actual teams for these players
-                                if not multi_team_players.empty:
-                                    duplicates_list = []
-                                    for _, row in multi_team_players.iterrows():
-                                        player_teams = duplicates_base[
-                                            (duplicates_base['Name'] == row['Name']) & 
-                                            (duplicates_base['Year'] == row['Year']) & 
-                                            (duplicates_base['Competition'] == row['Competition'])
-                                        ]['Bat_Team_y'].unique()
-                                        
-                                        duplicates_list.append({
-                                            'Name': row['Name'],
-                                            'Year': row['Year'], 
-                                            'Competition': row['Competition'],
-                                            'Teams': ', '.join(player_teams),
-                                            'Team_Count': len(player_teams)
-                                        })
-                                    
-                                    duplicates = pd.DataFrame(duplicates_list)
-                                else:
-                                    duplicates = pd.DataFrame(columns=['Name', 'Year', 'Competition', 'Teams', 'Team_Count'])                                
-                                st.session_state['duplicates'] = duplicates
-                                duplicates_created = True
-                                
-                                # Create team duplicates DataFrame - players appearing multiple times in same innings
-                                # Group by Name, File Name, Innings and count occurrences
-                                innings_counts = bat_df.groupby(['Name', 'File Name', 'Innings']).size()
-                                multi_innings_players = innings_counts[innings_counts > 1].reset_index()
-                                multi_innings_players.columns = ['Name', 'File Name', 'Innings', 'Count']
-                                
-                                # Get additional details for these players
-                                if not multi_innings_players.empty:
-                                    teamduplicates_list = []
-                                    for _, row in multi_innings_players.iterrows():
-                                        player_details = bat_df[
-                                            (bat_df['Name'] == row['Name']) & 
-                                            (bat_df['File Name'] == row['File Name']) & 
-                                            (bat_df['Innings'] == row['Innings'])                                        ][['Name', 'File Name', 'Innings', 'Year', 'Competition', 'Bat_Team_y']].iloc[0]
-                                        
-                                        teamduplicates_list.append({
-                                            'Name': row['Name'],
-                                            'File Name': row['File Name'],
-                                            'Year': player_details['Year'],
-                                            'Competition': player_details['Competition'],
-                                            'Team': player_details['Bat_Team_y'],
-                                            'Count': row['Count']
-                                        })
-                                    
-                                    teamduplicates = pd.DataFrame(teamduplicates_list)
-                                    # Remove duplicate rows from the display
-                                    teamduplicates = teamduplicates.drop_duplicates()
-                                else:
-                                    teamduplicates = pd.DataFrame(columns=['Name', 'File Name', 'Year', 'Competition', 'Team', 'Count'])
-                                
-                                st.session_state['teamduplicates'] = teamduplicates
-                                teamduplicates_created = True
-                                
-                            except KeyError as e:
-                                st.error(f"Column error when creating duplicates: {e}")
-                                # Show first few rows to debug
-                                st.write("First 5 rows of bat_df:")
-                                st.dataframe(bat_df.head())
-                                duplicates_created = False
-                                teamduplicates_created = False
+                            # Process duplicates
+                            status_text.text("🔍 Checking for duplicate players...")
+                            duplicates_result = process_duplicates(bat_df)
                             
-                            # Final success message
-                            st.success(f"All {total_files} scorecards processed successfully. Data is now available across all pages.")
-                            st.session_state['data_loaded'] = True                            # Complete the progress bar
-                            progress_bar.progress(100, text=f"Processed {total_files} out of {total_files} matches complete!")
+                            # Complete processing
+                            progress_bar.progress(1.0)
+                            status_text.text("✅ Processing complete!")
+                            st.session_state['data_loaded'] = True
                             
-                            # Check if any duplicates were found
-                            has_multi_team = duplicates_created and not duplicates.empty
-                            has_team_duplicates = 'teamduplicates_created' in locals() and teamduplicates_created and not teamduplicates.empty
+                            # Show final results
+                            show_processing_results(total_files, duplicates_result)
                             
-                            if not has_multi_team and not has_team_duplicates:
-                                # No duplicates found - show green success message
-                                st.markdown(
-                                    """
-                                    <div style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
-                                        <h3 style="margin: 0; color: #155724;">✅ No Duplicates Found</h3>
-                                        <p style="margin: 5px 0 0 0;">Your data looks clean! No potential duplicate players detected.</p>
-                                    </div>
-                                    """,
-                                    unsafe_allow_html=True 
-                                )  
-                            else:                                # Duplicates found - show amber warning message
-                                st.markdown(
-                                    """
-                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
-                                        <h3 style="margin: 0; color: #856404;">⚠️ Possible Duplicates Found</h3>
-                                        <p style="margin: 5px 0;"><strong>Fix:</strong> In Cricket Captain 2025, go to the player profile, click the edit button, and add another initial to the player's name, then re-save the scorecards to avoid duplicates.</p>
-                                    </div>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
-                                
-                                # Display duplicates DataFrame if it was created successfully
-                                if has_multi_team:
-                                    st.write("### Potential Multi-Team Players (Players who played for multiple teams in the same Year)")
-                                    st.dataframe(duplicates)
-                                
-                                # Display team duplicates DataFrame if it was created successfully  
-                                if has_team_duplicates:
-                                    st.write("### Potential Team Duplicates (Players appearing multiple times in the same match for the same team)")
-                                    st.dataframe(teamduplicates)
                         else:
-                            st.error("Batting stats processing failed or returned empty DataFrame.")
-                            progress_bar.progress(0, text="Processing failed")
+                            show_error("Batting statistics processing failed")
                     else:
-                        st.error("Bowling stats processing failed or returned empty DataFrame.")
-                        progress_bar.progress(0, text="Processing failed")
+                        show_error("Bowling statistics processing failed")
                 else:
-                    st.error("Game stats processing failed or returned empty DataFrame.")
-                    progress_bar.progress(0, text="Processing failed")
+                    show_error("Game statistics processing failed")
             else:
-                st.error("Match data processing failed or returned empty DataFrame.")
-                progress_bar.progress(0, text="Processing failed")
+                show_error("Match data processing failed")
+                
     except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        st.error("Traceback:")
-        st.text(traceback.format_exc())
-        progress_bar.progress(0, text="Processing failed")
+        show_error(f"Processing error: {str(e)}", traceback.format_exc())
 
-# --- HEADER MARKDOWN ---
-st.markdown(
-    """
-    <h1 style="text-align: center; color: #f04f53; font-size: 2em; white-space: nowrap;">
-    Welcome to Ultimate Cricket Captain 2025 Dashboard</h1>
-    """,
-    unsafe_allow_html=True
-)
+def process_duplicates(bat_df):
+    """Process duplicate player detection with modern error handling"""
+    try:
+        # Multi-team players
+        duplicates_base = bat_df[['Name', 'Bat_Team_y', 'Year', 'Competition']].copy()
+        team_counts = duplicates_base.groupby(['Name', 'Year', 'Competition'])['Bat_Team_y'].nunique()
+        multi_team_players = team_counts[team_counts > 1].reset_index()
+        multi_team_players.columns = ['Name', 'Year', 'Competition', 'Team_Count']
+        
+        duplicates_list = []
+        if not multi_team_players.empty:
+            for _, row in multi_team_players.iterrows():
+                player_teams = duplicates_base[
+                    (duplicates_base['Name'] == row['Name']) & 
+                    (duplicates_base['Year'] == row['Year']) & 
+                    (duplicates_base['Competition'] == row['Competition'])
+                ]['Bat_Team_y'].unique()
+                
+                duplicates_list.append({
+                    'Name': row['Name'],
+                    'Year': row['Year'], 
+                    'Competition': row['Competition'],
+                    'Teams': ', '.join(player_teams),
+                    'Team_Count': len(player_teams)
+                })
+        
+        duplicates = pd.DataFrame(duplicates_list) if duplicates_list else pd.DataFrame(columns=['Name', 'Year', 'Competition', 'Teams', 'Team_Count'])
+        st.session_state['duplicates'] = duplicates
+        
+        # Team duplicates (same player multiple times in same innings)
+        innings_counts = bat_df.groupby(['Name', 'File Name', 'Innings']).size()
+        multi_innings_players = innings_counts[innings_counts > 1].reset_index()
+        multi_innings_players.columns = ['Name', 'File Name', 'Innings', 'Count']
+        
+        teamduplicates_list = []
+        if not multi_innings_players.empty:
+            for _, row in multi_innings_players.iterrows():
+                player_details = bat_df[
+                    (bat_df['Name'] == row['Name']) & 
+                    (bat_df['File Name'] == row['File Name']) & 
+                    (bat_df['Innings'] == row['Innings'])
+                ][['Name', 'File Name', 'Innings', 'Year', 'Competition', 'Bat_Team_y']].iloc[0]
+                
+                teamduplicates_list.append({
+                    'Name': row['Name'],
+                    'File Name': row['File Name'],
+                    'Year': player_details['Year'],
+                    'Competition': player_details['Competition'],
+                    'Team': player_details['Bat_Team_y'],
+                    'Count': row['Count']
+                })
+        
+        teamduplicates = pd.DataFrame(teamduplicates_list).drop_duplicates() if teamduplicates_list else pd.DataFrame(columns=['Name', 'File Name', 'Year', 'Competition', 'Team', 'Count'])
+        st.session_state['teamduplicates'] = teamduplicates
+        
+        return {
+            'multi_team': duplicates,
+            'team_duplicates': teamduplicates,
+            'has_duplicates': not duplicates.empty or not teamduplicates.empty
+        }
+        
+    except Exception as e:
+        st.error(f"Error processing duplicates: {str(e)}")
+        return {'multi_team': pd.DataFrame(), 'team_duplicates': pd.DataFrame(), 'has_duplicates': False}
 
-# --- UPDATE BANNER ---
-st.markdown(
-    """
-    <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
-        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.23:</span>
-        <span style="color: white;"> New duplicate player checker when loading scorecards </span>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-# --- WELCOME MESSAGE SECTION ---
-st.markdown(
-    """
-    <div style="text-align: center; max-width: 1200px; margin: auto;">
-        <p>Thank you for subscribing to The Ultimate Cricket Captain 2025 Dashboard. 
-        Explore comprehensive statistics and performance metrics from your saves and take your game to the next level:</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+def show_processing_results(total_files, duplicates_result):
+    """Show modern processing results with enhanced styling"""
+    # Success message
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 25px; border-radius: 15px; text-align: center; margin: 20px 0;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+            <h2 style="color: white; margin: 0;">🎉 Processing Complete!</h2>
+            <p style="color: white; margin: 10px 0; font-size: 18px;">
+                Successfully processed {total_files} scorecards. Your cricket data is ready to explore!
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Duplicate check results
+    if not duplicates_result['has_duplicates']:
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); 
+                        padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0;
+                        box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
+                <h3 style="color: white; margin: 0;">✅ Data Quality Check</h3>
+                <p style="color: white; margin: 10px 0;">
+                    Excellent! No duplicate players detected. Your data is clean and ready for analysis.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0;
+                        box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
+                <h3 style="color: white; margin: 0;">⚠️ Duplicate Players Detected</h3>
+                <p style="color: white; margin: 10px 0;">
+                    <strong>Quick Fix:</strong> In Cricket Captain 2025, edit player profiles and add initials to distinguish players with similar names.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if not duplicates_result['multi_team'].empty:
+            st.markdown("### 🔄 Multi-Team Players")
+            st.markdown("*Players who appeared for multiple teams in the same year/competition*")
+            st.dataframe(duplicates_result['multi_team'], use_container_width=True)
+        
+        if not duplicates_result['team_duplicates'].empty:
+            st.markdown("### 👥 Team Duplicates")
+            st.markdown("*Players appearing multiple times in the same match*")
+            st.dataframe(duplicates_result['team_duplicates'], use_container_width=True)
 
-# --- HOW TO USE THE DASHBOARD SECTION ---
-st.markdown(
-    """
-    <div style="text-align: center; max-width: 800px; margin: auto; font-family: Arial, sans-serif;">
-        <h2 style="color: #f04f53;">How To Use The Dashboard</h2>
-        <ol style="text-align: left; margin: auto;">
-            <li><strong>In your Cricket Captain game,</strong> go into any scorecard you want the data from and click save.</li>
-            <li><strong>Locate the .txt files</strong> which contain the scorecard data:
-                <ul>
-                    <li><em>Windows:</em> <code>C:\\Users\\[USER NAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025</code></li>
-                    <li><em>MAC:</em> <code>~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves</code></li>
-                </ul>
-            </li>
-            <li><strong>Select the browse files button</strong> </li>
-            <li><strong>To select all files:</strong> Press <code>Ctrl + A</code> on Windows or <code>Command + A</code> on Mac, and then click open (you will need to select all everytime you load them.).</li>
-            <li><strong>Click Process Scorecards</strong> to analyze your data.</li>
-            <li><strong>Click on any of the tabs</strong> to see your saved data.</li>
-        </ol>
-    </div>
-    """,
-    unsafe_allow_html=True
+def show_error(message, traceback_info=None):
+    """Show modern error messages"""
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);                    padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0;
+                    box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
+            <h3 style="color: white; margin: 0;">❌ Processing Error</h3>
+            <p style="color: white; margin: 10px 0;">{message}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if traceback_info:
+        with st.expander("🔧 Technical Details"):
+            st.code(traceback_info)
 
-)
-
-# Channel link at the bottom
+# Custom CSS for modern styling
 st.markdown("""
-<div style='text-align: center; margin-top: 20px;'>
-    <a href='https://www.youtube.com/@Robscricket' target='_blank' 
-    style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
-    Watch My Cricket Captain 2025 Saves</a>
-    <a href='https://youtu.be/ykn5jal7ZdY' target='_blank' 
-    style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
-    Real Name Fix - PC / Mac</a>
-    <a href='https://youtu.be/MenffAx4KoQ' target='_blank' 
-    style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
-    Real Name Fix - Mobile</a>
-    <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
-    style='background-color: #f04f53; color: white; padding: 10px 20px; 
-    text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; display: inline-block;'>
-    Player Editor Tutorial</a>
-</div>
+<style>
+    .main > div {
+        padding-top: 2rem;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    
+    .uploadedFile {
+        border-radius: 10px;
+        border: 2px dashed #667eea;
+        padding: 20px;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+</style>
 """, unsafe_allow_html=True)
 
-# File uploader with a custom label
-uploaded_files = st.file_uploader("Upload your scorecard files", 
-                                   type=['txt'], 
-                                   accept_multiple_files=True, 
-                                   help="Select multiple .txt scorecard files from your Cricket Captain game")
+# Modern header
+st.markdown("""
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                   font-size: 3.5em; font-weight: bold; margin: 0;">
+            🏏 Cricket Captain 2025 Dashboard
+        </h1>
+        <p style="font-size: 1.2em; color: #666; margin-top: 10px;">
+            Transform your cricket data into powerful insights
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
-# Process Scorecards button
-if st.button("Process Scorecards"):
-    if uploaded_files:
-        load_data(uploaded_files)
-    else:
-        st.warning("Please upload your scorecard files.")
+# Update banner
+st.markdown("""
+    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0;
+                box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+        <span style="color: white; font-weight: bold; font-size: 18px;">🎉 NEW UPDATE v1.23</span>
+        <br>
+        <span style="color: white; font-size: 16px;">Enhanced duplicate player detection & modern UI</span>
+    </div>
+""", unsafe_allow_html=True)
+
+# Welcome section
+st.markdown("""
+    <div style="text-align: center; max-width: 1000px; margin: 40px auto;">
+        <p style="font-size: 1.1em; line-height: 1.6; color: #444;">
+            Welcome to the ultimate Cricket Captain 2025 analytics platform. 
+            Upload your match scorecards and unlock comprehensive statistics and performance insights.
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
+# Modern how-to section
+with st.expander("📋 How to Use This Dashboard", expanded=False):
+    st.markdown("""
+        <div style="padding: 20px;">
+            <h3 style="color: #667eea; margin-bottom: 20px;">Quick Start Guide</h3>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <strong>Step 1:</strong> In Cricket Captain 2025, open any scorecard and click "Save"
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <strong>Step 2:</strong> Locate your scorecard files:
+                <ul style="margin: 10px 0;">
+                    <li><strong>Windows:</strong> <code>C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025</code></li>
+                    <li><strong>Mac:</strong> <code>~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves</code></li>
+                </ul>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <strong>Step 3:</strong> Use the file browser below to select your .txt scorecard files
+                <br><em>Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)</em>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <strong>Step 4:</strong> Click "Process Scorecards" and explore your data in the various tabs
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# Modern file uploader
+st.markdown("### 📁 Upload Your Scorecard Files")
+uploaded_files = st.file_uploader(
+    "Select your Cricket Captain 2025 scorecard files (.txt)",
+    type=['txt'],
+    accept_multiple_files=True,
+    help="Browse and select multiple .txt files from your Cricket Captain saves folder"
+)
+
+# File info display
+if uploaded_files:
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                    padding: 15px; border-radius: 10px; margin: 15px 0;">
+            <strong>📊 Files Selected:</strong> {len(uploaded_files)} scorecard files ready for processing
+        </div>
+    """, unsafe_allow_html=True)
+
+# Modern process button
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    if st.button("🚀 Process Scorecards", use_container_width=True):
+        if uploaded_files:
+            load_data(uploaded_files)
+        else:
+            st.warning("⚠️ Please select your scorecard files first")
+
+# Resource links
+st.markdown("---")
+st.markdown("### 🎥 Helpful Resources")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown("""
+        <a href='https://www.youtube.com/@Robscricket' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            📺 Watch Cricket Captain Saves
+        </a>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+        <a href='https://youtu.be/ykn5jal7ZdY' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🖥️ Real Name Fix - PC/Mac
+        </a>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown("""
+        <a href='https://youtu.be/MenffAx4KoQ' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            📱 Real Name Fix - Mobile
+        </a>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+        <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            ⚾ Player Editor Tutorial
+        </a>
+    """, unsafe_allow_html=True)

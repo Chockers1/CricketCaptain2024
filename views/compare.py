@@ -5,76 +5,67 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def display_comparison_view():
-    # Enhanced styling with modern design
+def display_comparison_view():    # Clean modern styling consistent with home page
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
     .main-header {
-        background: linear-gradient(135deg, #f04f53 0%, #e73a3e 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
         border-radius: 15px;
         margin-bottom: 2rem;
-        box-shadow: 0 10px 30px rgba(240, 79, 83, 0.3);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         text-align: center;
     }
     
     .main-header h1 {
         color: white;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 700;
         font-size: 2.5rem;
         margin: 0;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     
     .main-header p {
-        color: rgba(255,255,255,0.9);
-        font-family: 'Inter', sans-serif;
+        color: white;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 1.1rem;
         margin: 0.5rem 0 0 0;
     }
-    
-    .player-selector {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-        border: 1px solid rgba(240, 79, 83, 0.1);
+      .player-selector {
+        background: transparent;
+        padding: 0.5rem 0;
+        border-radius: 0;
+        box-shadow: none;
+        margin-bottom: 1rem;
+        border: none;
     }
-    
-    .comparison-container {
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      .comparison-container {
+        background: transparent;
+        border-radius: 0;
+        box-shadow: none;
         overflow: hidden;
-        margin: 2rem 0;
-        border: 1px solid rgba(240, 79, 83, 0.1);
+        margin: 1rem 0;
+        border: none;
     }
     
     .comparison-header {
-        background: linear-gradient(135deg, #f04f53 0%, #e73a3e 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
     }
-    
-    .player-header {
+      .player-header {
         color: white;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 600;
         font-size: 1.3rem;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         flex: 1;
         text-align: center;
     }
-    
-    .vs-divider {
+      .vs-divider {
         background: white;
-        color: #f04f53;
+        color: #667eea;
         border-radius: 50%;
         width: 50px;
         height: 50px;
@@ -83,7 +74,7 @@ def display_comparison_view():
         justify-content: center;
         font-weight: 700;
         font-size: 1.2rem;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         margin: 0 1rem;
         box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
@@ -96,11 +87,11 @@ def display_comparison_view():
         display: flex;
         align-items: center;
         transition: all 0.3s ease;
-        border-bottom: 1px solid rgba(240, 79, 83, 0.1);
+        border-bottom: 1px solid rgba(102, 126, 234, 0.1);
     }
     
     .comparison-row:hover {
-        background: rgba(240, 79, 83, 0.02);
+        background: rgba(102, 126, 234, 0.02);
         transform: translateY(-1px);
     }
     
@@ -112,7 +103,7 @@ def display_comparison_view():
         flex: 1;
         padding: 1rem;
         text-align: center;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 500;
         font-size: 1rem;
         border-radius: 8px;
@@ -124,86 +115,113 @@ def display_comparison_view():
         flex: 1.2;
         text-align: center;
         font-weight: 600;
-        color: #f04f53;
-        font-family: 'Inter', sans-serif;
+        color: #667eea;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 0.95rem;
         padding: 1rem;
-        background: rgba(240, 79, 83, 0.05);
+        background: rgba(102, 126, 234, 0.05);
         margin: 5px 0;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     
     .highlight-green {
-        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-        color: #155724;
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+        color: white;
         font-weight: 600;
-        box-shadow: 0 2px 8px rgba(21, 87, 36, 0.15);
-        border: 1px solid rgba(21, 87, 36, 0.2);
+        box-shadow: 0 2px 8px rgba(86, 171, 47, 0.15);
+        border: 1px solid rgba(86, 171, 47, 0.2);
     }
     
     .highlight-red {
-        background: linear-gradient(135deg, #f8d7da 0%, #f1b0b7 100%);
-        color: #721c24;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
         font-weight: 600;
-        box-shadow: 0 2px 8px rgba(114, 28, 36, 0.15);
-        border: 1px solid rgba(114, 28, 36, 0.2);
+        box-shadow: 0 2px 8px rgba(255, 107, 107, 0.15);
+        border: 1px solid rgba(255, 107, 107, 0.2);
     }
-    
-    .chart-container {
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        padding: 2rem;
-        margin: 2rem 0;
-        border: 1px solid rgba(240, 79, 83, 0.1);
+      .chart-container {
+        background: transparent;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 1rem;
+        margin: 1rem 0;
+        border: none;
     }
     
     .chart-title {
-        color: #f04f53;
-        font-family: 'Inter', sans-serif;
+        color: #667eea;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 600;
         font-size: 1.5rem;
         text-align: center;
         margin-bottom: 1rem;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid rgba(240, 79, 83, 0.2);
+        border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+    }    /* Use Streamlit's default styling with purple accent */
+    :root {
+        --primary-color: #764ba2;
+        --background-color: #ffffff;
+        --secondary-background-color: #f0f2f6;
+        --text-color: #262730;
     }
     
-    .stSlider p { 
-        color: #f04f53 !important; 
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 500 !important;
+    /* Simple purple accent for sliders */
+    .stSlider div[data-baseweb="slider"] div[role="slider"] {
+        background-color: #764ba2 !important;
     }
     
-    .stSelectbox label {
-        color: #f04f53 !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 500 !important;
+    .stSlider div[data-baseweb="slider"] div[role="slider"] ~ div {
+        background-color: #764ba2 !important;
     }
     
     .metric-category {
-        background: linear-gradient(135deg, #6c24c0 0%, #5a1ea0 100%);
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         color: white;
         padding: 0.8rem;
         margin: 5px 0;
         text-align: center;
         font-weight: 600;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
         text-transform: uppercase;
         letter-spacing: 1px;
         font-size: 0.9rem;
-    }
-    
-    .stats-grid {
+    }    .stats-grid {
         display: grid;
         grid-template-columns: 1fr auto 1fr;
         gap: 0;
-        background: white;
-        border-radius: 15px;
+        background: transparent;
+        border-radius: 0;
         overflow: hidden;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        margin: 2rem 0;
+        box-shadow: none;
+        margin: 1rem 0;
+    }
+    
+    /* Remove all default Streamlit container styling */
+    div[data-testid="stVerticalBlock"] {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+    
+    div[data-testid="stHorizontalBlock"] {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+    
+    .streamlit-expanderHeader {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+    }
+    
+    .streamlit-expanderContent {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -427,17 +445,16 @@ def display_comparison_view():
             theta=radar_metrics,
             fill='toself',
             name=player1_choice,
-            line=dict(color='#f04f53', width=3),
-            fillcolor='rgba(240, 79, 83, 0.2)'
-        ))
+            line=dict(color='#667eea', width=3),
+            fillcolor='rgba(102, 126, 234, 0.2)'        ))
         
         fig.add_trace(go.Scatterpolar(
             r=[player2_stats[m].values[0] for m in radar_metrics],
             theta=radar_metrics,
             fill='toself',
             name=player2_choice,
-            line=dict(color='#6c24c0', width=3),
-            fillcolor='rgba(108, 36, 192, 0.2)'
+            line=dict(color='#764ba2', width=3),
+            fillcolor='rgba(118, 75, 162, 0.2)'
         ))
         
         fig.update_layout(
@@ -454,12 +471,11 @@ def display_comparison_view():
                     gridcolor='rgba(128, 128, 128, 0.2)',
                     linecolor='rgba(128, 128, 128, 0.2)'
                 )
-            ),
-            showlegend=True,
+            ),            showlegend=True,
             height=500,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family='Inter', size=12),
+            font=dict(family='SF Pro Display', size=12),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -491,13 +507,11 @@ def display_comparison_view():
         player1_yearly = get_yearly_stats(player1_choice)
         player2_yearly = get_yearly_stats(player2_choice)
 
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-        # Enhanced traces with better styling
+        fig = make_subplots(specs=[[{"secondary_y": True}]])        # Enhanced traces with better styling using Home.py colors
         fig.add_trace(
             go.Scatter(x=player1_yearly['Year'], y=player1_yearly['Runs'],
                       name=f"{player1_choice} Runs", 
-                      line=dict(color='#f04f53', width=3),
+                      line=dict(color='#667eea', width=3),
                       mode='lines+markers',
                       marker=dict(size=8)),
             secondary_y=False,
@@ -506,7 +520,7 @@ def display_comparison_view():
         fig.add_trace(
             go.Scatter(x=player2_yearly['Year'], y=player2_yearly['Runs'],
                       name=f"{player2_choice} Runs", 
-                      line=dict(color='#f04f53', width=3, dash='dash'),
+                      line=dict(color='#764ba2', width=3, dash='dash'),
                       mode='lines+markers',
                       marker=dict(size=8)),
             secondary_y=False,
@@ -515,7 +529,7 @@ def display_comparison_view():
         fig.add_trace(
             go.Scatter(x=player1_yearly['Year'], y=player1_yearly['Bowler_Wkts'],
                       name=f"{player1_choice} Wickets", 
-                      line=dict(color='#6c24c0', width=3),
+                      line=dict(color='#f093fb', width=3),
                       mode='lines+markers',
                       marker=dict(size=8)),
             secondary_y=True,
@@ -524,7 +538,7 @@ def display_comparison_view():
         fig.add_trace(
             go.Scatter(x=player2_yearly['Year'], y=player2_yearly['Bowler_Wkts'],
                       name=f"{player2_choice} Wickets", 
-                      line=dict(color='#6c24c0', width=3, dash='dash'),
+                      line=dict(color='#f5576c', width=3, dash='dash'),
                       mode='lines+markers',
                       marker=dict(size=8)),
             secondary_y=True,
@@ -533,13 +547,13 @@ def display_comparison_view():
         fig.update_layout(
             title=dict(
                 text="Runs and Wickets by Year",
-                font=dict(family='Inter', size=16, color='#f04f53')
+                font=dict(family='SF Pro Display', size=16, color='#4e73df')
             ),
             height=500,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             hovermode='x unified',
-            font=dict(family='Inter'),
+            font=dict(family='SF Pro Display'),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -554,7 +568,7 @@ def display_comparison_view():
             showgrid=True, 
             gridwidth=1, 
             gridcolor='rgba(128, 128, 128, 0.2)',
-            title_font=dict(family='Inter', color='#333')
+            title_font=dict(family='SF Pro Display', color='#5a5c69')
         )
         fig.update_yaxes(
             title_text="Runs", 
@@ -562,7 +576,7 @@ def display_comparison_view():
             showgrid=True, 
             gridwidth=1, 
             gridcolor='rgba(128, 128, 128, 0.2)',
-            title_font=dict(family='Inter', color='#f04f53')
+            title_font=dict(family='SF Pro Display', color='#4e73df')
         )
         fig.update_yaxes(
             title_text="Wickets", 
@@ -570,7 +584,7 @@ def display_comparison_view():
             showgrid=True, 
             gridwidth=1, 
             gridcolor='rgba(128, 128, 128, 0.2)',
-            title_font=dict(family='Inter', color='#6c24c0')
+            title_font=dict(family='SF Pro Display', color='#1cc88a')
         )
 
         st.plotly_chart(fig, use_container_width=True)
