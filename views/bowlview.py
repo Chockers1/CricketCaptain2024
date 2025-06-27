@@ -223,7 +223,8 @@ def display_bowl_view():
                         min_value=min(years),
                         max_value=max(years),
                         value=(min(years), max(years)),
-                        label_visibility='collapsed')
+                        label_visibility='collapsed',
+                        key='year_slider')
 
         # The rest of the sliders remain the same
         with col6:
@@ -232,7 +233,8 @@ def display_bowl_view():
                         min_value=1, 
                         max_value=11, 
                         value=(1, 11),
-                        label_visibility='collapsed')
+                        label_visibility='collapsed',
+                        key='position_slider')
 
         with col7:
             st.markdown("<p style='text-align: center;'>Wickets Range</p>", unsafe_allow_html=True)
@@ -240,7 +242,8 @@ def display_bowl_view():
                                     min_value=0, 
                                     max_value=max_wickets, 
                                     value=(0, max_wickets),
-                                    label_visibility='collapsed')
+                                    label_visibility='collapsed',
+                                    key='wickets_slider')
 
         with col8:
             st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
@@ -248,7 +251,8 @@ def display_bowl_view():
                                     min_value=1, 
                                     max_value=max_matches, 
                                     value=(1, max_matches),
-                                    label_visibility='collapsed')
+                                    label_visibility='collapsed',
+                                    key='matches_slider')
 
         with col9:
             st.markdown("<p style='text-align: center;'>Average Range</p>", unsafe_allow_html=True)
@@ -256,7 +260,8 @@ def display_bowl_view():
                                 min_value=0.0, 
                                 max_value=max_avg, 
                                 value=(0.0, max_avg),
-                                label_visibility='collapsed')
+                                label_visibility='collapsed',
+                                key='avg_slider')
 
         with col10:
             st.markdown("<p style='text-align: center;'>Strike Rate Range</p>", unsafe_allow_html=True)
@@ -264,7 +269,8 @@ def display_bowl_view():
                                 min_value=0.0, 
                                 max_value=max_sr, 
                                 value=(0.0, max_sr),
-                                label_visibility='collapsed')
+                                label_visibility='collapsed',
+                                key='sr_slider')
 
 ###-------------------------------------APPLY FILTERS-------------------------------------###
         # Create filtered dataframe
@@ -1798,38 +1804,50 @@ def display_bowl_view():
                             all_players_ha_stats['Avg'] = (all_players_ha_stats['Bowler_Runs'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
                             all_players_ha_stats['SR'] = (all_players_ha_stats['Bowler_Balls'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
                             # Ensure Bowler_Balls/6 is not zero before division
-                            all_players_ha_stats['Econ'] = (all_players_ha_stats['Bowler_Runs'] / (all_players_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-
+                            all_players_ha_stats['Econ'] = (all_players_ha_stats['Bowler_Runs'] / (all_players_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
 
                             all_color = '#f84e4e' if not individual_players else 'black'
 
-                            # Add traces for 'All'
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=all_players_ha_stats['HomeOrAway'],
-                                y=all_players_ha_stats['Avg'],
-                                name='All Players',
-                                legendgroup='All',
-                                marker=dict(color=all_color),
-                                showlegend=True
-                            ), row=1, col=1)
+                            # Add traces for 'All' - Home and Away separately
+                            for ha_status in ['Home', 'Away']:
+                                data_subset = all_players_ha_stats[all_players_ha_stats['HomeOrAway'] == ha_status]
+                                if not data_subset.empty:
+                                    line_style = 'solid' if ha_status == 'Home' else 'dash'
+                                    legend_name = f'All Players - {ha_status}'
+                                    show_legend_main = True # Show both Home and Away in legend for the first plot
 
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=all_players_ha_stats['HomeOrAway'],
-                                y=all_players_ha_stats['SR'],
-                                name='All Players',
-                                legendgroup='All',
-                                marker=dict(color=all_color),
-                                showlegend=False
-                            ), row=1, col=2)
+                                    fig_ha_metrics.add_trace(go.Scatter(
+                                        x=data_subset['Year'],
+                                        y=data_subset['Avg'],
+                                        mode='lines+markers',
+                                        name=legend_name,
+                                        legendgroup='All',
+                                        line=dict(color=all_color, dash=line_style),
+                                        marker=dict(color=all_color, size=8),
+                                        showlegend=show_legend_main # Apply change here
+                                    ), row=1, col=1)
 
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=all_players_ha_stats['HomeOrAway'],
-                                y=all_players_ha_stats['Econ'],
-                                name='All Players',
-                                legendgroup='All',
-                                marker=dict(color=all_color),
-                                showlegend=False
-                            ), row=1, col=3)
+                                    fig_ha_metrics.add_trace(go.Scatter(
+                                        x=data_subset['Year'],
+                                        y=data_subset['SR'],
+                                        mode='lines+markers',
+                                        name=legend_name, # Name needed for hover, but legend entry hidden
+                                        legendgroup='All',
+                                        line=dict(color=all_color, dash=line_style),
+                                        marker=dict(color=all_color, size=8),
+                                        showlegend=False # Keep False for SR plot
+                                    ), row=1, col=2)
+
+                                    fig_ha_metrics.add_trace(go.Scatter(
+                                        x=data_subset['Year'],
+                                        y=data_subset['Econ'],
+                                        mode='lines+markers',
+                                        name=legend_name, # Name needed for hover, but legend entry hidden
+                                        legendgroup='All',
+                                        line=dict(color=all_color, dash=line_style),
+                                        marker=dict(color=all_color, size=8),
+                                        showlegend=False # Keep False for Econ plot
+                                    ), row=1, col=3)
                     else:
                         st.warning("Not enough data to display 'All Players' Home/Away metrics.")
 
@@ -2337,7 +2355,7 @@ def display_bowl_view():
                 })
                 
                 # Select and reorder columns - drop Bowler_Balls from display
-                match_bowling_df = match_bowling[['Rank', 'Name', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Team', 'Opponent', 'Format', 'Year']]
+                match_bowling_df = match_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Opponent', 'Format', 'Year']]
 
                 # Display the header
                 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", unsafe_allow_html=True)
@@ -2379,7 +2397,7 @@ def display_bowl_view():
                 })
                 
                 # Select and reorder columns
-                expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Team', 'Opponent', 'Format', 'Year']]
+                expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Opponent', 'Format', 'Year']]
                 
                 # Display the header
                 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Expensive Bowling Figures</h3>", unsafe_allow_html=True)
@@ -2488,7 +2506,6 @@ def display_bowl_view():
                 season_sr['Overs'] = (season_sr['Bowler_Balls'] // 6) + (season_sr['Bowler_Balls'] % 6) / 10
                 season_sr['Average'] = (season_sr['Bowler_Runs'] / season_sr['Bowler_Wkts']).round(2)
                 season_sr['SR'] = (season_sr['Bowler_Balls'] / season_sr['Bowler_Wkts']).round(2)
-                season_sr['Economy'] = (season_sr['Bowler_Runs'] / season_sr['Overs']).round(2)
                 
                 # Sort by strike rate (ascending)
                 season_sr = season_sr.sort_values(by='SR', ascending=True).head(10)
