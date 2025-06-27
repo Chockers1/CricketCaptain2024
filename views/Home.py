@@ -227,7 +227,8 @@ def show_processing_results(total_files, duplicates_result):
 def show_error(message, traceback_info=None):
     """Show modern error messages"""
     st.markdown(f"""
-        <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);                    padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0;
+        <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); 
+                    padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0;
                     box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
             <h3 style="color: white; margin: 0;">❌ Processing Error</h3>
             <p style="color: white; margin: 10px 0;">{message}</p>
@@ -237,6 +238,14 @@ def show_error(message, traceback_info=None):
     if traceback_info:
         with st.expander("🔧 Technical Details"):
             st.code(traceback_info)
+
+# Configure page
+st.set_page_config(
+    page_title="Cricket Captain 2025 Dashboard",
+    page_icon="🏏",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 # Custom CSS for modern styling
 st.markdown("""
@@ -395,7 +404,7 @@ with col2:
                   box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
             📱 Real Name Fix - Mobile
         </a>
-    """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)  
     
     st.markdown("""
         <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
