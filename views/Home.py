@@ -162,8 +162,8 @@ def load_data(uploaded_files):
                                         <p style="margin: 5px 0 0 0;">Your data looks clean! No potential duplicate players detected.</p>
                                     </div>
                                     """,
-                                    unsafe_allow_html=True
-                                )
+                                    unsafe_allow_html=True 
+                                )  
                             else:                                # Duplicates found - show amber warning message
                                 st.markdown(
                                     """
