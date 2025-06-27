@@ -60,21 +60,130 @@ def load_data(uploaded_files):
                     bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
                     if bowl_df is not None and not bowl_df.empty:
                         st.success("Bowling stats processed successfully.")
-                        st.session_state['bowl_df'] = bowl_df
-
-                        # Process batting stats
+                        st.session_state['bowl_df'] = bowl_df                        # Process batting stats
                         st.write("Processing batting stats...")
                         bat_df = process_bat_stats(temp_dir, game_df, match_df)
                         if bat_df is not None and not bat_df.empty:
                             st.success("Batting stats processed successfully.")
                             st.session_state['bat_df'] = bat_df
-
+                            
+                            # Create duplicates DataFrame - check available columns first
+                            st.write(f"Available columns in bat_df: {list(bat_df.columns)}")                            # Try to create duplicates with error handling
+                            try:
+                                # Create base duplicates DataFrame
+                                duplicates_base = bat_df[['Name', 'Bat_Team_y', 'Year', 'Competition']].copy()
+                                
+                                # Find players who played for multiple teams in same year/competition
+                                # Group by Name, Year, Competition and count unique teams
+                                team_counts = duplicates_base.groupby(['Name', 'Year', 'Competition'])['Bat_Team_y'].nunique()
+                                multi_team_players = team_counts[team_counts > 1].reset_index()
+                                multi_team_players.columns = ['Name', 'Year', 'Competition', 'Team_Count']
+                                
+                                # Get the actual teams for these players
+                                if not multi_team_players.empty:
+                                    duplicates_list = []
+                                    for _, row in multi_team_players.iterrows():
+                                        player_teams = duplicates_base[
+                                            (duplicates_base['Name'] == row['Name']) & 
+                                            (duplicates_base['Year'] == row['Year']) & 
+                                            (duplicates_base['Competition'] == row['Competition'])
+                                        ]['Bat_Team_y'].unique()
+                                        
+                                        duplicates_list.append({
+                                            'Name': row['Name'],
+                                            'Year': row['Year'], 
+                                            'Competition': row['Competition'],
+                                            'Teams': ', '.join(player_teams),
+                                            'Team_Count': len(player_teams)
+                                        })
+                                    
+                                    duplicates = pd.DataFrame(duplicates_list)
+                                else:
+                                    duplicates = pd.DataFrame(columns=['Name', 'Year', 'Competition', 'Teams', 'Team_Count'])                                
+                                st.session_state['duplicates'] = duplicates
+                                duplicates_created = True
+                                
+                                # Create team duplicates DataFrame - players appearing multiple times in same innings
+                                # Group by Name, File Name, Innings and count occurrences
+                                innings_counts = bat_df.groupby(['Name', 'File Name', 'Innings']).size()
+                                multi_innings_players = innings_counts[innings_counts > 1].reset_index()
+                                multi_innings_players.columns = ['Name', 'File Name', 'Innings', 'Count']
+                                
+                                # Get additional details for these players
+                                if not multi_innings_players.empty:
+                                    teamduplicates_list = []
+                                    for _, row in multi_innings_players.iterrows():
+                                        player_details = bat_df[
+                                            (bat_df['Name'] == row['Name']) & 
+                                            (bat_df['File Name'] == row['File Name']) & 
+                                            (bat_df['Innings'] == row['Innings'])                                        ][['Name', 'File Name', 'Innings', 'Year', 'Competition', 'Bat_Team_y']].iloc[0]
+                                        
+                                        teamduplicates_list.append({
+                                            'Name': row['Name'],
+                                            'File Name': row['File Name'],
+                                            'Year': player_details['Year'],
+                                            'Competition': player_details['Competition'],
+                                            'Team': player_details['Bat_Team_y'],
+                                            'Count': row['Count']
+                                        })
+                                    
+                                    teamduplicates = pd.DataFrame(teamduplicates_list)
+                                    # Remove duplicate rows from the display
+                                    teamduplicates = teamduplicates.drop_duplicates()
+                                else:
+                                    teamduplicates = pd.DataFrame(columns=['Name', 'File Name', 'Year', 'Competition', 'Team', 'Count'])
+                                
+                                st.session_state['teamduplicates'] = teamduplicates
+                                teamduplicates_created = True
+                                
+                            except KeyError as e:
+                                st.error(f"Column error when creating duplicates: {e}")
+                                # Show first few rows to debug
+                                st.write("First 5 rows of bat_df:")
+                                st.dataframe(bat_df.head())
+                                duplicates_created = False
+                                teamduplicates_created = False
+                            
                             # Final success message
                             st.success(f"All {total_files} scorecards processed successfully. Data is now available across all pages.")
-                            st.session_state['data_loaded'] = True
-                            
-                            # Complete the progress bar
+                            st.session_state['data_loaded'] = True                            # Complete the progress bar
                             progress_bar.progress(100, text=f"Processed {total_files} out of {total_files} matches complete!")
+                            
+                            # Check if any duplicates were found
+                            has_multi_team = duplicates_created and not duplicates.empty
+                            has_team_duplicates = 'teamduplicates_created' in locals() and teamduplicates_created and not teamduplicates.empty
+                            
+                            if not has_multi_team and not has_team_duplicates:
+                                # No duplicates found - show green success message
+                                st.markdown(
+                                    """
+                                    <div style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
+                                        <h3 style="margin: 0; color: #155724;">✅ No Duplicates Found</h3>
+                                        <p style="margin: 5px 0 0 0;">Your data looks clean! No potential duplicate players detected.</p>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+                            else:                                # Duplicates found - show amber warning message
+                                st.markdown(
+                                    """
+                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
+                                        <h3 style="margin: 0; color: #856404;">⚠️ Possible Duplicates Found</h3>
+                                        <p style="margin: 5px 0;"><strong>Fix:</strong> In Cricket Captain 2025, go to the player profile, click the edit button, and add another initial to the player's name, then re-save the scorecards to avoid duplicates.</p>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+                                
+                                # Display duplicates DataFrame if it was created successfully
+                                if has_multi_team:
+                                    st.write("### Potential Multi-Team Players (Players who played for multiple teams in the same Year)")
+                                    st.dataframe(duplicates)
+                                
+                                # Display team duplicates DataFrame if it was created successfully  
+                                if has_team_duplicates:
+                                    st.write("### Potential Team Duplicates (Players appearing multiple times in the same match for the same team)")
+                                    st.dataframe(teamduplicates)
                         else:
                             st.error("Batting stats processing failed or returned empty DataFrame.")
                             progress_bar.progress(0, text="Processing failed")
