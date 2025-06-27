@@ -1,10 +1,15 @@
 import streamlit as st
+
+
+
 import os
 import sys
 import traceback
 import pandas as pd
 import tempfile
 import time
+
+
 
 # Import the processing functions from each script
 from match import process_match_data
@@ -238,14 +243,6 @@ def show_error(message, traceback_info=None):
     if traceback_info:
         with st.expander("🔧 Technical Details"):
             st.code(traceback_info)
-
-# Configure page
-st.set_page_config(
-    page_title="Cricket Captain 2025 Dashboard",
-    page_icon="🏏",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
 
 # Custom CSS for modern styling
 st.markdown("""
