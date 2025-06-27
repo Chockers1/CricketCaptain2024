@@ -18,29 +18,178 @@ def parse_date(date_str):
     except Exception:
         return pd.NaT
 
-# Page Header
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Elo Ratings</h1>", unsafe_allow_html=True)
+# Modern gradient header
+st.markdown("""
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1 style="background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%); 
+                   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                   font-size: 3.2em; font-weight: bold; margin: 0;">
+            📊 ELO Ratings
+        </h1>
+        <p style="font-size: 1.1em; color: #666; margin-top: 10px;">
+            Track team performance with advanced ELO rating calculations
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
-# Custom CSS for styling
+# Modern CSS for beautiful UI - Full styling with enhanced elements
 st.markdown("""
 <style>
-/* Table styling */
-table { color: black; width: 100%; }
-thead tr th {
-    background-color: #f04f53 !important;
-    color: white !important;
-}
-tbody tr:nth-child(even) { background-color: #f0f2f6; }
-tbody tr:nth-child(odd) { background-color: white; }
-
-/* Tab styling */
-.stTabs [data-baseweb="tab-list"] {
-    width: 100%;
-}
-.stTabs [data-baseweb="tab"] {
-    flex-grow: 1;
-    text-align: center;
-}
+    .main > div {
+        padding-top: 2rem;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    
+    .modern-card {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(240,79,83,0.1);
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    .filter-card {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 15px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+    
+    .result-banner {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+    }
+    
+    .success-banner {
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    table { 
+        color: black; 
+        width: 100%; 
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+        font-weight: bold;
+        padding: 12px;
+    }
+    tbody tr:nth-child(even) { 
+        background-color: #f8f9fa; 
+    }
+    tbody tr:nth-child(odd) { 
+        background-color: white; 
+    }
+    tbody tr:hover {
+        background-color: #fff0f1;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stMultiSelect > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stMultiSelect > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+        font-weight: bold;
+        font-size: 1.1em;
+        border-radius: 8px 8px 0 0;
+        background: #fff0f1;
+        margin: 0 2px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white !important;
+    }
+    
+    /* Enhanced metric cards */
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 12px;
+        color: white;
+        text-align: center;
+        margin: 10px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    /* Beautiful scrollbar for dataframes */
+    .stDataFrame [data-testid="stDataFrameResizeHandle"] {
+        background-color: #f04f53;
+    }
+    
+    /* Enhanced plotly charts */
+    .js-plotly-plot {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -60,6 +209,16 @@ if 'match_df' in st.session_state:
     match_df = st.session_state['match_df']
     all_teams.update(match_df['Home_Team'].unique())
     all_teams.update(match_df['Away_Team'].unique())
+
+# Create beautiful filter section
+st.markdown("""
+    <div class="filter-card">
+        <h2 style='color:#f04f53; text-align: center; margin-bottom: 20px;'>🔍 ELO Filters</h2>
+        <p style='text-align: center; color: #666; margin-bottom: 15px;'>
+            Filter by format, team, and opponent to analyze ELO ratings
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 # Create columns for filters
 col1, col2, col3 = st.columns(3)
@@ -289,23 +448,40 @@ if 'match_df' in st.session_state:
         opponent_mask = (filtered_elo_df['Opponent'].isin(opponent_choice))
         filtered_elo_df = filtered_elo_df[opponent_mask]
 
-    # Display the filtered ELO Ratings Dataset
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Elo Ratings Match by Match</h3>", unsafe_allow_html=True)
+    # Display the filtered ELO Ratings Dataset with beautiful styling
+    st.markdown("""
+        <div class="result-banner">
+            📊 ELO Ratings Match by Match
+        </div>
+    """, unsafe_allow_html=True)
+    
     filtered_elo_df['Diff'] = filtered_elo_df['Team_Elo_Start'] - filtered_elo_df['Opponent_Elo_Start']
 
     # Sort the DataFrame first
     sorted_filtered_elo_df = filtered_elo_df.sort_values(['Match_Format', 'Date', 'Match_Number'])
 
-    # Select the columns to display
+    # Select the columns to display and ensure no null values in critical columns
     display_df = sorted_filtered_elo_df[['Date', 'Match_Format', 'Team', 'Opponent', 
                                          'Location', 'Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change',
                                          'Team_Elo_End', 'Opponent_Elo_End', 
-                                         'Format_Number', 'Margin']]
+                                         'Format_Number', 'Margin']].copy()
+    
+    # Fill any NaN values in numeric columns
+    numeric_cols = ['Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change', 'Team_Elo_End', 'Opponent_Elo_End', 'Format_Number']
+    for col in numeric_cols:
+        if col in display_df.columns:
+            display_df[col] = display_df[col].fillna(0)
 
     # Apply conditional formatting with softer colors
     def color_elo_change(val):
-        color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else '#fff3cd'
-        return f'background-color: {color}'
+        if pd.isna(val) or val is None:
+            return ''
+        try:
+            val = float(val)
+            color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else '#fff3cd'
+            return f'background-color: {color}'
+        except (ValueError, TypeError):
+            return ''
 
     styled_display_df = display_df.style.applymap(color_elo_change, subset=['Elo_Change', 'Diff']).format({
         'Team_Elo_Start': '{:.2f}',
@@ -314,7 +490,7 @@ if 'match_df' in st.session_state:
         'Elo_Change': '{:.2f}',
         'Team_Elo_End': '{:.2f}',
         'Opponent_Elo_End': '{:.2f}'
-    })
+    }, na_rep='')
 
     st.dataframe(
         styled_display_df,
@@ -384,6 +560,10 @@ for format_name, teams in elo_ratings.items():
 
 if current_ratings:
     current_ratings_df = pd.DataFrame(current_ratings)
+    
+    # Ensure no null values in critical columns
+    current_ratings_df = current_ratings_df.dropna(subset=['Current_ELO', 'Format', 'Team'])
+    
     # Add rank by grouping on format
     current_ratings_df['Rank'] = current_ratings_df.groupby('Format')['Current_ELO'] \
         .rank(method='dense', ascending=False).astype(int)
@@ -395,27 +575,85 @@ if current_ratings:
     # Sort by Format and Rank
     current_ratings_df = current_ratings_df.sort_values(['Format', 'Rank'])
 
-    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Current Elo Ratings</h3>", unsafe_allow_html=True)
+    # Beautiful section banner
+    st.markdown("""
+        <div class="result-banner">
+            🏆 Current ELO Rankings
+        </div>
+    """, unsafe_allow_html=True)
 
     # Apply conditional formatting to the entire row
     def apply_row_formatting(row):
-        if row['Rank'] == 1:
-            return ['background-color: gold; color: black;'] * len(row)
-        elif row['Rank'] == 2:
-            return ['background-color: silver; color: black;'] * len(row)
-        elif row['Rank'] == 3:
-            return ['background-color: #cd7f32; color: black;'] * len(row)  # Bronze color
-        return [''] * len(row)
+        try:
+            if pd.isna(row['Rank']) or row['Rank'] is None:
+                return [''] * len(row)
+            rank_val = int(row['Rank'])
+            if rank_val == 1:
+                return ['background-color: gold; color: black;'] * len(row)
+            elif rank_val == 2:
+                return ['background-color: silver; color: black;'] * len(row)
+            elif rank_val == 3:
+                return ['background-color: #cd7f32; color: black;'] * len(row)  # Bronze color
+            return [''] * len(row)
+        except (ValueError, TypeError):
+            return [''] * len(row)
 
     styled_current_ratings_df = current_ratings_df.style.apply(apply_row_formatting, axis=1).format({
         'Current_ELO': '{:.2f}'
-    })
+    }, na_rep='')
 
     st.dataframe(
         styled_current_ratings_df,
         hide_index=True,
         use_container_width=True
     )
+
+    # Create beautiful summary cards for #1 ranked teams in each format
+    st.markdown("""
+        <div style="margin: 30px 0;">
+            <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Current #1 Rankings by Format</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Get the #1 ranked team for each format
+    format_leaders = current_ratings_df[current_ratings_df['Rank'] == 1].copy()
+    
+    # Create cards in a grid layout - always 3 per row for smaller, more compact cards
+    if not format_leaders.empty:
+        cols = st.columns(3)
+        
+        for idx, (_, leader) in enumerate(format_leaders.iterrows()):
+            col_idx = idx % 3
+            with cols[col_idx]:
+                # Get team color for accent
+                team_color = team_colors.get(leader['Team'], '#f04f53')
+                
+                st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); 
+                                padding: 15px; border-radius: 12px; box-shadow: 0 6px 20px rgba(255,215,0,0.3); 
+                                margin: 10px 0; text-align: center; border: 2px solid #FFD700; 
+                                min-height: 160px; max-height: 160px; position: relative;">
+                        <div style="position: absolute; top: 8px; right: 8px; 
+                                    background: rgba(255,255,255,0.9); border-radius: 50%; 
+                                    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 1.2em;">🏆</span>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            <h4 style="color: #8B4513; margin: 0 0 12px 0; font-weight: bold; font-size: 1em;">{leader['Format']}</h4>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; 
+                                    box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 0;">
+                            <h3 style="color: {team_color}; margin: 0 0 10px 0; font-size: 1.2em; font-weight: bold;">{leader['Team']}</h3>
+                            <div style="text-align: center; margin-top: 8px;">
+                                <div style="color: #666; font-weight: bold; font-size: 0.9em; margin-bottom: 4px;">ELO Rating</div>
+                                <div style="color: {team_color}; font-size: 1.8em; font-weight: bold; line-height: 1;">{leader['Current_ELO']:.1f}</div>
+                            </div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    # Add clear separation before the matrix
+    st.markdown("<div style='margin: 40px 0;'></div>", unsafe_allow_html=True)
 
     # Create a pivot table showing ranks for all formats
     rank_matrix = current_ratings_df.pivot(
@@ -449,18 +687,29 @@ if current_ratings:
 
     # Apply conditional formatting
     def apply_formatting(val):
-        if val == 1:
-            return 'background-color: gold; color: black;'
-        elif val == 2:
-            return 'background-color: silver; color: black;'
-        elif val == 3:
-            return 'background-color: #cd7f32; color: black;'  # Bronze color
-        return ''
+        if pd.isna(val) or val is None or val == '':
+            return ''
+        try:
+            val = int(val)
+            if val == 1:
+                return 'background-color: gold; color: black;'
+            elif val == 2:
+                return 'background-color: silver; color: black;'
+            elif val == 3:
+                return 'background-color: #cd7f32; color: black;'  # Bronze color
+            return ''
+        except (ValueError, TypeError):
+            return ''
 
     styled_rank_matrix = rank_matrix.style.applymap(apply_formatting).format(precision=0, na_rep='')
 
-    # Display the rank matrix
-    st.markdown("<h4 style='color:#f04f53; text-align: center;'>Team Rankings by Format</h4>", unsafe_allow_html=True)
+    # Beautiful section banner for rankings by format
+    st.markdown("""
+        <div class="result-banner">
+            🥇 Team Rankings Matrix
+        </div>
+    """, unsafe_allow_html=True)
+    
     st.dataframe(
         styled_rank_matrix,
         use_container_width=True,
@@ -468,7 +717,12 @@ if current_ratings:
     )
 
 #####===================GRAPH=====================#####
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Elo Ratings Progression</h3>", unsafe_allow_html=True)
+# Beautiful section banner for progression
+st.markdown("""
+    <div class="result-banner">
+        📈 ELO Ratings Progression
+    </div>
+""", unsafe_allow_html=True)
 graph_df = filtered_elo_df.copy()
 
 # Convert Date to datetime
@@ -586,7 +840,11 @@ fig.update_layout(margin=dict(b=50 + (legend_rows * 20)))
 st.plotly_chart(fig, use_container_width=True)
 
 # ELO Rating Distribution
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>ELO Rating Distribution</h3>", unsafe_allow_html=True)
+st.markdown("""
+    <div class="result-banner">
+        📊 ELO Rating Distribution
+    </div>
+""", unsafe_allow_html=True)
 
 if 'elo_df' in st.session_state:
     # Use the already filtered dataframe
@@ -611,43 +869,6 @@ if 'elo_df' in st.session_state:
         showlegend=False
     )
     st.plotly_chart(fig, use_container_width=True)
-
-
-
-# Filter and display current ELO ratings
-current_ratings = []
-for format_name, teams in elo_ratings.items():
-    # Skip if format is filtered out
-    if 'All' not in format_choice and format_name not in format_choice:
-        continue
-        
-    for team, rating in teams.items():
-        # Skip if team is filtered out
-        if 'All' not in team_choice and team not in team_choice:
-            continue
-            
-        # Get team's historical Elo ratings for this format
-        team_history = filtered_elo_df[
-            (filtered_elo_df['Team'] == team) & 
-            (filtered_elo_df['Match_Format'] == format_name)
-        ]
-        
-        # Calculate max and min Elo from both start and end ratings
-        all_ratings = pd.concat([
-            team_history['Team_Elo_Start'],
-            team_history['Team_Elo_End']
-        ])
-        
-        max_elo = all_ratings.max() if not all_ratings.empty else rating
-        min_elo = all_ratings.min() if not all_ratings.empty else rating
-            
-        current_ratings.append({
-            'Format': format_name,
-            'Team': team,
-            'Current_ELO': rating,
-            'Max_ELO': max_elo,
-            'Min_ELO': min_elo
-        })
 
 
 
@@ -748,8 +969,11 @@ if 'elo_df' in st.session_state:
             monthly_summary_df = monthly_summary_df.sort_values('Sort_Date', ascending=False).drop('Sort_Date', axis=1)
             
             # Display the monthly summary
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Monthly Elo Leaders by Format</h3>", 
-                        unsafe_allow_html=True)
+            st.markdown("""
+                <div class="result-banner">
+                    📅 Monthly ELO Leaders by Format
+                </div>
+            """, unsafe_allow_html=True)
             st.dataframe(
                 monthly_summary_df,
                 hide_index=True,
@@ -786,8 +1010,11 @@ if 'elo_df' in st.session_state:
                 summary_df = summary_df.sort_values(['Format', 'Months at #1'], ascending=[True, False])
                 
                 # Display the summary
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Total Months as #1 by Team and Format</h3>", 
-                            unsafe_allow_html=True)
+                st.markdown("""
+                    <div class="result-banner">
+                        👑 Total Months as #1 by Team and Format
+                    </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(
                     summary_df,
                     hide_index=True,
@@ -810,7 +1037,11 @@ if 'elo_df' in st.session_state:
 
 
 # Add after the head-to-head analysis
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance Metrics</h3>", unsafe_allow_html=True)
+st.markdown("""
+    <div class="result-banner">
+        📊 Performance Metrics
+    </div>
+""", unsafe_allow_html=True)
 
 if 'elo_df' in st.session_state:
     pm_df = filtered_elo_df.copy()
@@ -844,7 +1075,11 @@ if 'elo_df' in st.session_state:
 #########################new features------------------
 
 # Add after the Head-to-Head Analysis
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Elo Rating Volatility</h3>", unsafe_allow_html=True)
+st.markdown("""
+    <div class="result-banner">
+        📈 ELO Rating Volatility
+    </div>
+""", unsafe_allow_html=True)
 
 if 'elo_df' in st.session_state:
     vol_df = filtered_elo_df.copy()
@@ -892,67 +1127,153 @@ if 'elo_df' in st.session_state:
     )
 
 # Add Metrics Explanation Section
-st.markdown("<h3 style='color:#f04f53; text-align: center;'>Understanding the Metrics</h3>", unsafe_allow_html=True)
+st.markdown("""
+    <div class="result-banner">
+        📚 Understanding the Metrics
+    </div>
+""", unsafe_allow_html=True)
 
-# Create columns for the explanation
+# Enhanced explanation cards with clean, professional design - all same height
 col1, col2 = st.columns(2)
 
 with col1:
-    # Performance Metrics Explanation
-    st.markdown("#### 📊 Performance Metrics")
     st.markdown("""
-    - **Matches**: Total number of games played by the team
-    - **Avg ELO**: Team's average ELO rating across all matches
-    - **Biggest Win**: Largest ELO rating gain in a single match
-    - **Biggest Loss**: Largest ELO rating drop in a single match
-    """)
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+                    margin: 20px 0; text-align: center; border: 1px solid #e9ecef; height: 450px; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+                <span style="font-size: 2em; margin-right: 10px;">📊</span>
+                <h3 style="color: #f04f53; margin: 0; font-weight: bold;">Performance Metrics</h3>
+            </div>
+            <div style="text-align: left; max-width: 600px; margin: 0 auto; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #f04f53; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #f04f53;">Matches:</strong> <span style="color: #666;">Total games played by the team</span>
+                </div>
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #f04f53; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #f04f53;">Avg ELO:</strong> <span style="color: #666;">Team's average rating across all matches</span>
+                </div>
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #38ab2f; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #38ab2f;">Biggest Win:</strong> <span style="color: #666;">Largest rating gain in a single match</span>
+                </div>
+                <div style="margin-bottom: 0; padding: 10px; border: 1px solid #dc3545; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #dc3545;">Biggest Loss:</strong> <span style="color: #666;">Largest rating drop in a single match</span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # ELO Distribution Explanation
-    st.markdown("#### 📈 ELO Rating Distribution")
     st.markdown("""
-    The box plot visualization shows:
-    - **Middle Line**: Median ELO rating
-    - **Box**: Contains 50% of ratings (25th to 75th percentile)
-    - **Whiskers**: Full range of ratings (excluding outliers)
-    - **Points**: Outlier ratings (unusually high/low)
-    """)
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+                    margin: 20px 0; text-align: center; border: 1px solid #e9ecef; height: 450px; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+                <span style="font-size: 2em; margin-right: 10px;">📈</span>
+                <h3 style="color: #f04f53; margin: 0; font-weight: bold;">ELO Distribution</h3>
+            </div>
+            <p style="color: #666; font-style: italic; margin-bottom: 15px; text-align: center;">Box plot visualization components:</p>
+            <div style="text-align: left; max-width: 600px; margin: 0 auto; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                <div style="margin-bottom: 8px; padding: 8px; border: 1px solid #667eea; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #667eea;">Middle Line:</strong> <span style="color: #666;">Median ELO rating</span>
+                </div>
+                <div style="margin-bottom: 8px; padding: 8px; border: 1px solid #764ba2; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #764ba2;">Box:</strong> <span style="color: #666;">50% of ratings (25th-75th percentile)</span>
+                </div>
+                <div style="margin-bottom: 8px; padding: 8px; border: 1px solid #f04f53; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #f04f53;">Whiskers:</strong> <span style="color: #666;">Full range (excluding outliers)</span>
+                </div>
+                <div style="margin-bottom: 0; padding: 8px; border: 1px solid #ffc107; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #ffc107;">Points:</strong> <span style="color: #666;">Outlier ratings (unusual values)</span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 with col2:
-    # Rating Volatility Explanation
-    st.markdown("#### 📊 Rating Volatility")
     st.markdown("""
-    Understanding the metrics:
-    - **Std Dev**: Lower values = more consistent performance
-    - **Avg Change**: Typical rating change per match
-    - **Max Swing**: Largest single-match rating change
-    - **Rating Range**: Difference between highest/lowest ratings
-    """)
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+                    margin: 20px 0; text-align: center; border: 1px solid #e9ecef; height: 450px; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+                <span style="font-size: 2em; margin-right: 10px;">📊</span>
+                <h3 style="color: #f04f53; margin: 0; font-weight: bold;">Rating Volatility</h3>
+            </div>
+            <p style="color: #666; font-style: italic; margin-bottom: 15px; text-align: center;">Consistency and variation metrics:</p>
+            <div style="text-align: left; max-width: 600px; margin: 0 auto; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #28a745; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #28a745;">Std Dev:</strong> <span style="color: #666;">Lower = more consistent performance</span>
+                </div>
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #17a2b8; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #17a2b8;">Avg Change:</strong> <span style="color: #666;">Typical rating change per match</span>
+                </div>
+                <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #ffc107; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #ffc107;">Max Swing:</strong> <span style="color: #666;">Largest single-match change</span>
+                </div>
+                <div style="margin-bottom: 0; padding: 10px; border: 1px solid #6610f2; border-radius: 8px; background: #fafafa;">
+                    <strong style="color: #6610f2;">Rating Range:</strong> <span style="color: #666;">Highest minus lowest rating</span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # Monthly Leaders Explanation
-    st.markdown("#### 👑 Monthly Leaders")
     st.markdown("""
-    The monthly leaders table shows:
-    - **Team**: Leading team for each format
-    - **Rating**: Highest ELO rating achieved that month
-    - **Duration**: How long teams maintained #1 position
-    """)
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+                    margin: 20px 0; text-align: center; border: 1px solid #e9ecef; height: 450px; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+                <span style="font-size: 2em; margin-right: 10px;">👑</span>
+                <h3 style="color: #f04f53; margin: 0; font-weight: bold;">Monthly Leaders</h3>
+            </div>
+            <p style="color: #666; font-style: italic; margin-bottom: 15px; text-align: center;">Leadership tracking over time:</p>
+            <div style="text-align: left; max-width: 600px; margin: 0 auto; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                <div style="margin-bottom: 8px; padding: 8px; border: 1px solid #ffd700; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #ffd700;">Team:</strong> <span style="color: #666;">Leading team for each format</span>
+                </div>
+                <div style="margin-bottom: 8px; padding: 8px; border: 1px solid #f04f53; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #f04f53;">Rating:</strong> <span style="color: #666;">Highest ELO achieved that month</span>
+                </div>
+                <div style="margin-bottom: 0; padding: 8px; border: 1px solid #38ab2f; border-radius: 6px; background: #fafafa;">
+                    <strong style="color: #38ab2f;">Duration:</strong> <span style="color: #666;">Time maintaining #1 position</span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# Add ELO Calculation Note
+# Enhanced ELO Calculation section with clean, professional design
 st.markdown("---")
-st.markdown("#### ℹ️ About ELO Calculations")
 st.markdown("""
-The ELO rating system calculates ratings based on:
-1. **Match Outcome**: Win/Loss/Draw result
-2. **Rating Difference**: Expected vs actual result
-3. **K-Factor**: Set to 32 for maximum possible rating change
-4. **Format Specific**: Separate ratings for each match format
-""")
+    <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+                margin: 30px 0; text-align: center; border: 1px solid #e9ecef;">
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+            <span style="font-size: 3em; margin-right: 15px;">ℹ️</span>
+            <h2 style="color: #f04f53; margin: 0; font-weight: bold;">About ELO Calculations</h2>
+        </div>
+        <p style="color: #666; font-size: 1.1em; text-align: center; margin-bottom: 25px; font-style: italic;">
+            The ELO rating system uses these key components:
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; max-width: 800px; margin: 0 auto;">
+            <div style="padding: 15px; background: #fafafa; border-radius: 12px; border: 2px solid #28a745;">
+                <strong style="color: #28a745; font-size: 1.1em;">Match Outcome</strong><br>
+                <span style="color: #666;">Win/Loss/Draw result determines rating change direction</span>
+            </div>
+            <div style="padding: 15px; background: #fafafa; border-radius: 12px; border: 2px solid #17a2b8;">
+                <strong style="color: #17a2b8; font-size: 1.1em;">Rating Difference</strong><br>
+                <span style="color: #666;">Expected vs actual performance affects magnitude</span>
+            </div>
+            <div style="padding: 15px; background: #fafafa; border-radius: 12px; border: 2px solid #ffc107;">
+                <strong style="color: #ffc107; font-size: 1.1em;">K-Factor: 32</strong><br>
+                <span style="color: #666;">Maximum possible rating change per match</span>
+            </div>
+            <div style="padding: 15px; background: #fafafa; border-radius: 12px; border: 2px solid #6610f2;">
+                <strong style="color: #6610f2; font-size: 1.1em;">Format Specific</strong><br>
+                <span style="color: #666;">Separate ratings maintained for each match format</span>
+            </div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # Add footer with additional information
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; color: gray; font-size: 0.8em;'>
-    ELO Rating Analysis
-</div>
+    <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
+                border-radius: 15px; margin: 20px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);'>
+        <p style='color: #666; font-size: 0.9em; margin: 0;'>
+            📊 ELO Rating Analysis • Cricket Captain 2025 Stats Pack
+        </p>
+    </div>
 """, unsafe_allow_html=True)
-
