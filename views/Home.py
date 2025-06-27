@@ -215,8 +215,8 @@ st.markdown(
 st.markdown(
     """
     <div style="background-color: #f04f53; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
-        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.22:</span>
-        <span style="color: white;"> New Batting and Bowling tabs, and minor bug fixes </span>
+        <span style="color: white; font-weight: bold;">🎉 NEW UPDATE v1.23:</span>
+        <span style="color: white;"> New duplicate player checker when loading scorecards </span>
     </div>
     """,
     unsafe_allow_html=True
