@@ -2010,7 +2010,7 @@ with tabs[4]:
         series_bowling = series_bowling[series_bowling['Series'].notna()]
         
         if series_bowling.empty:
-            st.info("No bowling data matches available series.")
+            st.info("No bowling data matches available series. ")
         else:
             # Create series bowling statistics
             series_bowl_stats = series_bowling.groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).agg({
@@ -2049,9 +2049,9 @@ with tabs[4]:
             series_bowl_stats = series_bowl_stats.sort_values(['Wickets', 'Average'], ascending=[False, True])
             
             # Display series bowling statistics
-            if not series_bowl_stats.empty:
+            if not series_bowl_stats.empty: 
                 st.dataframe(series_bowl_stats, use_container_width=True, hide_index=True)
             else:
                 st.info("No series bowling statistics available.")
     else:
-        st.info("No bowling data available for series analysis or no series found")
+        st.info("No bowling data available for series analysis or no series found")  
