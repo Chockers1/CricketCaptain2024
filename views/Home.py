@@ -1,15 +1,10 @@
 import streamlit as st
-
-
-
 import os
 import sys
 import traceback
 import pandas as pd
 import tempfile
 import time
-
-
 
 # Import the processing functions from each script
 from match import process_match_data
@@ -244,6 +239,7 @@ def show_error(message, traceback_info=None):
         with st.expander("🔧 Technical Details"):
             st.code(traceback_info)
 
+
 # Custom CSS for modern styling
 st.markdown("""
 <style>
@@ -316,28 +312,37 @@ st.markdown("""
 
 # Modern how-to section
 with st.expander("📋 How to Use This Dashboard", expanded=False):
+    st.markdown("### Quick Start Guide")
+    
+    # Choose your method header
+    st.info("📋 **Choose Your Method:**")
+    
+    # Create two columns for the options
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.success("🔄 **Option 1: Auto-Save (Recommended)**")
+        st.write("**Step 1:** In Cricket Captain 2025, go to Options and enable 'Auto Save Scorecards'")
+        st.write("**Step 2:** Scorecards will now automatically save after each match to the locations below")
+    
+    with col2:
+        st.warning("📋 **Option 2: Manual Save**")
+        st.write("**Step 1:** After each match, open the scorecard")
+        st.write("**Step 2:** Click 'Save' to save the scorecard file")
+    
+    st.markdown("---")
+    
+    # Common steps
+    st.markdown("**Step 3:** Locate your scorecard files:")
     st.markdown("""
-        <div style="padding: 20px;">
-            <h3 style="color: #667eea; margin-bottom: 20px;">Quick Start Guide</h3>
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
-                <strong>Step 1:</strong> In Cricket Captain 2025, open any scorecard and click "Save"
-            </div>
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
-                <strong>Step 2:</strong> Locate your scorecard files:
-                <ul style="margin: 10px 0;">
-                    <li><strong>Windows:</strong> <code>C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025</code></li>
-                    <li><strong>Mac:</strong> <code>~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves</code></li>
-                </ul>
-            </div>
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
-                <strong>Step 3:</strong> Use the file browser below to select your .txt scorecard files
-                <br><em>Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)</em>
-            </div>
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
-                <strong>Step 4:</strong> Click "Process Scorecards" and explore your data in the various tabs
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    - **Windows:** `C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025`
+    - **Mac:** `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`
+    """)
+    
+    st.markdown("**Step 4:** Use the file browser below to select your .txt scorecard files")
+    st.caption("💡 Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)")
+    
+    st.markdown("**Step 5:** Click 'Process Scorecards' and explore your data in the various tabs")
 
 # Modern file uploader
 st.markdown("### 📁 Upload Your Scorecard Files")
