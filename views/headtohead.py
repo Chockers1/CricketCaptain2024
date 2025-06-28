@@ -17,29 +17,301 @@ def parse_date(date_str):
     except Exception:
         return pd.NaT
 
-# Page Header
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Head to Head</h1>", unsafe_allow_html=True)
 
-# Custom CSS for styling
+
+# Modern CSS for beautiful UI - Full styling with enhanced elements
 st.markdown("""
 <style>
-/* Table styling */
-table { color: black; width: 100%; }
-thead tr th {
-    background-color: #f04f53 !important;
-    color: white !important;
-}
-tbody tr:nth-child(even) { background-color: #f0f2f6; }
-tbody tr:nth-child(odd) { background-color: white; }
-
-/* Tab styling */
-.stTabs [data-baseweb="tab-list"] {
-    width: 100%;
-}
-.stTabs [data-baseweb="tab"] {
-    flex-grow: 1;
-    text-align: center;
-}
+    .main > div {
+        padding-top: 2rem;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    
+    .modern-card {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(240,79,83,0.1);
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    .filter-card {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 15px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+    
+    .result-banner {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+    }
+    
+    .success-banner {
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    table { 
+        color: black; 
+        width: 100%; 
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+        font-weight: bold;
+        padding: 12px;
+    }
+    tbody tr:nth-child(even) { 
+        background-color: #f8f9fa; 
+    }
+    tbody tr:nth-child(odd) { 
+        background-color: white; 
+    }
+    tbody tr:hover {
+        background-color: #fff0f1;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stMultiSelect > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stMultiSelect > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+        font-weight: bold;
+        font-size: 1.1em;
+        border-radius: 8px 8px 0 0;
+        background: #fff0f1;
+        margin: 0 2px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white !important;
+    }
+    
+    /* Enhanced metric cards */
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 12px;
+        color: white;
+        text-align: center;
+        margin: 10px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    /* Beautiful scrollbar for dataframes */
+    .stDataFrame [data-testid="stDataFrameResizeHandle"] {
+        background-color: #f04f53;
+    }
+    
+    /* Enhanced plotly charts */
+    .js-plotly-plot {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    /* Form guide styling */
+    .form-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        border-radius: 15px;
+        margin: 10px auto;
+        box-shadow: 0 4px 15px rgba(240,79,83,0.1);
+        max-width: 100%;
+        width: 100%;
+    }
+    .form-indicator {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        color: white;
+        font-weight: bold;
+        margin: 0 4px;
+        font-size: 16px;
+        flex-shrink: 0;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    .form-indicator:hover {
+        transform: scale(1.1);
+    }
+    .form-indicator:hover .tooltip {
+        visibility: visible;
+        opacity: 1;
+    }
+    .tooltip {
+        visibility: hidden;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -75px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        width: 150px;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+    .tooltip::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: rgba(0, 0, 0, 0.75) transparent transparent transparent;
+    }
+    .form-indicators-container {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: 8px;
+        flex: 1;
+        padding: 0 20px;
+    }
+    .team-name {
+        font-weight: bold;
+        width: 150px;
+        font-size: 16px;
+        text-align: right;
+        padding-right: 20px;
+        flex-shrink: 0;
+    }
+    .win {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    .draw {
+        background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+        color: black;
+    }
+    .loss {
+        background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+    }
+    
+    /* Opponent form styling */
+    .opponent-form-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        border-radius: 15px;
+        margin: 10px auto;
+        box-shadow: 0 4px 15px rgba(240,79,83,0.1);
+        max-width: 100%;
+        width: 100%;
+        flex-direction: column;
+    }
+    .opponent-name {
+        font-weight: bold;
+        padding: 10px 0;
+        color: #f04f53;
+    }
+    .outings-container {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .outing-indicator {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        font-weight: bold;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    .outing-indicator:hover {
+        transform: scale(1.1);
+    }
+    .outing-indicator:hover .tooltip {
+        visibility: visible;
+        opacity: 1;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,6 +331,21 @@ if 'match_df' in st.session_state:
     match_df = st.session_state['match_df']
     all_teams.update(match_df['Home_Team'].unique())
     all_teams.update(match_df['Away_Team'].unique())
+
+# Beautiful filter section
+st.markdown("""
+    <div style="text-align: center; margin: 30px 0;">
+        <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                   padding: 25px; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+            <h3 style="margin: 0 0 20px 0; font-size: 1.5em; font-weight: bold; color: #2c3e50;">
+                🆚 Head to Head
+            </h3>
+            <p style="margin: 0; color: #34495e; font-size: 0.95em;">
+                Customize your analysis by selecting specific formats, teams, and opponents
+            </p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # Create columns for filters
 col1, col2, col3 = st.columns(3)
@@ -146,7 +433,20 @@ with tabs[0]:
                                                         ascending=[False, False])
         
         # Display the head-to-head records
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Head to Head Records<h1>", unsafe_allow_html=True)
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📊 Head to Head Records
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Complete match-by-match analysis
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         st.dataframe(head2headrecord_df, use_container_width=True, hide_index=True)
         
@@ -154,7 +454,20 @@ with tabs[0]:
         st.session_state['head2headrecord_df'] = head2headrecord_df
         
         # Display raw matches table
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>All Matches<h1>", unsafe_allow_html=True)
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📋 All Matches
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Complete match records and details
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Create a filtered and sorted version of the raw matches with selected columns
         raw_matches = match_df.copy()
@@ -201,7 +514,20 @@ with tabs[0]:
             win_percentage = (total_wins / total_matches) * 100 if total_matches > 0 else 0
             loss_percentage = (total_losses / total_matches) * 100 if total_matches > 0 else 0
 
-            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Record</h1>", unsafe_allow_html=True)
+            # Beautiful banner header
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                            🏆 Team Record
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Performance statistics summary
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
@@ -250,15 +576,40 @@ with tabs[0]:
             columns={'Match_Format': 'Format'}
         )
         
-        st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Summary by Format</h2>", unsafe_allow_html=True)
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📈 Match Summary by Format
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Performance breakdown across different formats
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
     ###################
 
     # Form Guide
     if 'match_df' in st.session_state and 'All' not in team_choice:
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Form Guide</h1>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>← Latest</h3>", unsafe_allow_html=True)
+        # Beautiful banner header for Form Guide
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📋 Form Guide
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        ← Latest match results
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Style for the form indicators with improved layout
         form_styles = """
@@ -384,7 +735,7 @@ with tabs[0]:
 
             # Display header with team and format on one line and form indicators beneath
             if form_indicators:  # Only display if there are matches
-                header_text = f"{team} - {fmt}" if 'fmt' in globals() else team
+                header_text = team
                 form_html = f"""
                 <div class="form-container">
                     <div style="text-align: center; font-weight: bold; font-size: 1.2em;">
@@ -525,7 +876,20 @@ with tabs[0]:
             )
             
             # Add markdown-style team name as a title
-            st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Performance Trend </h1>", unsafe_allow_html=True)
+            # Beautiful banner header for Performance Trend
+            st.markdown(f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                               padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📈 {team} - Performance Trend
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Win percentage over time
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             
             st.plotly_chart(fig, use_container_width=True)
 
@@ -723,7 +1087,20 @@ with tabs[0]:
 
     # Add a win percentage by year chart
     if 'match_df' in st.session_state and 'All' not in team_choice:
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Win Percentage by Year</h1>", unsafe_allow_html=True)
+        # Beautiful banner header for Win Percentage by Year
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📊 Win Percentage by Year
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Annual performance analysis
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
         for team in team_choice:
             # Get matches for the team and ensure Date is datetime
@@ -874,8 +1251,20 @@ with tabs[0]:
         st.markdown(opponent_form_styles, unsafe_allow_html=True)
 
         for team in team_choice:
-            st.markdown(f"<h2 style='color:#f04f53; text-align: center;'>{team} - Last 20 Outings vs Each Opponent</h2>", unsafe_allow_html=True)
-            st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+            # Beautiful banner header for Last 20 Outings
+            st.markdown(f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                               padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            🆚 {team} - Last 20 Outings vs Each Opponent
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Latest match results → 
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             # Filter matches for this team
             team_data = raw_matches[
@@ -967,46 +1356,53 @@ with tabs[0]:
                             """
                             st.markdown(html_block, unsafe_allow_html=True)
 
-    # ...existing code...
+    # Clean up and enhance Team Record display for each selected team
     if 'match_df' in st.session_state and 'All' not in team_choice:
-        # ...existing code...
-        for team in team_choice:
-            # ...existing code for "All" row...
-            # last_ten = ... # existing code
-
-            # Loop over formats
-            for fm in format_choice:
-                if fm != 'All':
-                    sub_data = team_data[
-                        (team_data['Format'] == fm)
-                    ].sort_values('Date', ascending=False).head(20)
-                    # ...build & display for sub_data...
-
-    if 'match_df' in st.session_state and 'All' not in team_choice:
-    # Add Form Guide Record summary for each selected team
         for team in team_choice:
             team_matches = raw_matches[(raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)]
             total = len(team_matches)
             wins = team_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
             draws = team_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
             losses = total - wins - draws
-            st.markdown(f"<h3 style='text-align:center;'>{team} Record: P{total}, W{wins}, L{losses}, D{draws}</h3>", unsafe_allow_html=True)
+            
+            # Beautiful record summary card
+            st.markdown(f"""
+                <div style="text-align: center; margin: 20px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 15px; border-radius: 10px; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.3em;">
+                            🏆 {team} Overall Record
+                        </h3>
+                        <p style="margin: 5px 0 0 0; font-size: 1.1em;">
+                            Played {total} • Won {wins} • Lost {losses} • Drawn {draws}
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-            # Add a row per format record when "All" is selected
+            # Add format-specific records when "All" is selected
             if 'All' in format_choice:
                 for fm in [f for f in formats if f != "All"]:
                     team_format_matches = raw_matches[
                         ((raw_matches['Home Team'] == team) | (raw_matches['Away Team'] == team)) &
                         (raw_matches['Format'] == fm)
                     ]
-                    total = len(team_format_matches)
-                    wins = team_format_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
-                    draws = team_format_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
-                    losses = total - wins - draws
-                    st.markdown(
-                        f"<p style='text-align:center;'>{team} ({fm}): Pld {total}, W {wins}, L {losses}, D {draws}</p>",
-                        unsafe_allow_html=True
-                    )
+                    total_fmt = len(team_format_matches)
+                    wins_fmt = team_format_matches['Margin'].apply(lambda m: 1 if str(m).startswith(team) else 0).sum()
+                    draws_fmt = team_format_matches['Margin'].apply(lambda m: 1 if 'drawn' in str(m).lower() else 0).sum()
+                    losses_fmt = total_fmt - wins_fmt - draws_fmt
+                    
+                    if total_fmt > 0:  # Only show if there are matches in this format
+                        st.markdown(f"""
+                            <div style="text-align: center; margin: 10px 0;">
+                                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                                           padding: 12px; border-radius: 8px; color: white; box-shadow: 0 3px 10px rgba(0,0,0,0.1);">
+                                    <p style="margin: 0; font-size: 1em;">
+                                        <strong>{team} ({fm}):</strong> P{total_fmt}, W{wins_fmt}, L{losses_fmt}, D{draws_fmt}
+                                    </p>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
 
 ################### SERIES TAB #################################
 with tabs[1]:
@@ -1016,7 +1412,20 @@ with tabs[1]:
     else:
         # Always show Series Data section
         if 'match_df' in st.session_state:
-            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Series Data</h1>", unsafe_allow_html=True)
+            # Beautiful banner header for Series Data
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            🏆 Series Data
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Multi-match series records and results
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             match_df = st.session_state['match_df']
             series_df = match_df.copy()
@@ -1064,6 +1473,8 @@ with tabs[1]:
             series_df = series_df.sort_values('Date', ascending=True)
 
             series_list = []
+            series_grouped = pd.DataFrame()  # Initialize to prevent errors
+            
             for _, match in series_df.iterrows():
                 comp = match['Competition']
                 match_date = pd.to_datetime(match['Date'], dayfirst=True)
@@ -1110,68 +1521,221 @@ with tabs[1]:
                     info['key'] = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
                     series_list.append(info)
 
-            series_grouped = pd.DataFrame(series_list)
+            # Process series data
+            edited_df = pd.DataFrame()  # Initialize to prevent errors
             if series_list:
-                series_grouped = pd.DataFrame(series_list).drop_duplicates('key').drop('key', axis=1)
-                series_grouped = series_grouped.sort_values('Start_Date')
-                series_grouped['Series'] = range(1, len(series_grouped) + 1)
+                try:
+                    series_grouped = pd.DataFrame(series_list)
+                    if 'key' in series_grouped.columns:
+                        series_grouped = series_grouped.drop_duplicates('key').drop('key', axis=1)
+                    series_grouped = series_grouped.sort_values('Start_Date')
+                    series_grouped['Series'] = range(1, len(series_grouped) + 1)
 
-                def determine_series_winner(row):
-                    if row['Total_Home_Wins'] > row['Total_Away_Wins']:
-                        return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                    elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
-                        return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
-                    else:
-                        if row['Total_Draws'] > 0:
-                            return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                        return f"Series Tied {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                    def determine_series_winner(row):
+                        if row['Total_Home_Wins'] > row['Total_Away_Wins']:
+                            return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                        elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
+                            return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
+                        else:
+                            if row['Total_Draws'] > 0:
+                                return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                            return f"Series Tied {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
 
-                series_grouped['Series_Result'] = series_grouped.apply(determine_series_winner, axis=1)
+                    series_grouped['Series_Result'] = series_grouped.apply(determine_series_winner, axis=1)
 
-                # Configure columns including checkbox
-                edited_df = st.data_editor(
-                    series_grouped,
-                    column_config={
-                        "Show_Matches": st.column_config.CheckboxColumn(
-                            "Show Matches",
-                            help="Show matches for this series",
-                            default=False,
-                        )
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
+                    # Ensure all required columns are present and properly formatted
+                    required_columns = ['Show_Matches', 'Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Match_Format', 'Games_Played', 'Total_Home_Wins', 'Total_Away_Wins', 'Total_Draws', 'Series_Result']
+                    for col in required_columns:
+                        if col not in series_grouped.columns:
+                            if col == 'Show_Matches':
+                                series_grouped[col] = False
+                            else:
+                                series_grouped[col] = None
 
+                    # Configure columns including checkbox with error handling
+                    edited_df = st.data_editor(
+                        series_grouped,
+                        column_config={
+                            "Show_Matches": st.column_config.CheckboxColumn(
+                                "Show Matches",
+                                help="Show matches for this series",
+                                default=False,
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                except Exception as e:
+                    st.error(f"Error processing series data: {str(e)}")
+                    series_grouped = pd.DataFrame()
+                    edited_df = pd.DataFrame()
+            else:
+                series_grouped = pd.DataFrame()
+                st.info("No series data found for the selected filters.")
+
+            # Handle "Show Matches" functionality - moved outside the else block
+            if not edited_df.empty and 'Show_Matches' in edited_df.columns:
                 # Get series with checked boxes
                 checked_series = edited_df[edited_df['Show_Matches']]
 
                 if not checked_series.empty:
-                    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Selected Series Matches</h1>", unsafe_allow_html=True)
+                    # Beautiful banner header for Selected Series Matches
+                    st.markdown("""
+                        <div style="text-align: center; margin: 30px 0;">
+                            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                                       padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                                <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                                    📋 Selected Series Matches
+                                </h2>
+                                <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                                    Detailed match breakdown
+                                </p>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     # Create empty list to store matches from all selected series
                     all_selected_matches = []
 
-                    # Filter matches for each selected series
-                    for _, row in checked_series.iterrows():
-                        series_matches = series_df[
-                            (series_df['Home_Team'] == row['Home_Team']) &
-                            (series_df['Away_Team'] == row['Away_Team']) &
-                            (series_df['Match_Format'] == row['Match_Format']) &
-                            (pd.to_datetime(series_df['Date'], dayfirst=True).dt.date >= row['Start_Date']) &
-                            (pd.to_datetime(series_df['Date'], dayfirst=True).dt.date <= row['End_Date'])
-                        ][['Date', 'Competition', 'Match_Format', 'Home_Team', 'Away_Team', 'Player_of_the_Match', 'Margin']]
-                        all_selected_matches.append(series_matches)
+                    # Filter matches for each selected series with proper error handling
+                    try:
+                        for _, row in checked_series.iterrows():
+                            if all(col in row.index for col in ['Home_Team', 'Away_Team', 'Match_Format', 'Start_Date', 'End_Date']):
+                                try:
+                                    # Additional validation for row values
+                                    if pd.isna(row['Home_Team']) or pd.isna(row['Away_Team']) or pd.isna(row['Match_Format']):
+                                        continue
+                                    
+                                    # Check if the required columns exist in series_df
+                                    required_cols = ['Date', 'Competition', 'Match_Format', 'Home_Team', 'Away_Team']
+                                    optional_cols = ['Player_of_the_Match', 'Margin']
+                                    
+                                    # Start with required columns
+                                    available_cols = [col for col in required_cols if col in series_df.columns]
+                                    # Add optional columns that exist
+                                    available_cols.extend([col for col in optional_cols if col in series_df.columns])
+                                        
+                                    series_matches = series_df[
+                                        (series_df['Home_Team'] == row['Home_Team']) &
+                                        (series_df['Away_Team'] == row['Away_Team']) &
+                                        (series_df['Match_Format'] == row['Match_Format']) &
+                                        (series_df['Date'] >= row['Start_Date']) &
+                                        (series_df['Date'] <= row['End_Date'])
+                                    ][available_cols]
+                                    
+                                    if not series_matches.empty:
+                                        # Clean the matches data before adding
+                                        series_matches = series_matches.copy()
+                                        
+                                        # Convert Date column to string FIRST to prevent datetime issues
+                                        if 'Date' in series_matches.columns:
+                                            # Handle both datetime.date and datetime objects
+                                            series_matches['Date'] = series_matches['Date'].apply(
+                                                lambda x: str(x) if hasattr(x, 'strftime') else str(x)
+                                            )
+                                        
+                                        # Fill NaN values in this subset
+                                        series_matches = series_matches.fillna('N/A')
+                                        all_selected_matches.append(series_matches)
+                                except Exception as row_error:
+                                    st.error(f"Error processing row: {str(row_error)}")
+                                    st.write(f"Debug - Row data: {row.to_dict()}")
+                                    continue
 
-                    # Combine all selected series matches
-                    if all_selected_matches:
-                        combined_matches = pd.concat(all_selected_matches)
-                        combined_matches = combined_matches.sort_values('Date')
-                        st.dataframe(combined_matches, use_container_width=True, hide_index=True)
+                        # Combine all selected series matches
+                        if all_selected_matches:
+                            combined_matches = pd.concat(all_selected_matches, ignore_index=True)
+                            
+                            # Simple cleanup - just convert dates to strings and fill NaN
+                            if 'Date' in combined_matches.columns:
+                                combined_matches['Date'] = combined_matches['Date'].astype(str)
+                            combined_matches = combined_matches.fillna('N/A')
+                            
+                            # Sort by date
+                            combined_matches = combined_matches.sort_values('Date')
+                            combined_matches = combined_matches.reset_index(drop=True)
+                            
+                            if not combined_matches.empty:
+                                # Clean and prepare data for display
+                                display_df = combined_matches.copy()
+                                
+                                # Remove any index column if present
+                                if 'index' in display_df.columns:
+                                    display_df = display_df.drop('index', axis=1)
+                                
+                                # Convert all data to strings and handle any problematic values
+                                for col in display_df.columns:
+                                    display_df[col] = display_df[col].astype(str).replace('nan', 'N/A').replace('None', 'N/A')
+                                
+                                # Reset index and convert to HTML table to completely remove index
+                                display_df = display_df.reset_index(drop=True)
+                                
+                                # Use st.markdown with HTML table to avoid any index display
+                                html_table = display_df.to_html(index=False, classes='dataframe', table_id='matches-table')
+                                
+                                # Add custom CSS for table styling
+                                st.markdown("""
+                                <style>
+                                .dataframe {
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin: 20px 0;
+                                    font-size: 14px;
+                                    background: white;
+                                    border-radius: 8px;
+                                    overflow: hidden;
+                                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                                }
+                                .dataframe th {
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    color: white;
+                                    font-weight: bold;
+                                    padding: 12px 8px;
+                                    text-align: left;
+                                    border: none;
+                                }
+                                .dataframe td {
+                                    padding: 10px 8px;
+                                    border-bottom: 1px solid #eee;
+                                    text-align: left;
+                                }
+                                .dataframe tr:nth-child(even) {
+                                    background-color: #f8f9fa;
+                                }
+                                .dataframe tr:hover {
+                                    background-color: #e3f2fd;
+                                    transition: background-color 0.2s;
+                                }
+                                </style>
+                                """, unsafe_allow_html=True)
+                                
+                                # Display the HTML table
+                                st.markdown(html_table, unsafe_allow_html=True)
+                            else:
+                                st.info("No valid match data found after processing.")
+                        else:
+                            st.info("No matches found for selected series.")
+                    except Exception as e:
+                        st.error(f"Error processing selected series: {str(e)}")
+                        st.info("Please try selecting different series.")
 
 
 
         # Always show Head to Head Series Records
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Head to Head Series Records</h1>", unsafe_allow_html=True)
+        # Beautiful banner header for Head to Head Series Records
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        🏆 Head to Head Series Records
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Win-loss records in series format
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Create a dataframe for series records
         if not series_grouped.empty:
@@ -1223,7 +1787,20 @@ with tabs[1]:
             win_percentage = (total_wins / total_series) * 100 if total_series > 0 else 0
             loss_percentage = (total_losses / total_series) * 100 if total_series > 0 else 0
 
-            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Series Record</h1>", unsafe_allow_html=True)
+            # Beautiful banner header for Team Series Record
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📊 Team Series Record
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Overall series performance statistics
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
@@ -1246,8 +1823,20 @@ with tabs[1]:
 
         for team in team_choice:
             # Series Form Guide
-            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Series Form Guide</h1>", unsafe_allow_html=True)
-            st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+            # Beautiful banner header for Series Form Guide
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📋 Series Form Guide
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Latest series results →
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             
             # All formats row first
             team_series = series_grouped[
@@ -1337,7 +1926,20 @@ with tabs[1]:
                         """
                         st.markdown(form_html, unsafe_allow_html=True)
 
-            st.markdown(f"<h1 style='color:#f04f53; text-align: center;'>{team} - Series Performance Trend</h1>", unsafe_allow_html=True)
+            # Beautiful banner header for Series Performance Trend
+            st.markdown(f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                               padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📈 {team} - Series Performance Trend
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Series results over time
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
 
             team_series_trend = series_grouped[
@@ -1397,7 +1999,20 @@ with tabs[1]:
 
         # Add a win percentage by year chart for series data
         if 'match_df' in st.session_state and 'All' not in team_choice:
-            st.markdown("<h1 style='color:#f04f53; text-align: center;'>Win Percentage by Year (Series)</h1>", unsafe_allow_html=True)
+            # Beautiful banner header for Win Percentage by Year (Series)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📊 Win Percentage by Year (Series)
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Annual series performance analysis
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             
             for team in team_choice:
                 # Get series for the team and ensure Date is datetime 
@@ -1475,9 +2090,20 @@ with tabs[1]:
 
         # South Africa - Last 20 Outings vs Each Opponent (Series)
         if 'match_df' in st.session_state and 'South Africa' in team_choice:
-            st.markdown(f"<h2 style='color:#f04f53; text-align: center;'>{team} - Last 20 Outings vs Each Opponent (Series)</h2>", unsafe_allow_html=True)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center; margin-top: -15px; font-size: 0.9em;'>Latest →</h3>", unsafe_allow_html=True)
+            # Beautiful banner header for Last 20 Outings (Series)
+            st.markdown(f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                               padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            🆚 {team} - Last 20 Outings vs Each Opponent (Series)
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Latest series results → 
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             # Similar styling as Form Guide
             opponent_form_styles = """
@@ -1636,7 +2262,20 @@ with tabs[1]:
 
 # New Tournaments Tab code
 with tabs[2]:
-    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Tournaments</h1>", unsafe_allow_html=True)
+    # Beautiful banner header for Tournaments
+    st.markdown("""
+        <div style="text-align: center; margin: 30px 0;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                    🏆 Tournament Records
+                </h2>
+                <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                    World Cup and tournament performance tracking
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
     if 'match_df' not in st.session_state or st.session_state['match_df'].empty:
         st.info("No international tournament data loaded")
@@ -1783,7 +2422,21 @@ with tabs[2]:
             # Create an empty DataFrame if no results
             stage_matrix = pd.DataFrame()
 
-        st.markdown("<h2 style='color:#f04f53; text-align: center;'>ODI World Cup Best Stage Reached</h2>", unsafe_allow_html=True)
+
+        # Beautiful banner header for ODI World Cup Best Stage Reached
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                           padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        🏏 ODI World Cup Best Stage Reached
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Track team progression through ODI World Cup tournaments
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Fix: Check if stage_matrix exists and is not empty before styling
         if not stage_matrix.empty:
@@ -1797,8 +2450,42 @@ with tabs[2]:
                     for cell in row
                 ]
 
-            # Display the styled table
+            # Display the styled table with enhanced CSS
             styled_stage_matrix = stage_matrix.style.apply(highlight_stage, axis=1)
+            
+            # Add modern CSS styling for the ODI World Cup table
+            st.markdown("""
+            <style>
+            .dataframe {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: none;
+            }
+            .dataframe th {
+                background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+                color: #8e2de2;
+                font-weight: 600;
+                padding: 15px 10px;
+                text-align: center;
+                border: none;
+                font-size: 14px;
+            }
+            .dataframe td {
+                padding: 12px 10px;
+                text-align: center;
+                border: 1px solid #f0f0f0;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            .dataframe tr:hover {
+                background-color: #f8f9fa !important;
+                transition: background-color 0.2s ease;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             st.dataframe(styled_stage_matrix, use_container_width=True)
         else:
             st.info("No ODI World Cup data available.")
@@ -1877,7 +2564,21 @@ with tabs[2]:
             values='Stage'
         ).fillna("")
 
-        st.markdown("<h2 style='color:#f04f53; text-align: center;'>T20 World Cup Progress</h2>", unsafe_allow_html=True)
+
+        # Beautiful banner header for T20 World Cup Progress
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                           padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        🏆 T20 World Cup Progress
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        T20 World Cup tournament progression tracker
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Fix: Check if t20_stage_matrix exists and is not empty before styling
         if not t20_stage_matrix.empty:
@@ -1892,6 +2593,40 @@ with tabs[2]:
                 ]
 
             styled_t20_stage_matrix = t20_stage_matrix.style.apply(highlight_t20_stage, axis=1)
+            
+            # Add modern CSS styling for the T20 World Cup table
+            st.markdown("""
+            <style>
+            .dataframe {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: none;
+            }
+            .dataframe th {
+                background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+                color: #d4572a;
+                font-weight: 600;
+                padding: 15px 10px;
+                text-align: center;
+                border: none;
+                font-size: 14px;
+            }
+            .dataframe td {
+                padding: 12px 10px;
+                text-align: center;
+                border: 1px solid #f0f0f0;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            .dataframe tr:hover {
+                background-color: #fff8f0 !important;
+                transition: background-color 0.2s ease;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             st.dataframe(styled_t20_stage_matrix, use_container_width=True)
         else:
             st.info("No T20 World Cup data available.")
@@ -1933,7 +2668,21 @@ with tabs[2]:
         # Create matrix
         wtc_stage_df = pd.DataFrame(wtc_stage_results)
 
-        st.markdown("<h2 style='color:#f04f53; text-align: center;'>World Test Championship Progress</h2>", unsafe_allow_html=True)
+
+        # Beautiful banner header for World Test Championship Progress
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        🏅 World Test Championship Progress
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Test Championship final appearances and results
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Fix: Check if wtc_stage_df exists and is not empty before creating pivot
         if not wtc_stage_df.empty:
@@ -1952,8 +2701,72 @@ with tabs[2]:
                 ]
 
             styled_wtc_stage_matrix = wtc_stage_matrix.style.apply(highlight_wtc_stage, axis=1)
+            
+            # Add modern CSS styling for the World Test Championship table
+            st.markdown("""
+            <style>
+            .dataframe {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: none;
+                margin: 20px 0;
+            }
+            .dataframe th {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                font-weight: 600;
+                padding: 15px 10px;
+                text-align: center;
+                border: none;
+                font-size: 14px;
+            }
+            .dataframe td {
+                padding: 12px 10px;
+                text-align: center;
+                border: 1px solid #f0f0f0;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            .dataframe tr:hover {
+                background-color: #f3f4f8 !important;
+                transition: background-color 0.2s ease;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             st.dataframe(styled_wtc_stage_matrix, use_container_width=True)
         else:
             st.info("No World Test Championship data available.")
+
+        # Beautiful legend section
+        st.markdown("""
+            <div style="text-align: center; margin: 40px 0;">
+                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                           padding: 25px; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0 0 20px 0; font-size: 1.5em; font-weight: bold; color: #2c3e50;">
+                        📚 Tournament Stage Legend
+                    </h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                        <div style="background: gold; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
+                            🏆 W = Winner
+                        </div>
+                        <div style="background: silver; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
+                            🥈 RU = Runner-up
+                        </div>
+                        <div style="background: #cd7f32; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
+                            🥉 SF = Semi-Final
+                        </div>
+                        <div style="background: lightblue; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
+                            🔵 S8 = Super Eight
+                        </div>
+                        <div style="background: lightcoral; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
+                            🔴 GRP = Group Stage
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ...existing code...
