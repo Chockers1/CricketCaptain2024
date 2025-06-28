@@ -148,25 +148,136 @@ def get_formats():
     return sorted(list(all_formats))
 
 def init_page():
-    """Initialize page styling"""
-    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Records</h1>", unsafe_allow_html=True)
+    """Initialize page styling with beautiful modern design"""
+    # Beautiful page header
+    st.markdown("""
+        <div style="text-align: center; margin: 30px 0;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 25px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                <h1 style="margin: 0; font-size: 2.2em; font-weight: bold;">
+                    📊 Cricket Records
+                </h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 1.1em;">
+                    Comprehensive cricket performance statistics and records
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
+    # Enhanced CSS styling
     st.markdown("""
     <style>
-    table { color: black; width: 100%; }
-    thead tr th {
-        background-color: #f04f53 !important;
-        color: white !important;
+    /* Modern table styling */
+    .stDataFrame > div {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        border: none;
     }
-    tbody tr:nth-child(even) { background-color: #f0f2f6; }
-    tbody tr:nth-child(odd) { background-color: white; }
     
+    /* Table headers */
+    .stDataFrame thead tr th {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 15px 10px !important;
+        border: none !important;
+        text-align: center !important;
+    }
+    
+    /* Table rows */
+    .stDataFrame tbody tr:nth-child(even) { 
+        background-color: #f8f9fa !important; 
+    }
+    .stDataFrame tbody tr:nth-child(odd) { 
+        background-color: white !important; 
+    }
+    .stDataFrame tbody tr:hover {
+        background-color: #e3f2fd !important;
+        transition: background-color 0.2s ease;
+    }
+    
+    .stDataFrame tbody tr td {
+        padding: 12px 10px !important;
+        border: 1px solid #f0f0f0 !important;
+        text-align: center !important;
+    }
+    
+    /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
         width: 100%;
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        border-radius: 10px;
+        padding: 5px;
+        margin-bottom: 20px;
     }
+    
     .stTabs [data-baseweb="tab"] {
         flex-grow: 1;
         text-align: center;
+        background: transparent;
+        color: #2c3e50;
+        font-weight: 600;
+        border-radius: 8px;
+        margin: 2px;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: white;
+        color: #667eea;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Filter section styling */
+    .stMultiSelect > div > div {
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #e1e5e9;
+        transition: border-color 0.3s ease;
+    }
+    
+    .stMultiSelect > div > div:focus-within {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Info boxes */
+    .stInfo {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        border: none;
+        border-radius: 10px;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+    
+    /* Success boxes */
+    .stSuccess {
+        background: linear-gradient(135deg, #d4fb79 0%, #97fb57 100%);
+        border: none;
+        border-radius: 10px;
+        color: #2d5016;
+        font-weight: 500;
+    }
+    
+    /* Error boxes */
+    .stError {
+        background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        border: none;
+        border-radius: 10px;
+        color: #8e2de2;
+        font-weight: 500;
+    }
+    
+    /* Plotly chart styling */
+    .js-plotly-plot {
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        overflow: hidden;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -485,59 +596,145 @@ tabs = st.tabs(tab_names)
 with tabs[0]:
     if filtered_bat_df is not None and not filtered_bat_df.empty:
         # Highest Scores
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Scores</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                           padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🏏 Highest Scores
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Century makers and top batting performances
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         highest_scores_df = process_highest_scores(filtered_bat_df)
         if not highest_scores_df.empty:
             st.dataframe(highest_scores_df, use_container_width=True, hide_index=True)
 
-       
-
         # Consecutive 50+ Scores
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 50+ Scores</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                           padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🔥 Consecutive Matches with 50+ Scores
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Consistency streaks with fifty-plus scores
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         fifties_streak_df = process_consecutive_scores(filtered_bat_df, 50)
         if not fifties_streak_df.empty:
             st.dataframe(fifties_streak_df, use_container_width=True, hide_index=True)
 
         # Consecutive Centuries
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with Centuries</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                           padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        💯 Consecutive Matches with Centuries
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Rare feat of back-to-back hundreds
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         centuries_streak_df = process_consecutive_scores(filtered_bat_df, 100)
         if not centuries_streak_df.empty:
             st.dataframe(centuries_streak_df, use_container_width=True, hide_index=True)
 
         # 99 Not Out Club
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>99 Not Out Club</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        😢 99 Not Out Club
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        So close to a century, yet so far
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         not_out_99s_df = process_not_out_99s(filtered_bat_df)
         if not not_out_99s_df.empty:
             st.dataframe(not_out_99s_df, use_container_width=True, hide_index=True)
 
         # Carrying the Bat
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Carrying the Bat</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        🛡️ Carrying the Bat
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Staying unbeaten through a completed innings
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         carrying_bat_df = process_carrying_bat(filtered_bat_df)
         if not carrying_bat_df.empty:
             st.dataframe(carrying_bat_df, use_container_width=True, hide_index=True)
 
         # Hundred in Each Innings
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Hundred in Each Innings</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🔄 Hundred in Each Innings
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Rare achievement of centuries in both innings
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         hundreds_both_df = process_hundreds_both_innings(filtered_bat_df)
         if not hundreds_both_df.empty:
             st.dataframe(hundreds_both_df, use_container_width=True, hide_index=True)
 
         # Position Records
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Score at Each Position</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        📍 Highest Score at Each Position
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Best batting performances by batting order
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         position_scores_df = process_position_scores(filtered_bat_df)
         if not position_scores_df.empty:
             st.dataframe(position_scores_df, use_container_width=True, hide_index=True, height=430)
 
         # Centuries Analysis Plot
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Centuries Analysis (Runs vs Balls)</h3>",
-                    unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        📈 Centuries Analysis (Runs vs Balls)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Visualization of century strike rates and scoring patterns
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         centuries_fig = create_centuries_plot(filtered_bat_df)
         if centuries_fig:
             st.plotly_chart(centuries_fig, use_container_width=True)
@@ -775,32 +972,73 @@ def process_match_bowling(filtered_bowl_df):
 with tabs[1]:
     if filtered_bowl_df is not None and not filtered_bowl_df.empty:
         # Best Bowling Figures
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling Figures</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                           padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🎯 Best Bowling Figures
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Outstanding bowling performances with 5+ wickets
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         best_bowling_df = process_best_bowling(filtered_bowl_df)
         if not best_bowling_df.empty:
             st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
 
-       
-
         # Consecutive 5-Wicket Hauls
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Consecutive Matches with 5+ Wickets</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                           padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🔥 Consecutive Matches with 5+ Wickets
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Sustained bowling excellence across multiple matches
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         consecutive_five_wickets_df = process_consecutive_five_wickets(filtered_bowl_df)
         if not consecutive_five_wickets_df.empty:
             st.dataframe(consecutive_five_wickets_df, use_container_width=True, hide_index=True)
 
-
         # 5+ Wickets in Both Innings
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>5+ Wickets in Both Innings</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                           padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🎳 5+ Wickets in Both Innings
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Exceptional bowling dominance throughout the match
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         five_wickets_both_df = process_five_wickets_both(filtered_bowl_df)
         if not five_wickets_both_df.empty:
             st.dataframe(five_wickets_both_df, use_container_width=True, hide_index=True)
 
         # Best Match Bowling Figures
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🏆 Best Match Bowling Figures
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Combined bowling figures across both innings
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         best_match_bowling_df = process_match_bowling(filtered_bowl_df)
         if not best_match_bowling_df.empty:
             st.dataframe(best_match_bowling_df, use_container_width=True, hide_index=True)
@@ -947,48 +1185,95 @@ def process_innings_wins(filtered_match_df):
     df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
     return df
 
-# Near the Match Records Tab section, add debugging for the input data
+# Match Records Tab
 with tabs[2]:
     if filtered_match_df is not None and not filtered_match_df.empty:
         # Biggest Wins (Runs)
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Biggest Wins (Runs)</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                           padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        💥 Biggest Wins (Runs)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Most dominant victories by run margin
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         bigwin_df = process_wins_data(filtered_match_df, 'runs', 'big')
         if not bigwin_df.empty:
             st.dataframe(bigwin_df, use_container_width=True, hide_index=True)
 
         # Biggest Wins (Wickets)
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Biggest Wins (Wickets)</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                           padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🎳 Biggest Wins (Wickets)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Most commanding victories by wicket margin
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         bigwin_wickets_df = process_wins_data(filtered_match_df, 'wickets', 'big')
         if not bigwin_wickets_df.empty:
             st.dataframe(bigwin_wickets_df, use_container_width=True, hide_index=True)
 
         # Innings Wins
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Biggest Wins (Innings)</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                           padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🏆 Biggest Wins (Innings)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Ultimate dominance with innings victories
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         bigwin_innings_df = process_innings_wins(filtered_match_df)
         if not bigwin_innings_df.empty:
             st.dataframe(bigwin_innings_df, use_container_width=True, hide_index=True)
 
-        # Victories after Following On
-        #st.markdown("<h3 style='color:#f04f53; text-align: center;'>Victories after Following On</h3>", 
-                #unsafe_allow_html=True)
-        #follow_on_victories_df = process_follow_on_victories(filtered_game_df, filtered_match_df)
-        #if not follow_on_victories_df.empty:
-            #st.dataframe(follow_on_victories_df, use_container_width=True, hide_index=True)
-
-
         # Narrowest Wins (Runs)
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Narrowest Wins (Runs)</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        ⚡ Narrowest Wins (Runs)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Heart-stopping close finishes by runs
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         narrow_wins_df = process_wins_data(filtered_match_df, 'runs', 'narrow')
         if not narrow_wins_df.empty:
             st.dataframe(narrow_wins_df, use_container_width=True, hide_index=True)
 
         # Narrowest Wins (Wickets)
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Narrowest Wins (Wickets)</h3>", 
-                   unsafe_allow_html=True)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        🎯 Narrowest Wins (Wickets)
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Thrilling last-wicket victories
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         narrowwin_wickets_df = process_wins_data(filtered_match_df, 'wickets', 'narrow')
         if not narrowwin_wickets_df.empty:
             st.dataframe(narrowwin_wickets_df, use_container_width=True, hide_index=True)
@@ -1123,8 +1408,19 @@ with tabs[3]:
             processed_game_df = get_match_details(filtered_game_df, filtered_match_df)
             
             # Highest Team Scores
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Team Scores</h3>", 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                               padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            📊 Highest Team Scores
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Record-breaking team innings totals
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             highest_scores_df = process_team_scores(processed_game_df, 'highest')
             if not highest_scores_df.empty:
                 st.dataframe(highest_scores_df, use_container_width=True, hide_index=True)
@@ -1140,8 +1436,19 @@ with tabs[3]:
             #st.dataframe(processed_game_df, use_container_width=True, hide_index=True)
 
             # Lowest Team Scores
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Lowest Team Scores (All Out)</h3>", 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                               padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            📉 Lowest Team Scores (All Out)
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Teams dismissed for their lowest totals
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             lowest_scores_df = process_team_scores(processed_game_df, 'lowest')
             if not lowest_scores_df.empty:
                 st.dataframe(lowest_scores_df, use_container_width=True, hide_index=True)
@@ -1188,8 +1495,19 @@ with tabs[3]:
                 
                 return low_wins_df.sort_values('Runs', ascending=True)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Lowest First Innings Winning Scores</h3>", 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                               padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            🏃‍♂️ Lowest First Innings Winning Scores
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Winning matches with modest first innings totals
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             low_wins_df = process_lowest_first_innings_wins(processed_game_df, filtered_match_df)
             if not low_wins_df.empty:
                 st.dataframe(low_wins_df, use_container_width=True, hide_index=True)
@@ -1200,8 +1518,19 @@ with tabs[3]:
         # NEW WIN WITH BIGGEST FIRST INNINGS DEFICIT
         try:
             # Highest Successful Run Chases
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Highest Successful Run Chases</h3>", 
-                    unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            🏃‍♂️ Highest Successful Run Chases
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Spectacular run chases completed successfully
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             chases_df = get_highest_chases(processed_game_df, filtered_match_df)
             if not chases_df.empty:
                 st.dataframe(chases_df, use_container_width=True, hide_index=True)
@@ -1283,8 +1612,19 @@ with tabs[3]:
                 return merged_df[columns_to_show].copy()
 
             # First Innings Deficit Wins
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Winning after 1st Innings deficit</h3>", 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                            💪 Winning after 1st Innings Deficit
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Amazing comebacks from first innings behind
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             deficit_df = process_first_innings_deficit_wins(processed_game_df, filtered_match_df)
             if deficit_df.empty:
                 st.info("No deficit records available.")
@@ -1374,8 +1714,19 @@ with tabs[3]:
 
         try:
             # First Innings Lead Losses
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Losing after 1st Innings leads</h3>", 
-                        unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            😔 Losing after 1st Innings Leads
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Disappointing defeats despite taking first innings lead
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             lead_losses_df = process_first_innings_lead_losses(processed_game_df, filtered_match_df)
             if not lead_losses_df.empty:
                 st.dataframe(lead_losses_df, use_container_width=True, hide_index=True)
@@ -1387,7 +1738,20 @@ with tabs[3]:
         st.info("No game or match records available.")
 ##############SERIES
 with tabs[4]:
-    #st.markdown("<h2 style='color:#f04f53; text-align: center;'>Series Records</h2>", unsafe_allow_html=True)
+    # Beautiful Series Records Header
+    st.markdown("""
+        <div style="text-align: center; margin: 30px 0;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 25px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                <h2 style="margin: 0; font-size: 2em; font-weight: bold;">
+                    🏆 Series Records
+                </h2>
+                <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 1.1em;">
+                    Comprehensive series analysis and tournament records
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Helper to check if competition is part of a numbered series
     def is_part_of_series(competition: str) -> bool:
@@ -1480,10 +1844,27 @@ with tabs[4]:
         computed_info = compute_series_info(filtered_match_df)
         
         if not computed_info.empty:
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+                               padding: 20px; border-radius: 15px; color: #8e2de2; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            📋 Series Overview
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                            Complete series results and match outcomes
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
             series_info_df = computed_info
             # Format dates for display
             series_info_df['Start_Date'] = pd.to_datetime(series_info_df['Start_Date']).dt.strftime('%d/%m/%Y')
             series_info_df['End_Date'] = pd.to_datetime(series_info_df['End_Date']).dt.strftime('%d/%m/%Y')
+            
+            # Display the series information
+            st.dataframe(series_info_df, use_container_width=True, hide_index=True)
         else:
             st.info("No series records available.")
     else:
@@ -1491,6 +1872,20 @@ with tabs[4]:
 
     # Create a copy of batting dataframe and show it
     if filtered_bat_df is not None and not filtered_bat_df.empty and not series_info_df.empty:
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                           padding: 20px; border-radius: 15px; color: #2c3e50; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🏏 Series Batting Analysis
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Individual batting performances across series
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
         # Create a copy of batting dataframe
         series_batting = filtered_bat_df.copy()
         
@@ -1535,7 +1930,6 @@ with tabs[4]:
         if series_batting.empty:
             st.info("No batting data matches available series.")
         else:
-            # ... rest of the code for series batting statistics ...
             # Create series batting statistics
             series_stats = series_batting.groupby(['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team']).agg({
                 'File Name': 'nunique',
@@ -1550,10 +1944,114 @@ with tabs[4]:
                 '100s': 'sum'
             }).reset_index()
             
-            # ... rest of the series tab code ...
+            # Rename columns for display
+            series_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
+                                  'Matches', 'Batted', 'Out', 'Not Out', 'Runs', 
+                                  'Balls', '4s', '6s', '50s', '100s']
+            
+            # Display series batting statistics
+            if not series_stats.empty:
+                st.dataframe(series_stats, use_container_width=True, hide_index=True)
+            else:
+                st.info("No series batting statistics available.")
     else:
         st.info("No batting data available for series analysis or no series found")
-        # Create empty dataframes to prevent errors in subsequent code
-        series_stats = pd.DataFrame()
-        bowling_stats = pd.DataFrame()
 
+    # Series Bowling Analysis
+    if filtered_bowl_df is not None and not filtered_bowl_df.empty and not series_info_df.empty:
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                           padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                        🎳 Series Bowling Analysis
+                    </h3>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                        Individual bowling performances across series
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Create a copy of bowling dataframe
+        series_bowling = filtered_bowl_df.copy()
+        
+        # Add Series column by matching date ranges
+        def find_bowling_series(row):
+            try:
+                match_date = pd.to_datetime(row['Date']).date()
+                # Check if necessary columns exist in series_info_df
+                if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
+                    # Convert date strings to datetime.date objects for comparison
+                    start_dates = pd.to_datetime(series_info_df['Start_Date'], errors='coerce').dt.date
+                    end_dates = pd.to_datetime(series_info_df['End_Date'], errors='coerce').dt.date
+                    
+                    # Filter rows where match_date is within range and teams match
+                    mask = (
+                        (start_dates <= match_date) & 
+                        (end_dates >= match_date) & 
+                        ((series_info_df['Home_Team'] == row['Bat_Team']) | 
+                        (series_info_df['Home_Team'] == row['Bowl_Team']) |
+                        (series_info_df['Away_Team'] == row['Bat_Team']) |
+                        (series_info_df['Away_Team'] == row['Bowl_Team']))
+                    )
+                    matches = series_info_df[mask]
+                    
+                    if not matches.empty:
+                        return matches['Series'].iloc[0]
+                return None
+            except Exception as e:
+                return None
+        
+        # Add Series column
+        series_bowling['Series'] = series_bowling.apply(find_bowling_series, axis=1)
+        
+        # Filter out rows with no series match
+        series_bowling = series_bowling[series_bowling['Series'].notna()]
+        
+        if series_bowling.empty:
+            st.info("No bowling data matches available series. ")
+        else:
+            # Create series bowling statistics
+            series_bowl_stats = series_bowling.groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).agg({
+                'File Name': 'nunique',
+                'Bowler_Overs': 'sum',
+                'Bowler_Wkts': 'sum',
+                'Bowler_Runs': 'sum'
+            }).reset_index()
+            
+            # Calculate 5-wicket and 10-wicket hauls from individual match data
+            five_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 5].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='5w_hauls')
+            ten_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 10].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='10w_hauls')
+            
+            # Merge the hauls data
+            series_bowl_stats = series_bowl_stats.merge(five_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
+            series_bowl_stats = series_bowl_stats.merge(ten_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
+            
+            # Fill NaN values with 0
+            series_bowl_stats['5w_hauls'] = series_bowl_stats['5w_hauls'].fillna(0).astype(int)
+            series_bowl_stats['10w_hauls'] = series_bowl_stats['10w_hauls'].fillna(0).astype(int)
+            
+            # Calculate bowling averages and economy rates
+            series_bowl_stats['Bowling_Average'] = series_bowl_stats.apply(
+                lambda row: round(row['Bowler_Runs'] / row['Bowler_Wkts'], 2) if row['Bowler_Wkts'] > 0 else 0, axis=1
+            )
+            series_bowl_stats['Economy_Rate'] = series_bowl_stats.apply(
+                lambda row: round(row['Bowler_Runs'] / row['Bowler_Overs'], 2) if row['Bowler_Overs'] > 0 else 0, axis=1
+            )
+            
+            # Rename columns for display
+            series_bowl_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
+                                       'Matches', 'Overs', 'Wickets', 'Runs', '5w', '10w', 
+                                       'Average', 'Economy']
+            
+            # Sort by most wickets first
+            series_bowl_stats = series_bowl_stats.sort_values(['Wickets', 'Average'], ascending=[False, True])
+            
+            # Display series bowling statistics
+            if not series_bowl_stats.empty: 
+                st.dataframe(series_bowl_stats, use_container_width=True, hide_index=True)
+            else:
+                st.info("No series bowling statistics available.")
+    else:
+        st.info("No bowling data available for series analysis or no series found")  

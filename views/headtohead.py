@@ -2768,5 +2768,3 @@ with tabs[2]:
                 </div>
             </div>
         """, unsafe_allow_html=True)
-
-# ...existing code...
