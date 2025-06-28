@@ -324,7 +324,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
+# Beautiful gradient navigation header matching recordsview.py
+st.markdown("""
+    <div style="text-align: center; margin: 30px 0;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                   padding: 25px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+            <h1 style="margin: 0; font-size: 2.2em; font-weight: bold;">
+                🆚 Head to Head Analysis
+            </h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 1.1em;">
+                Compare teams, analyze match history, and track performance trends
+            </p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # Get unique formats from all dataframes
 all_formats = set()
@@ -343,20 +356,6 @@ if 'match_df' in st.session_state:
     all_teams.update(match_df['Home_Team'].unique())
     all_teams.update(match_df['Away_Team'].unique())
 
-# Beautiful filter section
-st.markdown("""
-    <div style="text-align: center; margin: 30px 0;">
-        <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
-                   padding: 25px; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-            <h3 style="margin: 0 0 20px 0; font-size: 1.5em; font-weight: bold; color: #2c3e50;">
-                🆚 Head to Head
-            </h3>
-            <p style="margin: 0; color: #34495e; font-size: 0.95em;">
-                Customize your analysis by selecting specific formats, teams, and opponents
-            </p>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
 
 # Create columns for filters
 col1, col2, col3 = st.columns(3)
