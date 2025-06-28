@@ -140,19 +140,28 @@ st.markdown("""
     
     .stTabs [data-baseweb="tab-list"] {
         width: 100%;
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        border-radius: 10px;
+        padding: 5px;
+        margin-bottom: 20px;
     }
     .stTabs [data-baseweb="tab"] {
         flex-grow: 1;
         text-align: center;
-        font-weight: bold;
-        font-size: 1.1em;
-        border-radius: 8px 8px 0 0;
-        background: #fff0f1;
-        margin: 0 2px;
+        background: transparent;
+        color: #2c3e50;
+        font-weight: 600;
+        border-radius: 8px;
+        margin: 2px;
+        transition: all 0.3s ease;
     }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
-        color: white !important;
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: white;
+        color: #667eea;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
     /* Enhanced metric cards */
@@ -314,6 +323,8 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+
 
 # Get unique formats from all dataframes
 all_formats = set()
