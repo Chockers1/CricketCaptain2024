@@ -6,14 +6,193 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
 
-def display_ar_view():    # Custom styling
-    st.markdown("""
-    <style>
-    .stSlider p { color: #f04f53 !important; }
-    </style>
-    """, unsafe_allow_html=True)
+# Modern CSS for beautiful UI - Full styling
+st.markdown("""
+<style>
+    .main > div {
+        padding-top: 2rem;
+    }
     
-    st.markdown("<h1 style='color:#f04f53; text-align: center;'>All Rounder Statistics</h1>", unsafe_allow_html=True)
+    .stButton > button {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    
+    .uploadedFile {
+        border-radius: 10px;
+        border: 2px dashed #f04f53;
+        padding: 20px;
+    }
+    
+    .modern-card {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(240,79,83,0.1);
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    .filter-card {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 15px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+    
+    .result-banner {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+    }
+    
+    .success-banner {
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+    }
+    
+    .warning-banner {
+        background: linear-gradient(135deg, #ff9500 0%, #ffad33 100%);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        color: white;
+        font-weight: bold;
+    }
+    
+    .stats-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 30px 0 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        color: white;
+        font-weight: bold;
+        font-size: 24px;
+    }
+    
+    .filter-section {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+        padding: 25px;
+        border-radius: 15px;
+        margin: 20px 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    }
+    
+    h1, h2, h3 {
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    table { 
+        color: black; 
+        width: 100%; 
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    thead tr th {
+        background-color: #f04f53 !important;
+        color: white !important;
+        font-weight: bold;
+        padding: 12px;
+    }
+    tbody tr:nth-child(even) { 
+        background-color: #f8f9fa; 
+    }
+    tbody tr:nth-child(odd) { 
+        background-color: white; 
+    }
+    tbody tr:hover {
+        background-color: #fff0f1;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:focus-within,
+    .stMultiSelect > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stSlider [data-baseweb="slider-track"] {
+        background: linear-gradient(90deg, #f04f53 0%, #f5576c 100%);
+    }
+    
+    .stSlider p { 
+        color: #f04f53 !important; 
+    }
+    
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    div[data-testid="metric-container"] {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        border: 1px solid #f04f53;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .plot-container {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        margin: 20px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+def display_ar_view():
+    # Modern page header
+    st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 30px; border-radius: 20px; margin: 20px 0; text-align: center;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+            <h1 style="color: white; margin: 0; font-size: 2.5rem;">
+                🏏 All Rounder Statistics
+            </h1>
+            <p style="color: white; margin: 10px 0 0 0; font-size: 1.2rem; opacity: 0.9;">
+                Comprehensive batting and bowling performance analysis
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
 
     if 'bat_df' in st.session_state and 'bowl_df' in st.session_state:
         # Make copies of original dataframes
@@ -24,7 +203,12 @@ def display_ar_view():    # Custom styling
         unique_matches_bat = bat_df['File Name'].nunique()
         unique_matches_bowl = bowl_df['File Name'].nunique()
         if unique_matches_bat <= 1 or unique_matches_bowl <= 1:
-            st.warning("⚠️ Please upload more than 1 scorecard to use the all-rounder statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            st.markdown("""
+                <div class="warning-banner">
+                    ⚠️ Please upload more than 1 scorecard to use the all-rounder statistics view effectively. 
+                    With only one match loaded, statistical analysis and comparisons are limited.
+                </div>
+            """, unsafe_allow_html=True)
             return
 
         # Create Year columns from Date with safer date parsing
@@ -55,20 +239,24 @@ def display_ar_view():    # Custom styling
 
         # Check if we have any valid years
         if not years:
-            st.error("No valid dates found in the data.")
+            st.markdown("""
+                <div class="warning-banner">
+                    ❌ No valid dates found in the data.
+                </div>
+            """, unsafe_allow_html=True)
             return
 
         # Create first row of filters
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            name_choice = st.multiselect('Name:', names, default='All')
+            name_choice = st.multiselect('👤 Name:', names, default='All')
         with col2:
-            bat_team_choice = st.multiselect('Batting Team:', bat_teams, default='All')
+            bat_team_choice = st.multiselect('🏏 Batting Team:', bat_teams, default='All')
         with col3:
-            bowl_team_choice = st.multiselect('Bowling Team:', bowl_teams, default='All')
+            bowl_team_choice = st.multiselect('🏏 Bowling Team:', bowl_teams, default='All')
         with col4:
-            match_format_choice = st.multiselect('Format:', match_formats, default='All')
+            match_format_choice = st.multiselect('🏆 Format:', match_formats, default='All')
 
         # First apply basic filters to get initial stats
         filtered_bat_df = bat_df.copy()
@@ -130,76 +318,69 @@ def display_ar_view():    # Custom styling
         max_bowl_avg = float(initial_stats['Bowl Avg'].max())
         max_bowl_sr = float(initial_stats['Bowl SR'].max())
 
-        # Create range filter columns
+        # Create range filter columns with modern styling
+        st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
         col5, col6, col7, col8, col9, col10, col11, col12 = st.columns(8)
 
         with col5:
-            st.markdown("<p style='text-align: center;'>Choose Year:</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>📅 Choose Year:</p>", unsafe_allow_html=True)
             if len(years) == 1:
-                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; font-size: 1.2rem; color: #2c3e50;'>{years[0]}</p>", unsafe_allow_html=True)
                 year_choice = (years[0], years[0])
             else:
-                year_choice = st.slider('', 
+                year_choice = st.slider('Year Range', 
                     min_value=min(years),
                     max_value=max(years),
-                    value=(min(years), max(years)),
-                    label_visibility='collapsed')
+                    value=(min(years), max(years)))
 
         with col6:
-            st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
-            matches_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>🎯 Matches Range</p>", unsafe_allow_html=True)
+            matches_range = st.slider('Matches', 
                                     min_value=1, 
                                     max_value=max_matches, 
-                                    value=(1, max_matches),
-                                    label_visibility='collapsed')
+                                    value=(1, max_matches))
 
         with col7:
-            st.markdown("<p style='text-align: center;'>Runs Range</p>", unsafe_allow_html=True)
-            runs_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>🏃 Runs Range</p>", unsafe_allow_html=True)
+            runs_range = st.slider('Runs', 
                                 min_value=1, 
                                 max_value=max_runs, 
-                                value=(1, max_runs),
-                                label_visibility='collapsed')
+                                value=(1, max_runs))
 
         with col8:
-            st.markdown("<p style='text-align: center;'>Wickets Range</p>", unsafe_allow_html=True)
-            wickets_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>🎳 Wickets Range</p>", unsafe_allow_html=True)
+            wickets_range = st.slider('Wickets', 
                                     min_value=0, 
                                     max_value=max_wickets, 
-                                    value=(0, max_wickets),
-                                    label_visibility='collapsed')
+                                    value=(0, max_wickets))
 
         with col9:
-            st.markdown("<p style='text-align: center;'>Batting Average</p>", unsafe_allow_html=True)
-            bat_avg_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>📊 Batting Average</p>", unsafe_allow_html=True)
+            bat_avg_range = st.slider('Batting Avg', 
                                     min_value=0.0, 
                                     max_value=max_bat_avg, 
-                                    value=(0.0, max_bat_avg),
-                                    label_visibility='collapsed')
+                                    value=(0.0, max_bat_avg))
 
         with col10:
-            st.markdown("<p style='text-align: center;'>Bowling Average</p>", unsafe_allow_html=True)
-            bowl_avg_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>📈 Bowling Average</p>", unsafe_allow_html=True)
+            bowl_avg_range = st.slider('Bowling Avg', 
                                     min_value=0.0, 
                                     max_value=max_bowl_avg, 
-                                    value=(0.0, max_bowl_avg),
-                                    label_visibility='collapsed')
+                                    value=(0.0, max_bowl_avg))
 
         with col11:
-            st.markdown("<p style='text-align: center;'>Batting SR</p>", unsafe_allow_html=True)
-            bat_sr_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>⚡ Batting SR</p>", unsafe_allow_html=True)
+            bat_sr_range = st.slider('Batting SR', 
                                     min_value=0.0, 
                                     max_value=max_bat_sr, 
-                                    value=(0.0, max_bat_sr),
-                                    label_visibility='collapsed')
+                                    value=(0.0, max_bat_sr))
 
         with col12:
-            st.markdown("<p style='text-align: center;'>Bowling SR</p>", unsafe_allow_html=True)
-            bowl_sr_range = st.slider('', 
+            st.markdown("<p style='text-align: center; font-weight: bold; color: #f04f53;'>💨 Bowling SR</p>", unsafe_allow_html=True)
+            bowl_sr_range = st.slider('Bowling SR', 
                                     min_value=0.0, 
                                     max_value=max_bowl_sr, 
-                                    value=(0.0, max_bowl_sr),
-                                    label_visibility='collapsed')
+                                    value=(0.0, max_bowl_sr))
 
         # Apply year filter
         filtered_bat_df = filtered_bat_df[
@@ -291,11 +472,15 @@ def display_ar_view():    # Custom styling
         ]]
         filtered_stats = filtered_stats.replace([np.inf, -np.inf], np.nan)
 
-        # Display Career Statistics
-        st.markdown(
-            "<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", 
-            unsafe_allow_html=True
-        )
+        # Display Career Statistics with modern header
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); 
+                        padding: 20px; border-radius: 15px; text-align: center; margin: 30px 0 20px 0;
+                        box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: white; font-weight: bold; font-size: 24px;">
+                📊 Career Statistics
+            </div>
+        """, unsafe_allow_html=True)
+        
         st.dataframe(filtered_stats, use_container_width=True, hide_index=True)
 ###-------------------------------------SEASON STATS----------------------------------------###
         # First get separate batting and bowling season stats
@@ -407,19 +592,36 @@ def display_ar_view():    # Custom styling
         # Replace infinite values with NaN for display
         filtered_season_stats = filtered_season_stats.replace([np.inf, -np.inf], np.nan)
 
-        # Display Season Statistics
-        st.markdown(
-            "<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", 
-            unsafe_allow_html=True
-        )
+        # Display Season Statistics with modern header
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 20px; border-radius: 15px; text-align: center; margin: 30px 0 20px 0;
+                        box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: white; font-weight: bold; font-size: 24px;">
+                📅 Season Statistics
+            </div>
+        """, unsafe_allow_html=True)
+        
         st.dataframe(filtered_season_stats, use_container_width=True, hide_index=True)
 
 ###-------------------------------------GRAPHS----------------------------------------###
+        # Modern graphs section header
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #ff9500 0%, #ffad33 100%); 
+                        padding: 20px; border-radius: 15px; text-align: center; margin: 30px 0 20px 0;
+                        box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: white; font-weight: bold; font-size: 24px;">
+                📈 Performance Charts
+            </div>
+        """, unsafe_allow_html=True)
+        
         # Get individual players
         individual_players = [name for name in name_choice if name != 'All']
 
-        # Create subplots for Batting and Bowling Averages
-        fig = make_subplots(rows=1, cols=2, subplot_titles=("Batting Average", "Bowling Average"))
+        # Create subplots for Batting and Bowling Averages with proper titles
+        fig = make_subplots(
+            rows=1, cols=2, 
+            subplot_titles=("Batting and Bowling Average Per Year", ""),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+        )
 
         # Handle 'All' selection
         if 'All' in name_choice:
@@ -506,17 +708,26 @@ def display_ar_view():    # Custom styling
                 showlegend=False
             ), row=1, col=2)
 
-        # Update layout for second graph
+        # Update layout for charts with modern styling
         fig.update_layout(
             showlegend=True,
             height=500,
-            yaxis_title="Runs",
-            yaxis2_title="Wickets",
             font=dict(size=12),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            barmode='group'
+            barmode='group',
+            title_font_size=20,
+            title_font_color='#2c3e50',
+            legend=dict(
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="rgba(0,0,0,0.2)",
+                borderwidth=1
+            )
         )
+
+        # Update y-axis titles for both subplots
+        fig.update_yaxes(title_text="Average", row=1, col=1)
+        fig.update_yaxes(title_text="Average", row=1, col=2)
 
         # Update axes for second graph
         fig.update_xaxes(
@@ -534,7 +745,10 @@ def display_ar_view():    # Custom styling
             gridcolor='rgba(128, 128, 128, 0.2)'
         )
 
-        st.plotly_chart(fig)
+        # Display the chart in a styled container
+        st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 ###################-------------------------------------GRAPHS----------------------------------------#############
 
@@ -546,7 +760,11 @@ def display_ar_view():    # Custom styling
             all_players = individual_players  # Use selected individual players
 
         if not all_players.any():
-            st.error("No players available to display.")
+            st.markdown("""
+                <div class="warning-banner">
+                    ❌ No players available to display.
+                </div>
+            """, unsafe_allow_html=True)
         else:
             # Create a new figure for the scatter plot
             scatter_fig = go.Figure()
@@ -578,13 +796,16 @@ def display_ar_view():    # Custom styling
                         "Wickets: " + str(total_wickets) + "<extra></extra>"
                     )
                 ))
-            # Display the title using Streamlit's markdown
-            st.markdown(
-                "<h3 style='color:#f04f53; text-align: center;'>Batting Average vs Bowling Average</h3>", 
-                unsafe_allow_html=True
-            )
+            # Display the scatter plot title and chart
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 20px; border-radius: 15px; text-align: center; margin: 30px 0 20px 0;
+                            box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: white; font-weight: bold; font-size: 24px;">
+                    🎯 Batting Average vs Bowling Average
+                </div>
+            """, unsafe_allow_html=True)
 
-            # Update layout for scatter plot
+            # Update layout for scatter plot with modern styling
             scatter_fig.update_layout(
                 xaxis_title="Batting Average",
                 yaxis_title="Bowling Average",
@@ -592,13 +813,29 @@ def display_ar_view():    # Custom styling
                 font=dict(size=12),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                showlegend=False  # No need for legend, player names will be shown as labels
+                showlegend=False,  # No need for legend, player names will be shown as labels
+                xaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)'
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.2)'
+                )
             )
 
-            # Show scatter plot
-            st.plotly_chart(scatter_fig)
+            # Show scatter plot in styled container
+            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+            st.plotly_chart(scatter_fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.error("Required data not found. Please ensure you have processed the scorecards.")
+        st.markdown("""
+            <div class="warning-banner">
+                ❌ Required data not found. Please ensure you have processed the scorecards.
+            </div>
+        """, unsafe_allow_html=True)
 
 
 
