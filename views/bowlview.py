@@ -5,26 +5,203 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
 
-# Add this CSS styling after imports
+# Modern CSS for beautiful UI - Enhanced bowlview styling
 st.markdown("""
 <style>
-/* Table styling */
-table { color: black; width: 100%; }
-thead tr th {
-    background-color: #f04f53 !important;
-    color: white !important;
-}
-tbody tr:nth-child(even) { background-color: #f0f2f6; }
-tbody tr:nth-child(odd) { background-color: white; }
-
-/* Tab styling for full width and centered */
-.stTabs [data-baseweb="tab-list"] {
-    width: 100%;
-}
-.stTabs [data-baseweb="tab"] {
-    flex-grow: 1;
-    text-align: center;
-}
+    .main > div {
+        padding-top: 2rem;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    
+    .modern-card {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(240,79,83,0.1);
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    .section-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        margin: 20px 0 15px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+    
+    .section-header h3 {
+        color: white !important;
+        margin: 0 !important;
+        font-weight: bold;
+        font-size: 1.3rem;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Beautiful tab styling - matching teamview.py and playerrankings.py */
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        border-radius: 15px;
+        padding: 12px;
+        box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
+        margin-bottom: 2rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        margin: 0 6px;
+        transition: all 0.4s ease;
+        color: #2c3e50 !important;
+        font-weight: 700;
+        font-size: 1.1rem;
+        padding: 12px 20px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(255, 255, 255, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white !important;
+        box-shadow: 0 6px 20px rgba(240, 79, 83, 0.4);
+        transform: translateY(-3px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"]:hover {
+        background: linear-gradient(135deg, #e03a3e 0%, #f04f53 100%);
+    }
+    
+    /* Enhanced table styling */
+    table { 
+        color: black; 
+        width: 100%; 
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border: none;
+    }
+    
+    thead tr th {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%) !important;
+        color: white !important;
+        font-weight: bold;
+        padding: 15px 8px;
+        text-align: center;
+        border: none;
+        font-size: 14px;
+    }
+    
+    tbody tr {
+        transition: all 0.3s ease;
+        border: none;
+    }
+    
+    tbody tr:nth-child(even) { 
+        background-color: #f8f9fa; 
+    }
+    
+    tbody tr:nth-child(odd) { 
+        background-color: white; 
+    }
+    
+    tbody tr:hover {
+        background: linear-gradient(135deg, #fff0f1 0%, #f0f8f0 100%) !important;
+        transform: scale(1.01);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    tbody tr td {
+        padding: 12px 8px;
+        text-align: center;
+        border: none;
+        font-weight: 500;
+    }
+    
+    /* Filter controls styling */
+    .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stMultiSelect > div > div {
+        border-radius: 8px;
+        border: 2px solid #f0f2f6;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    
+    .stMultiSelect > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240,79,83,0.1);
+    }
+    
+    .stSlider > div > div > div > div {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+    }
+    
+    .stDataFrame {
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    }
+    
+    /* Metric cards styling */
+    [data-testid="metric-container"] {
+        background: linear-gradient(135deg, #fff0f1 0%, #f8f9fa 100%);
+        border: 1px solid #e0e6ed;
+        padding: 1rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    [data-testid="metric-container"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    /* Filter labels */
+    .stSelectbox label, .stMultiSelect label, .stSlider label {
+        color: #f04f53 !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,8 +263,19 @@ def display_bowl_view():
                 'match_format': ['All'],
                 'comp': ['All']  # Initialize 'comp' filter
             }
-            st.session_state.prev_bowl_teams = current_bowl_teams        ###-------------------------------------HEADER AND FILTERS-------------------------------------###
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Bowling Statistics</h1>", unsafe_allow_html=True)
+            st.session_state.prev_bowl_teams = current_bowl_teams        # Beautiful main title with purple gradient background banner
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 30px 20px; border-radius: 20px; text-align: center; 
+                    margin-bottom: 2rem; box-shadow: 0 8px 25px rgba(0,0,0,0.15);'>
+            <h1 style='color: white; font-size: 2.2rem; font-weight: 700; margin: 0 0 8px 0;'>
+                🏏 Bowling Statistics
+            </h1>
+            <p style='color: white; font-size: 1rem; margin: 0; opacity: 0.9;'>
+                Comprehensive bowling analysis with performance metrics and insights
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Check if only one scorecard is loaded
         unique_matches = bowl_df['File Name'].nunique()
@@ -131,7 +319,7 @@ def display_bowl_view():
         col1, col2, col3, col4, col5 = st.columns(5)  # Add fifth column for comp
         
         with col1:
-            name_choice = st.multiselect('Name:', 
+            name_choice = st.multiselect('👤 Player Name:', 
                                        names,
                                        default=st.session_state.bowl_filter_state['name'])
             if name_choice != st.session_state.bowl_filter_state['name']:
@@ -139,7 +327,7 @@ def display_bowl_view():
                 st.rerun()
 
         with col2:
-            bowl_team_choice = st.multiselect('Bowl Team:', 
+            bowl_team_choice = st.multiselect('🏏 Bowling Team:', 
                                             bowl_teams,
                                             default=st.session_state.bowl_filter_state['bowl_team'])
             if bowl_team_choice != st.session_state.bowl_filter_state['bowl_team']:
@@ -147,7 +335,7 @@ def display_bowl_view():
                 st.rerun()
 
         with col3:
-            bat_team_choice = st.multiselect('Bat Team:', 
+            bat_team_choice = st.multiselect('🏏 Batting Team:', 
                                            bat_teams,
                                            default=st.session_state.bowl_filter_state['bat_team'])
             if bat_team_choice != st.session_state.bowl_filter_state['bat_team']:
@@ -155,7 +343,7 @@ def display_bowl_view():
                 st.rerun()
 
         with col4:
-            match_format_choice = st.multiselect('Format:', 
+            match_format_choice = st.multiselect('📋 Format:', 
                                                match_formats,
                                                default=st.session_state.bowl_filter_state['match_format'])
             if match_format_choice != st.session_state.bowl_filter_state['match_format']:
@@ -171,7 +359,7 @@ def display_bowl_view():
                 available_comp = get_filtered_options(bowl_df, 'Competition',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
             
-            comp_choice = st.multiselect('Competition:',
+            comp_choice = st.multiselect('🏆 Competition:',
                                        available_comp,
                                        default=[c for c in st.session_state.bowl_filter_state['comp'] if c in available_comp])
             if comp_choice != st.session_state.bowl_filter_state['comp']:
@@ -209,14 +397,15 @@ def display_bowl_view():
         max_avg = float(career_stats['Avg'].max())
         max_sr = float(career_stats['SR'].max())
 
+  
         # Add range filters
         col5, col6, col7, col8, col9, col10 = st.columns(6)
 
         # Replace the year slider section with this:
         with col5:
-            st.markdown("<p style='text-align: center;'>Choose Year:</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>📅 Year Range:</p>", unsafe_allow_html=True)
             if len(years) == 1:
-                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: #666;'>{years[0]}</p>", unsafe_allow_html=True)
                 year_choice = (years[0], years[0])  # Set the year range to the single year
             else:
                 year_choice = st.slider('', 
@@ -226,9 +415,9 @@ def display_bowl_view():
                         label_visibility='collapsed',
                         key='year_slider')
 
-        # The rest of the sliders remain the same
+        # The rest of the sliders with modern styling
         with col6:
-            st.markdown("<p style='text-align: center;'>Choose Position:</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>📍 Position:</p>", unsafe_allow_html=True)
             position_choice = st.slider('', 
                         min_value=1, 
                         max_value=11, 
@@ -237,7 +426,7 @@ def display_bowl_view():
                         key='position_slider')
 
         with col7:
-            st.markdown("<p style='text-align: center;'>Wickets Range</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>🎳 Wickets:</p>", unsafe_allow_html=True)
             wickets_range = st.slider('', 
                                     min_value=0, 
                                     max_value=max_wickets, 
@@ -246,7 +435,7 @@ def display_bowl_view():
                                     key='wickets_slider')
 
         with col8:
-            st.markdown("<p style='text-align: center;'>Matches Range</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>🏏 Matches:</p>", unsafe_allow_html=True)
             matches_range = st.slider('', 
                                     min_value=1, 
                                     max_value=max_matches, 
@@ -255,7 +444,7 @@ def display_bowl_view():
                                     key='matches_slider')
 
         with col9:
-            st.markdown("<p style='text-align: center;'>Average Range</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>📊 Average:</p>", unsafe_allow_html=True)
             avg_range = st.slider('', 
                                 min_value=0.0, 
                                 max_value=max_avg, 
@@ -264,7 +453,7 @@ def display_bowl_view():
                                 key='avg_slider')
 
         with col10:
-            st.markdown("<p style='text-align: center;'>Strike Rate Range</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #667eea; font-weight: 600;'>⚡ Strike Rate:</p>", unsafe_allow_html=True)
             sr_range = st.slider('', 
                                 min_value=0.0, 
                                 max_value=max_sr, 
@@ -304,12 +493,12 @@ def display_bowl_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views
+        # Create tabs for different views with modern cricket-themed emojis
         tabs = main_container.tabs([
-            "Career Stats", "Format Stats", "Season Stats", 
-            "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats", "Home/Away Stats", "Records" # Added Records tab
+            "🏏 Career Stats", "📋 Format Stats", "📅 Season Stats", 
+            "⚡ Latest Innings", "🏆 Opponent Stats", "📍 Location Stats",
+            "🎯 Innings Stats", "📍 Position Stats", "📈 Cumulative Stats",
+            "📊 Block Stats", "🏠 Home/Away Stats", "🏆 Records" # Added Records tab
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
@@ -357,7 +546,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
+            # Modern section header for Career Statistics
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🏏 Career Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
 
             # Create a new figure for the scatter plot
@@ -389,11 +585,14 @@ def display_bowl_view():
                     )
                 ))
 
-            # Display the title using Streamlit's markdown
-            st.markdown(
-                "<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate Analysis</h3>",
-                unsafe_allow_html=True
-            )
+            # Display the title using modern section header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Economy Rate vs Strike Rate Analysis</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             scatter_fig.update_layout(
@@ -454,7 +653,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
+            # Modern section header for Format Record
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📋 Format Record</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
 
         ###-------------------------------------SEASON STATS-------------------------------------###
@@ -502,7 +708,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
+            # Modern section header for Season Statistics
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📅 Season Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
 
             ###-------------------------------------SEASON GRAPHS----------------------------------------###
@@ -511,7 +724,7 @@ def display_bowl_view():
 
             # Handle 'All' selection
             if 'All' in name_choice:
-                all_players_stats = filtered_df.groupby('Year').agg({
+                all_players_stats = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
                     'Bowler_Runs': 'sum',
                     'Bowler_Wkts': 'sum',
                     'Bowler_Balls': 'sum'
@@ -524,81 +737,106 @@ def display_bowl_view():
                 # Use streamlit red if only 'All' selected, black if names also selected
                 all_color = '#f84e4e' if not individual_players else 'black'
 
-                # Add traces for 'All'
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['Avg'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8)
-                ), row=1, col=1)
+                # Add traces for 'All' - Home and Away separately
+                for ha_status in ['Home', 'Away']:
+                    data_subset = all_players_stats[all_players_stats['HomeOrAway'] == ha_status]
+                    if not data_subset.empty:
+                        line_style = 'solid' if ha_status == 'Home' else 'dash'
+                        legend_name = f'All Players - {ha_status}'
+                        show_legend_main = True # Show both Home and Away in legend for the first plot
 
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['SR'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8),
-                    showlegend=False
-                ), row=1, col=2)
-                
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['Econ'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8),
-                    showlegend=False
-                ), row=1, col=3)
+                        fig.add_trace(go.Scatter(
+                            x=data_subset['Year'],
+                            y=data_subset['Avg'],
+                            mode='lines+markers',
+                            name=legend_name,
+                            legendgroup='All',
+                            line=dict(color=all_color, dash=line_style),
+                            marker=dict(color=all_color, size=8),
+                            showlegend=show_legend_main # Apply change here
+                        ), row=1, col=1)
 
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_stats = filtered_df[filtered_df['Name'] == name]
-                player_yearly_stats = player_stats.groupby('Year').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
+                        fig.add_trace(go.Scatter(
+                            x=data_subset['Year'],
+                            y=data_subset['SR'],
+                            mode='lines+markers',
+                            name=legend_name, # Name needed for hover, but legend entry hidden
+                            legendgroup='All',
+                            line=dict(color=all_color, dash=line_style),
+                            marker=dict(color=all_color, size=8),
+                            showlegend=False # Keep False for SR plot
+                        ), row=1, col=2)
 
-                player_yearly_stats['Avg'] = (player_yearly_stats['Bowler_Runs'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                player_yearly_stats['SR'] = (player_yearly_stats['Bowler_Balls'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                player_yearly_stats['Econ'] = (player_yearly_stats['Bowler_Runs'] / (player_yearly_stats['Bowler_Balls']/6)).round(2).fillna(0)
+                        fig.add_trace(go.Scatter(
+                            x=data_subset['Year'],
+                            y=data_subset['Econ'],
+                            mode='lines+markers',
+                            name=legend_name, # Name needed for hover, but legend entry hidden
+                            legendgroup='All',
+                            line=dict(color=all_color, dash=line_style),
+                            marker=dict(color=all_color, size=8),
+                            showlegend=False # Keep False for Econ plot
+                        ), row=1, col=3)
+            else:
+                # Add individual player traces
+                for i, name in enumerate(individual_players):
+                    player_stats = filtered_df[filtered_df['Name'] == name]
+                    player_yearly_stats = player_stats.groupby(['Year', 'HomeOrAway']).agg({
+                        'Bowler_Runs': 'sum',
+                        'Bowler_Wkts': 'sum',
+                        'Bowler_Balls': 'sum'
+                    }).reset_index()
 
-                # First player gets streamlit red, others get random colors
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                    player_yearly_stats['Avg'] = (player_yearly_stats['Bowler_Runs'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
+                    player_yearly_stats['SR'] = (player_yearly_stats['Bowler_Balls'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
+                    player_yearly_stats['Econ'] = (player_yearly_stats['Bowler_Runs'] / (player_yearly_stats['Bowler_Balls']/6)).round(2).fillna(0)
 
-                # Add bowling average trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['Avg'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=True
-                ), row=1, col=1)
+                    # First player gets streamlit red, others get random colors
+                    color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
 
-                # Add strike rate trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['SR'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=2)
-                
-                # Add economy rate trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['Econ'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=3)
+                    # Add traces for player - Home and Away separately
+                    for ha_status in ['Home', 'Away']:
+                        data_subset = player_yearly_stats[player_yearly_stats['HomeOrAway'] == ha_status]
+                        if not data_subset.empty:
+                            line_style = 'solid' if ha_status == 'Home' else 'dash'
+                            legend_name = f'{name} - {ha_status}'
+                            show_legend_main = True # Show both Home and Away in legend for the first plot
+
+                            # Add bowling average trace
+                            fig.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Avg'],
+                                mode='lines+markers',
+                                name=legend_name,
+                                legendgroup=name, # Group by player name
+                                line=dict(color=color, dash=line_style),
+                                marker=dict(color=color, size=8),
+                                showlegend=show_legend_main # Apply change here
+                            ), row=1, col=1)
+
+                            # Add strike rate trace
+                            fig.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['SR'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup=name,
+                                line=dict(color=color, dash=line_style),
+                                marker=dict(color=color, size=8),
+                                showlegend=False # Keep False for SR plot
+                            ), row=1, col=2)
+
+                            # Add economy rate trace
+                            fig.add_trace(go.Scatter(
+                                x=data_subset['Year'],
+                                y=data_subset['Econ'],
+                                mode='lines+markers',
+                                name=legend_name, # Name needed for hover, but legend entry hidden
+                                legendgroup=name,
+                                line=dict(color=color, dash=line_style),
+                                marker=dict(color=color, size=8),
+                                showlegend=False # Keep False for Econ plot
+                            ), row=1, col=3)
 
             # Update layout
             fig.update_layout(
@@ -657,7 +895,14 @@ def display_bowl_view():
                     )
                 )
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year</h3>", unsafe_allow_html=True)
+            # Modern section header for Wickets Per Year
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🎳 Wickets Per Year</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             fig.update_layout(
                 showlegend=True,
@@ -772,8 +1017,14 @@ def display_bowl_view():
             # Style the dataframe
             styled_df = display_inns_df.style.applymap(color_wickets, subset=['Wickets'])
 
-            # Display section header and dataframe
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 20 Bowling Innings</h3>", unsafe_allow_html=True)
+            # Modern section header for Latest Innings
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">⚡ Last 20 Bowling Innings</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(styled_df, height=575, use_container_width=True, hide_index=True)
             
             # Create summary dataframe with bowling stats at the bottom of the tab
@@ -847,7 +1098,7 @@ def display_bowl_view():
                     
                     # Ensure column order matches player_summary
                     all_formats_summary = all_formats_summary[[
-                        'Name', 'Format', 'Matches', 'Balls', 'Runs', 'Wickets', 'Maidens',
+                        'Name', 'Matches', 'Balls', 'Runs', 'Wickets', 'Maidens',
                         'Overs', 'Average', 'Strike Rate', 'Economy', '5W'
                     ]]
                     
@@ -861,8 +1112,14 @@ def display_bowl_view():
                     # Replace NaN with empty or "N/A"
                     player_summary = player_summary.fillna("N/A")
                     
-                    # Display the summary dataframe at the bottom of the tab
-                    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Bowling Summary by Format (Last 20 Innings)</h3>", unsafe_allow_html=True)
+                    # Modern section header for Player Summary
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                               padding: 15px; border-radius: 12px; text-align: center; 
+                               margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Player Bowling Summary by Format (Last 20 Innings)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.dataframe(player_summary[[
                         'Name', 'Format', 'Matches', 'Overs', 'Maidens', 'Runs', 'Wickets', 
                         'Average', 'Strike Rate', 'Economy', '5W'
@@ -915,7 +1172,14 @@ def display_bowl_view():
             # Sort by Wickets high to low
             opponent_summary = opponent_summary.sort_values(by='Wickets', ascending=False)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
+            # Modern section header for Opposition Statistics
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🏆 Opposition Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
@@ -999,8 +1263,14 @@ def display_bowl_view():
                     )
                 )
 
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Opponent Team</h3>", unsafe_allow_html=True)
+            # Display chart title with modern section header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Average vs Opponent Team</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1063,7 +1333,14 @@ def display_bowl_view():
             ]]
             location_summary = location_summary.sort_values('Wickets', ascending=False)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
+            # Modern section header for Location Statistics
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📍 Location Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(location_summary, use_container_width=True, hide_index=True)
@@ -1115,8 +1392,15 @@ def display_bowl_view():
                     )
                 )
 
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Location</h3>", unsafe_allow_html=True)
+            # Display chart title with modern section header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(71, 118, 230, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem;">📍 Average by Location</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1178,7 +1462,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(54, 209, 220, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎯 Innings Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(innings_summary, use_container_width=True, hide_index=True)
@@ -1198,7 +1489,7 @@ def display_bowl_view():
                 all_innings_stats['Average'] = (all_innings_stats['Bowler_Runs'] / all_innings_stats['Bowler_Wkts']).round(2)
                 all_innings_stats['Strike_Rate'] = (all_innings_stats['Bowler_Balls'] / all_innings_stats['Bowler_Wkts']).round(2)
                 all_innings_stats['Economy_Rate'] = (all_innings_stats['Bowler_Runs'] / (all_innings_stats['Bowler_Balls']/6)).round(2)
-                
+
                 all_color = '#f84e4e' if not individual_players else 'black'
                 
                 fig.add_trace(
@@ -1248,7 +1539,14 @@ def display_bowl_view():
                 )
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Innings Number</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Average by Innings Number</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1312,7 +1610,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📍 Position Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(position_summary, use_container_width=True, hide_index=True)
@@ -1343,19 +1648,7 @@ def display_bowl_view():
                         marker_color=all_color,
                         text=all_position_stats['Average'].round(2),
                         textposition='auto',
-                        orientation='h',  # Make bars horizontal
-                        customdata=np.stack((
-                            all_position_stats['Bowler_Wkts'],
-                            all_position_stats['Strike_Rate'],
-                            all_position_stats['Economy_Rate']
-                        ), axis=-1),
-                        hovertemplate=(
-                            'Position: %{y}<br>'
-                            'Average: %{x:.2f}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]:.2f}<br>'
-                            'Economy Rate: %{customdata[2]:.2f}<extra></extra>'
-                        )
+                        orientation='h'  # Make bars horizontal
                     )
                 )
 
@@ -1382,24 +1675,19 @@ def display_bowl_view():
                         marker_color=color,
                         text=player_data['Average'].round(2),
                         textposition='auto',
-                        orientation='h',  # Make bars horizontal
-                        customdata=np.stack((
-                            player_data['Bowler_Wkts'],
-                            player_data['Strike_Rate'],
-                            player_data['Economy_Rate']
-                        ), axis=-1),
-                        hovertemplate=(
-                            'Position: %{y}<br>'
-                            'Average: %{x:.2f}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]:.2f}<br>'
-                            'Economy Rate: %{customdata[2]:.2f}<extra></extra>'
-                        )
+                        orientation='h'  # Make bars horizontal
                     )
                 )
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Bowling Position</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average by Bowling Position</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1493,7 +1781,14 @@ def display_bowl_view():
                 df_bowl = df_bowl.replace([np.inf, -np.inf], np.nan)
 
                 # Display the bowling statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Bowling Statistics</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📈 Cumulative Bowling Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(df_bowl, use_container_width=True, hide_index=True)
             else:
                 st.warning("No bowling data available for the selected player.")
@@ -1630,7 +1925,14 @@ def display_bowl_view():
                 df_blocks = block_stats_df.copy()
 
                 # Display the block statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Block Statistics (Groups of 20 Innings)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(df_blocks, use_container_width=True, hide_index=True)
 
                 # Create the figure for bowling averages by innings range
@@ -1696,7 +1998,14 @@ def display_bowl_view():
                 fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
                 # Display title and graph
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(30, 60, 114, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Bowling Average by Innings Range</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------HOME/AWAY STATS-------------------------------------###
@@ -1782,7 +2091,14 @@ def display_bowl_view():
                     'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
                 ]]
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(255, 126, 95, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏠 Home/Away Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
 
                 ###-------------------------------------HOME/AWAY GRAPHS----------------------------------------###
@@ -1793,7 +2109,7 @@ def display_bowl_view():
                 if 'All' in name_choice:
                     # Check if HomeOrAway column exists and has data before grouping
                     if 'HomeOrAway' in filtered_df.columns and not filtered_df['HomeOrAway'].isnull().all():
-                        all_players_ha_stats = filtered_df.groupby('HomeOrAway').agg({
+                        all_players_ha_stats = filtered_df.groupby(['HomeOrAway', 'Year']).agg({
                             'Bowler_Runs': 'sum',
                             'Bowler_Wkts': 'sum',
                             'Bowler_Balls': 'sum'
@@ -1803,7 +2119,6 @@ def display_bowl_view():
                         if not all_players_ha_stats.empty:
                             all_players_ha_stats['Avg'] = (all_players_ha_stats['Bowler_Runs'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
                             all_players_ha_stats['SR'] = (all_players_ha_stats['Bowler_Balls'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                            # Ensure Bowler_Balls/6 is not zero before division
                             all_players_ha_stats['Econ'] = (all_players_ha_stats['Bowler_Runs'] / (all_players_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
 
                             all_color = '#f84e4e' if not individual_players else 'black'
@@ -1976,7 +2291,14 @@ def display_bowl_view():
                     #     pass
 
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Home vs Away</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Wickets Home vs Away</h3>
+                </div>
+                """, unsafe_allow_html=True)
 
                 fig_ha_wickets.update_layout(
                     showlegend=True,
@@ -1997,7 +2319,14 @@ def display_bowl_view():
 
                 ###-------------------------------------SEASON GRAPHS (Modified for Home/Away)----------------------------------------###
                 st.markdown("<hr>", unsafe_allow_html=True) # Add a separator
-                st.markdown("<h2 style='color:#f04f53; text-align: center;'>Season Trends (Home vs Away)</h2>", unsafe_allow_html=True) # Updated Title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.4rem; text-align: center;">🏠 Season Trends (Home vs Away)</h2>
+                </div>
+                """, unsafe_allow_html=True)
 
                 # Create subplots for Bowling Average, Strike Rate, and Economy Rate
                 fig_season_metrics_ha = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate")) # Renamed fig
@@ -2016,7 +2345,6 @@ def display_bowl_view():
                     all_players_stats_ha['SR'] = (all_players_stats_ha['Bowler_Balls'] / all_players_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
                     all_players_stats_ha['Econ'] = (all_players_stats_ha['Bowler_Runs'] / (all_players_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
 
-                    # Use streamlit red if only 'All' selected, black if names also selected
                     all_color = '#f84e4e' if not individual_players else 'black'
 
                     # Add traces for 'All' - Home and Away separately
@@ -2059,68 +2387,68 @@ def display_bowl_view():
                                 marker=dict(color=all_color, size=8),
                                 showlegend=False # Keep False for Econ plot
                             ), row=1, col=3)
+                else:
+                    # Add individual player traces
+                    for i, name in enumerate(individual_players):
+                        player_stats = filtered_df[filtered_df['Name'] == name]
+                        # Group by Year and HomeOrAway
+                        player_yearly_stats_ha = player_stats.groupby(['Year', 'HomeOrAway']).agg({
+                            'Bowler_Runs': 'sum',
+                            'Bowler_Wkts': 'sum',
+                            'Bowler_Balls': 'sum'
+                        }).reset_index()
 
-                # Add individual player traces
-                for i, name in enumerate(individual_players):
-                    player_stats = filtered_df[filtered_df['Name'] == name]
-                    # Group by Year and HomeOrAway
-                    player_yearly_stats_ha = player_stats.groupby(['Year', 'HomeOrAway']).agg({
-                        'Bowler_Runs': 'sum',
-                        'Bowler_Wkts': 'sum',
-                        'Bowler_Balls': 'sum'
-                    }).reset_index()
+                        # Check for division by zero or NaN results
+                        player_yearly_stats_ha['Avg'] = (player_yearly_stats_ha['Bowler_Runs'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                        player_yearly_stats_ha['SR'] = (player_yearly_stats_ha['Bowler_Balls'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                        player_yearly_stats_ha['Econ'] = (player_yearly_stats_ha['Bowler_Runs'] / (player_yearly_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
 
-                    # Check for division by zero or NaN results
-                    player_yearly_stats_ha['Avg'] = (player_yearly_stats_ha['Bowler_Runs'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    player_yearly_stats_ha['SR'] = (player_yearly_stats_ha['Bowler_Balls'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    player_yearly_stats_ha['Econ'] = (player_yearly_stats_ha['Bowler_Runs'] / (player_yearly_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
+                        # First player gets streamlit red, others get random colors
+                        base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
 
-                    # First player gets streamlit red, others get random colors
-                    base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                        # Add traces for player - Home and Away separately
+                        for ha_status in ['Home', 'Away']:
+                            data_subset = player_yearly_stats_ha[player_yearly_stats_ha['HomeOrAway'] == ha_status]
+                            if not data_subset.empty:
+                                line_style = 'solid' if ha_status == 'Home' else 'dash'
+                                legend_name = f'{name} - {ha_status}'
+                                show_legend_main = True # Show both Home and Away in legend for the first plot
 
-                    # Add traces for player - Home and Away separately
-                    for ha_status in ['Home', 'Away']:
-                        data_subset = player_yearly_stats_ha[player_yearly_stats_ha['HomeOrAway'] == ha_status]
-                        if not data_subset.empty:
-                            line_style = 'solid' if ha_status == 'Home' else 'dash'
-                            legend_name = f'{name} - {ha_status}'
-                            show_legend_main = True # Show both Home and Away in legend for the first plot
+                                # Add bowling average trace
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Avg'],
+                                    mode='lines+markers',
+                                    name=legend_name,
+                                    legendgroup=name, # Group by player name
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=show_legend_main # Apply change here
+                                ), row=1, col=1)
 
-                            # Add bowling average trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Avg'],
-                                mode='lines+markers',
-                                name=legend_name,
-                                legendgroup=name, # Group by player name
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=show_legend_main # Apply change here
-                            ), row=1, col=1)
+                                # Add strike rate trace
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['SR'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup=name,
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=False # Keep False for SR plot
+                                ), row=1, col=2)
 
-                            # Add strike rate trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['SR'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup=name,
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=False # Keep False for SR plot
-                            ), row=1, col=2)
-
-                            # Add economy rate trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Econ'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup=name,
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=False # Keep False for Econ plot
-                            ), row=1, col=3)
+                                # Add economy rate trace
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Econ'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup=name,
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=False # Keep False for Econ plot
+                                ), row=1, col=3)
 
                 # Update layout
                 fig_season_metrics_ha.update_layout( # Use renamed fig
@@ -2201,7 +2529,14 @@ def display_bowl_view():
                                 )
                             )
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year (Home vs Away)</h3>", unsafe_allow_html=True) # Updated title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Wickets Per Year (Home vs Away)</h3>
+                </div>
+                """, unsafe_allow_html=True)
 
                 fig_season_wickets_ha.update_layout( # Use renamed variable
                     showlegend=True,
@@ -2230,7 +2565,14 @@ def display_bowl_view():
         ###-------------------------------------RECORDS TAB-------------------------------------###
         # Records Tab
         with tabs[11]:
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Bowling Records</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Bowling Records</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create columns for layout
             col1, col2 = st.columns(2)
@@ -2259,7 +2601,14 @@ def display_bowl_view():
                 best_bowling_df = best_bowling_df[['Rank', 'Name', 'Team', 'Bowling_Figures', 'Overs', 'Opponent', 'Year']]
 
                 # Display the Best Bowling header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling in an Innings</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Best Bowling in an Innings</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
 
@@ -2311,12 +2660,26 @@ def display_bowl_view():
                 })
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Economical Spells</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Most Economical Spells</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the final dataframe
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
             # Match bowling records section
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Bowling Records</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Match Bowling Records</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create columns for layout - use two columns now
             col3, col4 = st.columns(2)
@@ -2345,7 +2708,7 @@ def display_bowl_view():
                 # Add rank column
                 match_bowling.insert(0, 'Rank', range(1, 1 + len(match_bowling)))
                 
-                # Rename columns
+                # Rename columns for display
                 match_bowling = match_bowling.rename(columns={
                     'Bat_Team': 'Opponent', 
                     'Bowl_Team': 'Team',
@@ -2353,14 +2716,21 @@ def display_bowl_view():
                     'Bowler_Runs': 'Runs',
                     'Match_Format': 'Format'
                 })
-                
-                # Select and reorder columns - drop Bowler_Balls from display
-                match_bowling_df = match_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Opponent', 'Format', 'Year']]
+
+                # Reorder columns
+                match_bowling = match_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Opponent', 'Format', 'Year']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Best Match Bowling Figures</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
-                st.dataframe(match_bowling_df, use_container_width=True, hide_index=True)
+                st.dataframe(match_bowling, use_container_width=True, hide_index=True)
 
             with col4:
                 # --- Most Expensive Bowling Figures ---
@@ -2400,13 +2770,27 @@ def display_bowl_view():
                 expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Opponent', 'Format', 'Year']]
                 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Expensive Bowling Figures</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💸 Most Expensive Bowling Figures</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(expensive_bowling_df, use_container_width=True, hide_index=True)
 
             # Seasonal Records Section
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Seasonal Bests (by Format)</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create two rows with two columns each for the four seasonal stats
             row1_col1, row1_col2 = st.columns(2)
@@ -2426,7 +2810,7 @@ def display_bowl_view():
                 season_wickets['Overs'] = (season_wickets['Bowler_Balls'] // 6) + (season_wickets['Bowler_Balls'] % 6) / 10
                 season_wickets['Average'] = (season_wickets['Bowler_Runs'] / season_wickets['Bowler_Wkts']).round(2)
                 season_wickets['Economy'] = (season_wickets['Bowler_Runs'] / season_wickets['Overs']).round(2)
-                
+
                 # Sort by wickets and get top seasons
                 season_wickets = season_wickets.sort_values(by='Bowler_Wkts', ascending=False).head(10)
                 
@@ -2445,7 +2829,14 @@ def display_bowl_view():
                 season_wickets_df = season_wickets[['Rank', 'Name', 'Year', 'Format', 'Matches', 'Wickets', 'Average', 'Economy']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Wickets in a Season</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Most Wickets in a Season</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_wickets_df, use_container_width=True, hide_index=True)
 
@@ -2485,7 +2876,14 @@ def display_bowl_view():
                 season_avg_df = season_avg[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Average', 'SR', 'Matches']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling Average in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Best Bowling Average in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_avg_df, use_container_width=True, hide_index=True)
                 
@@ -2526,7 +2924,14 @@ def display_bowl_view():
                 season_sr_df = season_sr[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Strike Rate', 'Average', 'Matches']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Strike Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Best Strike Rate in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_sr_df, use_container_width=True, hide_index=True)
                 
@@ -2565,7 +2970,14 @@ def display_bowl_view():
                 
                 # Select and reorder columns
                 season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Economy Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Best Economy Rate in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_econ_df, use_container_width=True, hide_index=True)
 
@@ -2573,4 +2985,4 @@ def display_bowl_view():
         st.error("No bowling data available. Please upload scorecards first.")
 
 # Display the bowling view
-display_bowl_view()
+display_bowl_view() 
