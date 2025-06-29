@@ -766,7 +766,7 @@ def display_number_one_rankings(bat_df, bowl_df):
                         "Name": st.column_config.TextColumn("�️ Player", width="medium"),
                         "Match_Format": st.column_config.TextColumn("📊 Format", width="small"),
                         "Batting_Points": st.column_config.NumberColumn("🏏 Batting Points", format="%.0f"),
-                        "Bowling_Points": st.column_config.NumberColumn("⚡ Bowling Points", format="%.0f"), 
+                        "Bowling_Points": st.column_config.NumberColumn("⚡ Bowling Points", format="%.0f"),
                         "AllRounder_Points": st.column_config.NumberColumn("🌟 AR Points", format="%.0f"),
                         "Max_Points": st.column_config.NumberColumn("🎯 Highest Points", format="%.0f"),
                         "HOF_Status": st.column_config.TextColumn("�️ HOF Status", width="medium")
@@ -1872,6 +1872,143 @@ def display_ar_view():
         key="global_format_filter",
         help="Choose one or more formats to filter all rankings and analysis"
     )
+
+    # Points System Explanation - Collapsible Section
+    with st.expander("📊 **Points System Explanation - Format Specific**", expanded=False):
+        # Create tabs for different formats
+        format_tab1, format_tab2, format_tab3, format_tab4 = st.tabs([
+            "🏏 Test/First Class", "🥎 One Day/List A", "⚡ T20", "🌟 All-Rounder"
+        ])
+        
+        with format_tab1:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); 
+                        padding: 20px; border-radius: 15px; margin: 10px 0;">
+                <h3 style="color: white; text-align: center; margin-bottom: 20px;">🏏 Test Match / First Class Points</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">🏏 Batting System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 1 point per run</p>
+                    <p style="margin: 5px 0;"><strong>• Century (100-149):</strong> +50 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• 150+ Score:</strong> +75 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• Double Century (200+):</strong> +100 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• Strike Rate Bonus (40+ runs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- Fast scoring (≥50 SR): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Very slow (≤30 SR): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">⚡ Bowling System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 20 points per wicket + 2 points per maiden</p>
+                    <p style="margin: 5px 0;"><strong>• Wicket Bonuses:</strong> 3W(+20), 4W(+35), 5W(+50), 6W(+75), 7W(+100), 8W(+150), 9W(+200), 10W(+260)</p>
+                    <p style="margin: 5px 0;"><strong>• Economy Bonus (15+ overs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- Excellent (≤2.0): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Expensive (≥3.5): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with format_tab2:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
+                        padding: 20px; border-radius: 15px; margin: 10px 0;">
+                <h3 style="color: white; text-align: center; margin-bottom: 20px;">🥎 One Day / List A Points</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #3498db; margin-bottom: 10px;">🏏 Batting System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 1 point per run</p>
+                    <p style="margin: 5px 0;"><strong>• Century (100-149):</strong> +50 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• 150+ Score:</strong> +75 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• Strike Rate Bonus (40+ runs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- High scoring (≥85 SR): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Slow scoring (≤65 SR): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #3498db; margin-bottom: 10px;">⚡ Bowling System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 20 points per wicket + 2 points per maiden/dot over</p>
+                    <p style="margin: 5px 0;"><strong>• Wicket Bonuses:</strong> 3W(+20), 4W(+35), 5W(+50), 6W(+75)</p>
+                    <p style="margin: 5px 0;"><strong>• Economy Bonus (8+ overs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- Excellent (≤3.5): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Expensive (≥6.0): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with format_tab3:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); 
+                        padding: 20px; border-radius: 15px; margin: 10px 0;">
+                <h3 style="color: white; text-align: center; margin-bottom: 20px;">⚡ T20 Points</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #e74c3c; margin-bottom: 10px;">🏏 Batting System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 1 point per run</p>
+                    <p style="margin: 5px 0;"><strong>• Half Century (50-99):</strong> +30 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• Century (100+):</strong> +50 bonus points</p>
+                    <p style="margin: 5px 0;"><strong>• Strike Rate Bonus (25+ runs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- Explosive (≥140 SR): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Slow (≤110 SR): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #e74c3c; margin-bottom: 10px;">⚡ Bowling System</h4>
+                    <p style="margin: 5px 0;"><strong>• Base Score:</strong> 20 points per wicket + 3 points per dot ball over</p>
+                    <p style="margin: 5px 0;"><strong>• Wicket Bonuses:</strong> 3W(+20), 4W(+35), 5W(+50)</p>
+                    <p style="margin: 5px 0;"><strong>• Economy Bonus (3+ overs):</strong></p>
+                    <p style="margin: 5px 0 5px 20px;">- Outstanding (≤6.0): +25 points</p>
+                    <p style="margin: 5px 0 5px 20px;">- Expensive (≥10.0): -25 points</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with format_tab4:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                        padding: 20px; border-radius: 15px; margin: 10px 0;">
+                <h3 style="color: white; text-align: center; margin-bottom: 20px;">🌟 All-Rounder System</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #4ecdc4; margin-bottom: 10px;">Qualification Criteria (Format Adjusted)</h4>
+                    <p style="margin: 5px 0;"><strong>• Test/FC:</strong> Min 15 RPG in both batting and bowling</p>
+                    <p style="margin: 5px 0;"><strong>• ODI/List A:</strong> Min 20 RPG in both batting and bowling</p>
+                    <p style="margin: 5px 0;"><strong>• T20:</strong> Min 25 RPG in both batting and bowling</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="color: #4ecdc4; margin-bottom: 10px;">Total Rating Calculation</h4>
+                    <p style="margin: 5px 0;"><strong>• All-Rounder Rating = Batting Rating + Bowling Rating</strong></p>
+                    <p style="margin: 5px 0;"><strong>• Format-specific thresholds account for different scoring patterns</strong></p>
+                    <p style="margin: 5px 0;"><em>Only qualified players (meeting both RPG thresholds) are ranked</em></p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                        padding: 15px; border-radius: 10px; margin: 10px 0; text-align: center;">
+                <p style="margin: 0; color: #666; font-style: italic;">
+                    <strong>Note:</strong> Each format has adjusted thresholds and bonuses to reflect the different nature of play.
+                    T20 emphasizes strike rates and economy, ODI balances both, while Test cricket rewards consistency and big scores.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
     # Create modern tabs with enhanced styling
     st.markdown('<div class="custom-spacer"></div>', unsafe_allow_html=True)
