@@ -2808,4 +2808,4 @@ def display_bowl_view():
         st.error("No bowling data available. Please upload scorecards first.")
 
 # Display the bowling view
-display_bowl_view()
+display_bowl_view() 
