@@ -154,7 +154,7 @@ def display_bowl_view():
                     border: 1px solid rgba(255, 255, 255, 0.2);">
             <h1 style="color: white !important; margin: 0 !important; font-weight: bold; 
                        font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);">
-                🎳 Bowling Statistics & Analysis
+                🏏 Bowling Statistics & Analysis
             </h1>
         </div>
         """, unsafe_allow_html=True)
