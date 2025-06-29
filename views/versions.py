@@ -137,7 +137,31 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 versions_data = [
-
+    {
+        "version": "1.21, 2025-06-29",
+        "title": "UI Enhancements & Duplication Checker",
+        "description": ("Major UI modernization and scorecard management improvements:\n\n"
+                       "🎨 **Beautiful Modern UI:**\n"
+                       "• Complete visual overhaul with stunning gradient backgrounds\n"
+                       "• Each navigation tab now features unique, beautiful color schemes\n"
+                       "• Professional card layouts with hover effects and shadows\n"
+                       "• Consistent modern styling across all pages\n"
+                       "• Enhanced typography and visual hierarchy\n\n"
+                       
+                       "🔍 **Smart Duplication Checker:**\n"
+                       "• Automatic detection of duplicate scorecards during upload\n"
+                       "• Real-time alerts when duplicates are found\n"
+                       "• Prevention of data corruption from repeated imports\n"
+                       "• Clean database management with duplicate removal options\n\n"
+                       
+                       "⚙️ **Cricket Captain 2025 Integration:**\n"
+                       "• Updated step-by-step instructions for the new auto-save scorecard feature\n"
+                       "• Streamlined workflow taking advantage of CC2025's automatic scorecard generation\n"
+                       "• Simplified setup process for new users\n"
+                       "• Enhanced compatibility with the latest Cricket Captain features\n\n"
+                       
+                       "This update represents a significant leap forward in both visual appeal and functionality, making the application more intuitive and reliable than ever before.")
+    },
 
     {
         "version": "1.20, 2025-02-016",
@@ -305,4 +329,3 @@ for i, item in enumerate(versions_data):
         # Add some spacing between versions
         st.markdown("<br>", unsafe_allow_html=True)
 
- 
