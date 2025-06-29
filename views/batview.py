@@ -43,19 +43,45 @@ st.markdown("""
     padding: 12px;
     box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
     margin-bottom: 2rem;
+    overflow-x: auto; /* Make it scrollable horizontally */
+    white-space: nowrap; /* Prevent tabs from wrapping */
+    scrollbar-width: thin; /* For Firefox */
+    scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.2);
+}
+
+/* Custom Scrollbar for Tabs - Webkit browsers */
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+    height: 8px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    transition: background 0.3s ease;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.7);
 }
 
 .stTabs [data-baseweb="tab"] {
-    flex-grow: 1;
+    flex-grow: 0;
+    flex-shrink: 0;
+    min-width: max-content;
     text-align: center;
     background: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-    margin: 0 6px;
+    border-radius: 8px;
+    margin: 0 3px;
     transition: all 0.4s ease;
     color: #2c3e50 !important;
-    font-weight: 700;
-    font-size: 1.1rem;
-    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 8px 12px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -636,13 +662,11 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Added "Win/Loss record" tab
+        # Create tabs with clean, short names that will all fit on screen
         tabs = main_container.tabs([
-            "Career Stats", "Format Stats", "Season Stats", 
-            "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Home/Away Stats",
-            "Cumulative Stats", "Block Stats", "Distributions", "Percentile",
-            "Records", "Win/Loss record"  # Added new tab
+            "Career", "Format", "Season", "Latest", "Opponent", 
+            "Location", "Innings", "Position", "Home/Away", "Cumulative", 
+            "Block", "Charts", "Percentile", "Records", "Win/Loss"
         ])
         
         # Career Stats Tab
@@ -1353,6 +1377,7 @@ def display_bat_view():
             st.plotly_chart(fig)
 
         # Latest Innings Tab
+        # Latest Innings Tab
         with tabs[3]:
             # Cache key for latest innings statistics
             latest_inns_cache_key = f"{cache_key}_latest_innings"
@@ -1499,6 +1524,7 @@ def display_bat_view():
             st.dataframe(metrics_df, use_container_width=True, hide_index=True)
 
         # Opponent Stats Tab  
+        # Opponent Stats Tab
         with tabs[4]:
             # Cache key for opponents statistics
             opponents_cache_key = f"{cache_key}_opponents_stats"
@@ -1631,6 +1657,7 @@ def display_bat_view():
             # Display the bar chart
             st.plotly_chart(fig)
 
+        # Location Stats Tab
         # Location Stats Tab
         with tabs[5]:
             # Cache key for location statistics
@@ -1809,6 +1836,7 @@ def display_bat_view():
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
 
+        # Innings Stats Tab
         # Innings Stats Tab
         with tabs[6]:
             # Cache key for innings statistics
