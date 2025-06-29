@@ -35,7 +35,7 @@ st.markdown("""
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Beautiful tab styling - matching bowlview.py */
+/* Tab styling for better fit and scrolling */
 .stTabs [data-baseweb="tab-list"] {
     width: 100%;
     background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
@@ -43,19 +43,44 @@ st.markdown("""
     padding: 12px;
     box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
     margin-bottom: 2rem;
+    overflow-x: auto; /* Make it scrollable horizontally */
+    white-space: nowrap; /* Prevent tabs from wrapping */
+    scrollbar-width: thin; /* For Firefox */
+    scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.2);
+}
+
+/* Custom Scrollbar for Tabs - Webkit browsers */
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+    height: 8px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    transition: background 0.3s ease;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.7);
 }
 
 .stTabs [data-baseweb="tab"] {
     flex-grow: 1;
+    flex-shrink: 1;
     text-align: center;
     background: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-    margin: 0 6px;
+    border-radius: 8px;
+    margin: 0 3px;
     transition: all 0.4s ease;
     color: #2c3e50 !important;
-    font-weight: 700;
-    font-size: 1.1rem;
-    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 8px 12px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -638,11 +663,10 @@ def display_bat_view():
         
         # Create tabs for different views - Added "Win/Loss record" tab
         tabs = main_container.tabs([
-            "Career Stats", "Format Stats", "Season Stats", 
-            "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Home/Away Stats",
-            "Cumulative Stats", "Block Stats", "Distributions", "Percentile",
-            "Records", "Win/Loss record"  # Added new tab
+            "Career", "Format", "Season", "Latest", "Opponent", 
+            "Location", "Innings", "Position", "Home/Away",
+            "Cumulative", "Block", "Distributions", "Percentile",
+            "Records", "Win/Loss"
         ])
         
         # Career Stats Tab
