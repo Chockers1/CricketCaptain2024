@@ -13,25 +13,166 @@ from functools import wraps
 import time
 import subprocess
 
-# Add this CSS styling at the beginning of the file, after imports
+# Modern UI Styling with Cricket Theme
 st.markdown("""
 <style>
-/* Table styling */
-table { color: black; width: 100%; }
-thead tr th {
-    background-color: #f04f53 !important;
-    color: white !important;
+/* Main Header Styling */
+.main-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 20px;
+    margin: 1rem 0 2rem 0;
+    text-align: center;
+    box-shadow: 0 12px 48px rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
-tbody tr:nth-child(even) { background-color: #f0f2f6; }
-tbody tr:nth-child(odd) { background-color: white; }
 
-/* Tab styling for full width and centered */
+.main-header h1 {
+    color: white !important;
+    margin: 0 !important;
+    font-weight: bold;
+    font-size: 2.5rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Beautiful tab styling - matching bowlview.py */
 .stTabs [data-baseweb="tab-list"] {
     width: 100%;
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    border-radius: 15px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
+    margin-bottom: 2rem;
 }
+
 .stTabs [data-baseweb="tab"] {
     flex-grow: 1;
     text-align: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    margin: 0 6px;
+    transition: all 0.4s ease;
+    color: #2c3e50 !important;
+    font-weight: 700;
+    font-size: 1.1rem;
+    padding: 12px 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+    color: white !important;
+    box-shadow: 0 6px 20px rgba(240, 79, 83, 0.4);
+    transform: translateY(-3px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"]:hover {
+    background: linear-gradient(135deg, #e03a3e 0%, #f04f53 100%);
+}
+
+/* Table Styling */
+table { 
+    color: black; 
+    width: 100%; 
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+thead tr th {
+    background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%) !important;
+    color: white !important;
+    font-weight: bold !important;
+    text-align: center !important;
+    padding: 1rem !important;
+}
+
+tbody tr:nth-child(even) { 
+    background-color: #f0f2f6; 
+}
+
+tbody tr:nth-child(odd) { 
+    background-color: white; 
+}
+
+tbody tr:hover {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%) !important;
+    transform: scale(1.01);
+    transition: all 0.2s ease;
+}
+
+/* Section Headers */
+.section-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem 1.5rem;
+    border-radius: 15px;
+    margin: 2rem 0 1.5rem 0;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.section-header h3 {
+    color: white !important;
+    margin: 0 !important;
+    font-weight: bold;
+    font-size: 1.3rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Modern Cards */
+.stat-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #f04f53;
+    margin: 0;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin: 0;
+}
+
+/* Modern Warning */
+.modern-warning {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border-left: 4px solid #ffc107;
+    padding: 1rem 1.5rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    box-shadow: 0 4px 16px rgba(255, 193, 7, 0.2);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .main-header h1 {
+        font-size: 2rem;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -122,7 +263,15 @@ def get_filtered_options(df, column, selected_filters=None):
     
     return ['All'] + sorted(filtered_df[column].unique().tolist())
 
-def display_bat_view():    # Check if bat_df is available in session state
+def display_bat_view():
+    # Modern Main Header
+    st.markdown("""
+    <div class="main-header">
+        <h1>🏏 Batting Statistics & Analysis</h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Check if bat_df is available in session state
     if 'bat_df' in st.session_state:
         # Store the start time to measure performance
         start_time = time.time()
@@ -133,7 +282,14 @@ def display_bat_view():    # Check if bat_df is available in session state
           # Check if there's only one scorecard loaded
         unique_matches = bat_df['File Name'].nunique()
         if unique_matches <= 1:
-            st.warning("⚠️ Please upload more than 1 scorecard to use the batting statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            st.markdown("""
+            <div class="modern-warning">
+                <p style="margin: 0; font-weight: 600; color: #856404;">
+                    ⚠️ Please upload more than 1 scorecard to use the batting statistics view effectively. 
+                    With only one match loaded, statistical analysis and comparisons are limited.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
             return
 
         # Pre-process data once at the beginning
@@ -367,6 +523,7 @@ def display_bat_view():    # Check if bat_df is available in session state
                             value=(0.0, 500.0),  # Updated range to match new maximum
                             label_visibility='collapsed',
                             key='p_sr_slider')
+
 
         # Generate cache key based on filter selections
         filters = {
@@ -639,7 +796,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     # Cache the computed career statistics
                     cache_dataframe(career_cache_key, bat_career_df)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏏 Career Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bat_career_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
             
             # Scatter Chart - Only calculate when needed
@@ -730,10 +894,14 @@ def display_bat_view():    # Check if bat_df is available in session state
 
             with col1:
                 # Display the title for first plot
-                st.markdown(
-                    "<h3 style='color:#f04f53; text-align: center;'>Batting Average vs Strike Rate Analysis</h3>",
-                    unsafe_allow_html=True
-                )
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Batting Average vs Strike Rate Analysis</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Show first plot
                 st.plotly_chart(scatter_fig, use_container_width=True)
 
@@ -780,10 +948,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 )
 
                 # Display the title for second plot
-                st.markdown(
-                    "<h3 style='color:#f04f53; text-align: center;'>Strike Rate vs Balls Per Out Analysis</h3>",
-                    unsafe_allow_html=True
-                )
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Strike Rate vs Balls Per Out Analysis</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Show second plot
                 st.plotly_chart(sr_bpo_fig, use_container_width=True)
 
@@ -865,11 +1037,25 @@ def display_bat_view():    # Check if bat_df is available in session state
                 # Cache the computed format statistics
                 cache_dataframe(format_cache_key, df_format)
                 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(240, 147, 251, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📋 Format Record</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(df_format, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # Add new line graph showing Average & Strike Rate per season for each format
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Performance Trends by Season</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Format Performance Trends by Season</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create subplots for Average and Strike Rate
             fig = make_subplots(rows=1, cols=2, subplot_titles=("Average per Season by Format", "Strike Rate per Season by Format"))
@@ -1038,7 +1224,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(season_cache_key, season_stats_df)
 
             # Display the Season Stats
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(78, 205, 196, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📅 Season Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(season_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # Create a bar chart for Runs per Year
@@ -1128,7 +1321,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                         showlegend=False
                     ), row=1, col=2)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average & Strike Rate Per Season</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(78, 205, 196, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Average & Strike Rate Per Season</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1213,7 +1413,14 @@ def display_bat_view():    # Check if bat_df is available in session state
             last_20_stats['Balls Per Out'] = last_20_stats['Balls'] / last_20_stats['Out'] if last_20_stats['Out'] > 0 else 0
 
             # Display summary cards
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 20 Innings</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">⚡ Last 20 Innings</h3>
+            </div>
+            """, unsafe_allow_html=True)
             col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
 
 
@@ -1281,7 +1488,14 @@ def display_bat_view():    # Check if bat_df is available in session state
             metrics_df.columns = ['Name', 'Match_Format', 'Matches', 'Innings', 'Outs', 'Runs', 'Balls', '50s', '100s', 'Average', 'Strike Rate']
 
             # Display the dataframe
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Summary Metrics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Summary Metrics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(metrics_df, use_container_width=True, hide_index=True)
 
         # Opponent Stats Tab  
@@ -1326,7 +1540,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(opponents_cache_key, opponents_stats_df)
             
             # Display the opponents statistics dataframe - this was missing
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opponent Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏆 Opponent Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(opponents_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # Calculate average runs against opponents with caching
@@ -1384,7 +1605,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 )
 
                 # Add markdown title
-                st.markdown("<h2 style='color:#f04f53; text-align: center;'>Average Runs Against Opponents</h2>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.4rem; text-align: center;">📈 Average Runs Against Opponents</h2>
+                </div>
+                """, unsafe_allow_html=True)
 
                 # Update layout
                 fig.update_layout(
@@ -1481,7 +1709,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 # Cache the computed location statistics
                 cache_dataframe(location_cache_key, opponents_stats_df)
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📍 Location Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the location dataframe first (full width)
             st.dataframe(opponents_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
@@ -1562,7 +1797,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(location_chart_cache_key, fig)
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average Runs by Location</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(71, 118, 230, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average Runs by Location</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
@@ -1647,7 +1889,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(innings_cache_key, innings_stats_df)
 
             # Display the Innings Stats header
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(54, 209, 220, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎯 Innings Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the full dataframe first
             st.dataframe(innings_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
@@ -1737,7 +1986,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(innings_chart_cache_key, fig)
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average Runs by Innings Number</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Average Runs by Innings Number</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
@@ -1821,7 +2077,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(position_cache_key, position_stats_df)
 
             # Display the Position Stats header
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📍 Position Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the full dataframe first
             st.dataframe(position_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
@@ -1918,7 +2181,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(position_chart_cache_key, fig)
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average Runs by Batting Position</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average Runs by Batting Position</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
@@ -2041,7 +2311,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(homeaway_cache_key, homeaway_stats_df)
 
             # Display the Home/Away Stats header
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(255, 126, 95, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏠 Home/Away Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the full dataframe first
             st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
@@ -2161,13 +2438,27 @@ def display_bat_view():    # Check if bat_df is available in session state
                 cache_dataframe(homeaway_chart_cache_key, fig)
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Performance by Home/Away</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Performance by Home/Away</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
             
             # Add year-by-year home/away comparison charts
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home vs Away Performance Trends by Year</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Home vs Away Performance Trends by Year</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Cache key for home/away yearly trends
             homeaway_yearly_cache_key = f"{cache_key}_homeaway_yearly"
@@ -2380,7 +2671,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(cumulative_cache_key, cumulative_stats_df)
 
             # Display the cumulative statistics
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📈 Cumulative Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(cumulative_stats_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # Function to generate a random hex color
@@ -2520,7 +2818,14 @@ def display_bat_view():    # Check if bat_df is available in session state
             df_blocks = block_stats_df.copy()
 
             # Display the block statistics
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Block Statistics (Groups of 20 Innings)</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(df_blocks, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # Cache key for batting average chart
@@ -2623,7 +2928,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                         paper_bgcolor='rgba(0,0,0,0)',
                         plot_bgcolor='rgba(0,0,0,0)'
                     )
-                    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Run Distribution</h3>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Run Distribution</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.plotly_chart(boundary_fig, use_container_width=True)
 
                 with col2:
@@ -2649,7 +2961,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                         paper_bgcolor='rgba(0,0,0,0)',
                         plot_bgcolor='rgba(0,0,0,0)'
                     )
-                    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Dismissal Distribution</h3>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚰️ Dismissal Distribution</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.plotly_chart(dismissal_fig, use_container_width=True)
 
                 with col3:
@@ -2674,7 +2993,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                         paper_bgcolor='rgba(0,0,0,0)',
                         plot_bgcolor='rgba(0,0,0,0)'
                     )
-                    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Score Range Distribution</h3>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(78, 205, 196, 0.25);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Score Range Distribution</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.plotly_chart(score_fig, use_container_width=True)
 
                 # Cache the advanced metrics
@@ -2691,7 +3017,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 st.plotly_chart(advanced_metrics['score_fig'], use_container_width=True)
 
             # Create a section for distribution analysis
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Distribution Analysis</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Distribution Analysis</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Create three columns for the distribution charts
             col1, col2, col3 = st.columns(3)
@@ -2858,7 +3191,14 @@ def display_bat_view():    # Check if bat_df is available in session state
         # New Percentile tab - moved from Visualizations tab
         with tabs[12]:
             # Create percentile analysis
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Percentile Analysis (Min 10 Matches)</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Percentile Analysis (Min 10 Matches)</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create a copy of df_format for percentile analysis
             percentile_df = df_format.copy()
@@ -2868,7 +3208,20 @@ def display_bat_view():    # Check if bat_df is available in session state
             
             # Check if there are any players with 10+ matches
             if len(percentile_df) == 0:
-                st.info("No players found with 10 or more matches in the current selection.")
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #3b82f6, #1e40af);
+                    padding: 1rem;
+                    border-radius: 10px;
+                    border-left: 4px solid #60a5fa;
+                    margin: 1rem 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <p style="color: white; margin: 0; font-weight: 500;">
+                        ℹ️ No players found with 10 or more matches in the current selection.
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
             else:
                 # Calculate percentiles for each format separately
                 for format in percentile_df['Match_Format'].unique():
@@ -2906,7 +3259,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                 st.dataframe(percentile_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
                 
                 # Add visual representation of percentiles
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Percentile Visualization</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Percentile Visualization</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # Create a radar chart for the top player in each format
                 for format in percentile_df['Match_Format'].unique():
@@ -2957,7 +3317,14 @@ def display_bat_view():    # Check if bat_df is available in session state
 
         # Records Tab (now Records Tab)
         with tabs[13]:
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Single Innings Bests</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Single Innings Bests</h3>
+            </div>
+            """, unsafe_allow_html=True)
             # Create columns for layout
             col1, col2 = st.columns(2)
 
@@ -2984,7 +3351,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_inns_cache_key, best_inns_df)
 
                 # Display the Best Innings header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Highest Scores</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Highest Scores</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_inns_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3017,14 +3391,28 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_inns_sr_cache_key, best_inns_sr_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Inns, Min 50 Runs)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best SR (Inns, Min 50 Runs)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_inns_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
 
             # --- Seasonal Bests ---
             st.divider()
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Seasonal Bests (by Format)</h3>
+            </div>
+            """, unsafe_allow_html=True)
             col3, col4 = st.columns(2)
 
             with col3:
@@ -3051,7 +3439,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_runs_cache_key, best_season_runs_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most Runs (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3083,7 +3478,15 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_avg_cache_key, best_season_avg_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Average (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the header
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Average (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3119,7 +3522,15 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_sr_cache_key, best_season_sr_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the header
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best SR (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3151,7 +3562,15 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_bpo_cache_key, best_season_bpo_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best BPO (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                # Display the header
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Best BPO (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_bpo_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3187,7 +3606,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_rpm_cache_key, best_season_rpm_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Runs Per Match (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Top 10 Runs Per Match (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_rpm_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3219,7 +3645,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_50s_cache_key, best_season_50s_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 50s (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🥇 Top 10 Most 50s (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_50s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3255,7 +3688,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_100s_cache_key, best_season_100s_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 100s (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💯 Top 10 Most 100s (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_100s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3283,7 +3723,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_pom_cache_key, best_season_pom_df)
 
                 # Display the header - Updated title
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most POM (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most POM (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3321,7 +3768,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_boundary_pct_cache_key, best_season_boundary_pct_df)
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Boundary % (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Boundary % (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3389,7 +3843,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_match_plus_avg_cache_key, best_season_match_plus_avg_df)
 
                 # Display the header - Updated title
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ Avg (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Top 10 Best Match+ Avg (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3431,7 +3892,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     cache_dataframe(best_season_match_plus_sr_cache_key, best_season_match_plus_sr_df)
 
                 # Display the header - Updated title
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ SR (Season)</h3>", unsafe_allow_html=True) # Shortened title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Match+ SR (Season)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_season_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
@@ -3440,7 +3908,14 @@ def display_bat_view():    # Check if bat_df is available in session state
 
             # --- Career Bests ---
             st.divider()
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Career Bests (by Format)</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏆 Career Bests (by Format)</h3>
+            </div>
+            """, unsafe_allow_html=True)
             col15, col16 = st.columns(2)
 
             with col15:
@@ -3476,7 +3951,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_runs_df = best_career_runs_df[['Rank', 'Name', 'Match_Format', 'Runs']]
                     cache_dataframe(best_career_runs_cache_key, best_career_runs_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most Runs</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col16:
@@ -3523,7 +4005,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_avg_df = best_career_avg_df.rename(columns={'Batted': 'Inns'})
                     cache_dataframe(best_career_avg_cache_key, best_career_avg_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Average (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Average (Min 10 Inns)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
@@ -3566,7 +4055,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_sr_df = best_career_sr_df[['Rank', 'Name', 'Match_Format', 'SR', 'Runs', 'Balls']]
                     cache_dataframe(best_career_sr_cache_key, best_career_sr_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best SR (Min 500 Balls)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best SR (Min 500 Balls)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col18:
@@ -3607,7 +4103,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_bpo_df = best_career_bpo_df[['Rank', 'Name', 'Match_Format', 'BPO', 'Balls', 'Out', 'Inns']]
                     cache_dataframe(best_career_bpo_cache_key, best_career_bpo_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best BPO (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Best BPO (Min 10 Inns)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_bpo_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
@@ -3650,7 +4153,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_rpm_df = best_career_rpm_df[['Rank', 'Name', 'Match_Format', 'Runs Per Match', 'Runs', 'Matches']]
                     cache_dataframe(best_career_rpm_cache_key, best_career_rpm_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Runs Per Match (Min 10 Matches)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Top 10 Runs Per Match (Min 10 Matches)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_rpm_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col20:
@@ -3686,7 +4196,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_50s_df = best_career_50s_df[['Rank', 'Name', 'Match_Format', 'Fifties']]
                     cache_dataframe(best_career_50s_cache_key, best_career_50s_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 50s</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🥇 Top 10 Most 50s</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_50s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
@@ -3725,7 +4242,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_100s_df = best_career_100s_df[['Rank', 'Name', 'Match_Format', 'Hundreds']]
                     cache_dataframe(best_career_100s_cache_key, best_career_100s_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most 100s</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💯 Top 10 Most 100s</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_100s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col22:
@@ -3761,7 +4285,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_pom_df = best_career_pom_df[['Rank', 'Name', 'Match_Format', 'POM']]
                     cache_dataframe(best_career_pom_cache_key, best_career_pom_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Most POM</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most POM</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
@@ -3806,7 +4337,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_boundary_pct_df = best_career_boundary_pct_df[['Rank', 'Name', 'Match_Format', 'Boundary %', 'Boundary Runs', 'Runs']]
                     cache_dataframe(best_career_boundary_pct_cache_key, best_career_boundary_pct_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Boundary % (Min 500 Runs)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Boundary % (Min 500 Runs)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
 
@@ -3875,7 +4413,14 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_match_plus_avg_df = best_career_match_plus_avg_df[['Rank', 'Name', 'Match_Format', 'Match+ Avg', 'Player_Avg', 'Overall_Avg_Match_Avg', 'Inns']]
                     cache_dataframe(best_career_match_plus_avg_cache_key, best_career_match_plus_avg_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ Avg (Min 10 Inns)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Top 10 Best Match+ Avg (Min 10 Inns)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
@@ -3921,14 +4466,28 @@ def display_bat_view():    # Check if bat_df is available in session state
                     best_career_match_plus_sr_df = best_career_match_plus_sr_df[['Rank', 'Name', 'Match_Format', 'Match+ SR', 'Player_SR', 'Overall_Avg_Match_SR', 'Balls']]
                     cache_dataframe(best_career_match_plus_sr_cache_key, best_career_match_plus_sr_df)
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Top 10 Best Match+ SR (Min 500 Balls)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Match+ SR (Min 500 Balls)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(best_career_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             # col26 is empty
 
         # Win/Loss record Tab
         with tabs[14]:
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Win/Loss Record</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏆 Player Win/Loss Record</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Cache key for win/loss data
             wl_cache_key = f"{cache_key}_wl_data"
@@ -4009,9 +4568,35 @@ def display_bat_view():    # Check if bat_df is available in session state
                     )
                     st.divider()  # Add separator
                 except KeyError as e:
-                    st.error(f"Error creating win/loss summary: Missing column - {e}. Please ensure the match data includes win/loss/draw/tie information.")
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, #ef4444, #dc2626);
+                        padding: 1rem;
+                        border-radius: 10px;
+                        border-left: 4px solid #f87171;
+                        margin: 1rem 0;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        <p style="color: white; margin: 0; font-weight: 500;">
+                            ❌ Error creating win/loss summary: Missing column - {e}. Please ensure the match data includes win/loss/draw/tie information.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 except Exception as e:
-                    st.error(f"An unexpected error occurred while creating the win/loss summary: {e}")
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, #ef4444, #dc2626);
+                        padding: 1rem;
+                        border-radius: 10px;
+                        border-left: 4px solid #f87171;
+                        margin: 1rem 0;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        <p style="color: white; margin: 0; font-weight: 500;">
+                            ❌ An unexpected error occurred while creating the win/loss summary: {e}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 # --- Display wl_df_display (original merged data with columns dropped) ---
                 columns_to_display = ['Name', 'Home Team', 'Away Team', 'Match_Result', 'HomeOrAway', 'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win']
@@ -4021,7 +4606,20 @@ def display_bat_view():    # Check if bat_df is available in session state
 # ...existing code...
 
     else:
-        st.warning("Please upload a file first.")
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            padding: 1rem;
+            border-radius: 10px;
+            border-left: 4px solid #fbbf24;
+            margin: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        ">
+            <p style="color: white; margin: 0; font-weight: 500;">
+                ⚠️ Please upload a file first.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # Call the function to display the batting view
 display_bat_view()
