@@ -1454,26 +1454,75 @@ def display_allrounder_rankings(bat_df, bowl_df):
         bat_df = bat_df[bat_df['Match_Format'].isin(selected_format)]
         bowl_df = bowl_df[bowl_df['Match_Format'].isin(selected_format)]
     
-    # Create all-rounder rankings
-    all_rounder_rankings = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
-        'File Name': 'nunique',
-        'Batting_Rating': 'sum',
-        'Runs': 'sum'
-    }).reset_index()
+    # Check if dataframes are empty after filtering
+    if bat_df.empty or bowl_df.empty:
+        st.warning("No data available for the selected format(s). Please select different formats or check your data.")
+        return
+    
+    # Ensure Team column exists in batting dataframe
+    if 'Team' not in bat_df.columns:
+        if 'Bat_Team' in bat_df.columns:
+            bat_df['Team'] = bat_df['Bat_Team']
+        elif 'Batting_Team' in bat_df.columns:
+            bat_df['Team'] = bat_df['Batting_Team']
+        elif 'Bat_Team_y' in bat_df.columns:
+            bat_df['Team'] = bat_df['Bat_Team_y']
+        else:
+            bat_df['Team'] = 'Unknown'
+    
+    # Ensure Team column exists in bowling dataframe
+    if 'Team' not in bowl_df.columns:
+        if 'Bowl_Team' in bowl_df.columns:
+            bowl_df['Team'] = bowl_df['Bowl_Team']
+        elif 'Bowling_Team' in bowl_df.columns:
+            bowl_df['Team'] = bowl_df['Bowling_Team']
+        elif 'Bowl_Team_y' in bowl_df.columns:
+            bowl_df['Team'] = bowl_df['Bowl_Team_y']
+        else:
+            bowl_df['Team'] = 'Unknown'
+    
+    try:
+        # Create all-rounder rankings
+        all_rounder_rankings = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
+            'File Name': 'nunique',
+            'Batting_Rating': 'sum',
+            'Runs': 'sum'
+        }).reset_index()
+    except Exception as e:
+        st.error(f"Error creating batting rankings: {str(e)}")
+        st.info("Please check that the required columns exist in your data.")
+        return
 
-    # Merge bowling stats
-    bowling_stats = bowl_df.groupby(['Year', 'Name', 'Match_Format']).agg({
-        'Bowling_Rating': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
+    try:
+        # Merge bowling stats
+        bowling_stats = bowl_df.groupby(['Year', 'Name', 'Match_Format']).agg({
+            'Bowling_Rating': 'sum',
+            'Bowler_Wkts': 'sum'
+        }).reset_index()
 
-    # Modify the merge to include Match_Format
-    all_rounder_rankings = pd.merge(
-        all_rounder_rankings,
-        bowling_stats,
-        on=['Year', 'Name', 'Match_Format'],
-        how='outer'
-    )
+        # Modify the merge to include Match_Format
+        all_rounder_rankings = pd.merge(
+            all_rounder_rankings,
+            bowling_stats,
+            on=['Year', 'Name', 'Match_Format'],
+            how='outer'
+        )
+    except Exception as e:
+        st.error(f"Error merging bowling statistics: {str(e)}")
+        st.info("Continuing with batting data only...")
+        # Create empty bowling columns if merge fails
+        all_rounder_rankings['Bowling_Rating'] = 0
+        all_rounder_rankings['Bowler_Wkts'] = 0
+
+    # Fill NaN values for missing data
+    all_rounder_rankings = all_rounder_rankings.fillna(0)
+    
+    # Ensure Team column exists after merge
+    if 'Team' not in all_rounder_rankings.columns:
+        all_rounder_rankings['Team'] = 'Unknown'
+    
+    # Ensure File Name column has proper values (can't be 0 for RPG calculation)
+    all_rounder_rankings['File Name'] = all_rounder_rankings['File Name'].replace(0, 1)
 
     # Calculate RPG for both disciplines
     all_rounder_rankings['Batting_RPG'] = all_rounder_rankings['Batting_Rating'] / all_rounder_rankings['File Name']
