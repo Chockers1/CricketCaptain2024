@@ -35,7 +35,7 @@ st.markdown("""
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Beautiful tab styling - matching bowlview.py */
+/* Tab styling for better fit and scrolling */
 .stTabs [data-baseweb="tab-list"] {
     width: 100%;
     background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
@@ -70,9 +70,8 @@ st.markdown("""
 }
 
 .stTabs [data-baseweb="tab"] {
-    flex-grow: 0;
-    flex-shrink: 0;
-    min-width: max-content;
+    flex-grow: 1;
+    flex-shrink: 1;
     text-align: center;
     background: rgba(255, 255, 255, 0.2);
     border-radius: 8px;
@@ -662,11 +661,12 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs with clean, short names that will all fit on screen
+        # Create tabs for different views - Added "Win/Loss record" tab
         tabs = main_container.tabs([
             "Career", "Format", "Season", "Latest", "Opponent", 
-            "Location", "Innings", "Position", "Home/Away", "Cumulative", 
-            "Block", "Charts", "Percentile", "Records", "Win/Loss"
+            "Location", "Innings", "Position", "Home/Away",
+            "Cumulative", "Block", "Distributions", "Percentile",
+            "Records", "Win/Loss"
         ])
         
         # Career Stats Tab
@@ -1377,7 +1377,6 @@ def display_bat_view():
             st.plotly_chart(fig)
 
         # Latest Innings Tab
-        # Latest Innings Tab
         with tabs[3]:
             # Cache key for latest innings statistics
             latest_inns_cache_key = f"{cache_key}_latest_innings"
@@ -1524,7 +1523,6 @@ def display_bat_view():
             st.dataframe(metrics_df, use_container_width=True, hide_index=True)
 
         # Opponent Stats Tab  
-        # Opponent Stats Tab
         with tabs[4]:
             # Cache key for opponents statistics
             opponents_cache_key = f"{cache_key}_opponents_stats"
@@ -1657,7 +1655,6 @@ def display_bat_view():
             # Display the bar chart
             st.plotly_chart(fig)
 
-        # Location Stats Tab
         # Location Stats Tab
         with tabs[5]:
             # Cache key for location statistics
@@ -1836,7 +1833,6 @@ def display_bat_view():
             # Display the bar chart (full width)
             st.plotly_chart(fig, use_container_width=True)
 
-        # Innings Stats Tab
         # Innings Stats Tab
         with tabs[6]:
             # Cache key for innings statistics
