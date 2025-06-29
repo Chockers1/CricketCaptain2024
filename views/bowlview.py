@@ -548,8 +548,10 @@ def display_bowl_view():
 
             # Modern section header for Career Statistics
             st.markdown("""
-            <div class="section-header">
-                <h3>🏏 Career Statistics</h3>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🏏 Career Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
             st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
@@ -585,8 +587,10 @@ def display_bowl_view():
 
             # Display the title using modern section header
             st.markdown("""
-            <div class="section-header">
-                <h3>📊 Economy Rate vs Strike Rate Analysis</h3>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Economy Rate vs Strike Rate Analysis</h3>
             </div>
             """, unsafe_allow_html=True)
 
@@ -651,8 +655,10 @@ def display_bowl_view():
 
             # Modern section header for Format Record
             st.markdown("""
-            <div class="section-header">
-                <h3>📋 Format Record</h3>
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📋 Format Record</h3>
             </div>
             """, unsafe_allow_html=True)
             st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
@@ -704,8 +710,10 @@ def display_bowl_view():
 
             # Modern section header for Season Statistics
             st.markdown("""
-            <div class="section-header">
-                <h3>📅 Season Statistics</h3>
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📅 Season Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
             st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
@@ -889,8 +897,10 @@ def display_bowl_view():
 
             # Modern section header for Wickets Per Year
             st.markdown("""
-            <div class="section-header">
-                <h3>🎳 Wickets Per Year</h3>
+            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🎳 Wickets Per Year</h3>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1009,8 +1019,10 @@ def display_bowl_view():
 
             # Modern section header for Latest Innings
             st.markdown("""
-            <div class="section-header">
-                <h3>⚡ Last 20 Bowling Innings</h3>
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">⚡ Last 20 Bowling Innings</h3>
             </div>
             """, unsafe_allow_html=True)
             st.dataframe(styled_df, height=575, use_container_width=True, hide_index=True)
@@ -1102,8 +1114,10 @@ def display_bowl_view():
                     
                     # Modern section header for Player Summary
                     st.markdown("""
-                    <div class="section-header">
-                        <h3>📊 Player Bowling Summary by Format (Last 20 Innings)</h3>
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                               padding: 15px; border-radius: 12px; text-align: center; 
+                               margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Player Bowling Summary by Format (Last 20 Innings)</h3>
                     </div>
                     """, unsafe_allow_html=True)
                     st.dataframe(player_summary[[
@@ -1160,8 +1174,10 @@ def display_bowl_view():
 
             # Modern section header for Opposition Statistics
             st.markdown("""
-            <div class="section-header">
-                <h3>🏆 Opposition Statistics</h3>
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">🏆 Opposition Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
             
@@ -1249,8 +1265,10 @@ def display_bowl_view():
 
             # Display chart title with modern section header
             st.markdown("""
-            <div class="section-header">
-                <h3>📊 Average vs Opponent Team</h3>
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📊 Average vs Opponent Team</h3>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1317,8 +1335,10 @@ def display_bowl_view():
 
             # Modern section header for Location Statistics
             st.markdown("""
-            <div class="section-header">
-                <h3>📍 Location Statistics</h3>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       padding: 15px; border-radius: 12px; text-align: center; 
+                       margin: 20px 0 15px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem;">📍 Location Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
             
@@ -1374,8 +1394,11 @@ def display_bowl_view():
 
             # Display chart title with modern section header
             st.markdown("""
-            <div class="section-header">
-                <h3>📍 Average by Location</h3>
+            <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(71, 118, 230, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem;">📍 Average by Location</h3>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1439,7 +1462,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(54, 209, 220, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎯 Innings Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(innings_summary, use_container_width=True, hide_index=True)
@@ -1509,7 +1539,14 @@ def display_bowl_view():
                 )
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Innings Number</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Average by Innings Number</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1573,7 +1610,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📍 Position Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Display the dataframe first (full width)
             st.dataframe(position_summary, use_container_width=True, hide_index=True)
@@ -1636,7 +1680,14 @@ def display_bowl_view():
                 )
 
             # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Bowling Position</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average by Bowling Position</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Update layout
             fig.update_layout(
@@ -1730,7 +1781,14 @@ def display_bowl_view():
                 df_bowl = df_bowl.replace([np.inf, -np.inf], np.nan)
 
                 # Display the bowling statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Bowling Statistics</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📈 Cumulative Bowling Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(df_bowl, use_container_width=True, hide_index=True)
             else:
                 st.warning("No bowling data available for the selected player.")
@@ -1867,7 +1925,14 @@ def display_bowl_view():
                 df_blocks = block_stats_df.copy()
 
                 # Display the block statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Block Statistics (Groups of 20 Innings)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(df_blocks, use_container_width=True, hide_index=True)
 
                 # Create the figure for bowling averages by innings range
@@ -1933,7 +1998,14 @@ def display_bowl_view():
                 fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
 
                 # Display title and graph
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Range</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(30, 60, 114, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Bowling Average by Innings Range</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------HOME/AWAY STATS-------------------------------------###
@@ -2019,7 +2091,14 @@ def display_bowl_view():
                     'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
                 ]]
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(255, 126, 95, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏠 Home/Away Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
 
                 ###-------------------------------------HOME/AWAY GRAPHS----------------------------------------###
@@ -2212,7 +2291,14 @@ def display_bowl_view():
                     #     pass
 
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Home vs Away</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Wickets Home vs Away</h3>
+                </div>
+                """, unsafe_allow_html=True)
 
                 fig_ha_wickets.update_layout(
                     showlegend=True,
@@ -2233,7 +2319,14 @@ def display_bowl_view():
 
                 ###-------------------------------------SEASON GRAPHS (Modified for Home/Away)----------------------------------------###
                 st.markdown("<hr>", unsafe_allow_html=True) # Add a separator
-                st.markdown("<h2 style='color:#f04f53; text-align: center;'>Season Trends (Home vs Away)</h2>", unsafe_allow_html=True) # Updated Title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.4rem; text-align: center;">🏠 Season Trends (Home vs Away)</h2>
+                </div>
+                """, unsafe_allow_html=True)
 
                 # Create subplots for Bowling Average, Strike Rate, and Economy Rate
                 fig_season_metrics_ha = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate")) # Renamed fig
@@ -2436,7 +2529,14 @@ def display_bowl_view():
                                 )
                             )
 
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year (Home vs Away)</h3>", unsafe_allow_html=True) # Updated title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏠 Wickets Per Year (Home vs Away)</h3>
+                </div>
+                """, unsafe_allow_html=True)
 
                 fig_season_wickets_ha.update_layout( # Use renamed variable
                     showlegend=True,
@@ -2465,7 +2565,14 @@ def display_bowl_view():
         ###-------------------------------------RECORDS TAB-------------------------------------###
         # Records Tab
         with tabs[11]:
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Bowling Records</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Bowling Records</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create columns for layout
             col1, col2 = st.columns(2)
@@ -2494,7 +2601,14 @@ def display_bowl_view():
                 best_bowling_df = best_bowling_df[['Rank', 'Name', 'Team', 'Bowling_Figures', 'Overs', 'Opponent', 'Year']]
 
                 # Display the Best Bowling header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling in an Innings</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Best Bowling in an Innings</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
 
@@ -2546,12 +2660,26 @@ def display_bowl_view():
                 })
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Economical Spells</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Most Economical Spells</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the final dataframe
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
             # Match bowling records section
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Bowling Records</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Match Bowling Records</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create columns for layout - use two columns now
             col3, col4 = st.columns(2)
@@ -2593,7 +2721,14 @@ def display_bowl_view():
                 match_bowling = match_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Opponent', 'Format', 'Year']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Best Match Bowling Figures</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(match_bowling, use_container_width=True, hide_index=True)
 
@@ -2635,13 +2770,27 @@ def display_bowl_view():
                 expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Opponent', 'Format', 'Year']]
                 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Expensive Bowling Figures</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💸 Most Expensive Bowling Figures</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(expensive_bowling_df, use_container_width=True, hide_index=True)
 
             # Seasonal Records Section
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(247, 151, 30, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h2 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.5rem; text-align: center;">🏆 Seasonal Bests (by Format)</h2>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Create two rows with two columns each for the four seasonal stats
             row1_col1, row1_col2 = st.columns(2)
@@ -2680,7 +2829,14 @@ def display_bowl_view():
                 season_wickets_df = season_wickets[['Rank', 'Name', 'Year', 'Format', 'Matches', 'Wickets', 'Average', 'Economy']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Wickets in a Season</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Most Wickets in a Season</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_wickets_df, use_container_width=True, hide_index=True)
 
@@ -2720,7 +2876,14 @@ def display_bowl_view():
                 season_avg_df = season_avg[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Average', 'SR', 'Matches']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling Average in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Best Bowling Average in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_avg_df, use_container_width=True, hide_index=True)
                 
@@ -2761,7 +2924,14 @@ def display_bowl_view():
                 season_sr_df = season_sr[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Strike Rate', 'Average', 'Matches']]
 
                 # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Strike Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Best Strike Rate in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_sr_df, use_container_width=True, hide_index=True)
                 
@@ -2800,7 +2970,14 @@ def display_bowl_view():
                 
                 # Select and reorder columns
                 season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Economy Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(247, 151, 30, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Best Economy Rate in a Season (Min 15 Wickets)</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 # Display the dataframe
                 st.dataframe(season_econ_df, use_container_width=True, hide_index=True)
 
