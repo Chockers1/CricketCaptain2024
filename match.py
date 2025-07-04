@@ -49,7 +49,7 @@ def process_match_data(directory_path):
             # Determine match format based on competition name
             if 'Test' in line_3:
                 match_format = 'Test Match'
-            elif 'One Day International' in line_3 or 'World Cup -' in line_3 or 'Champions Cup' in line_3 or 'ODI Tournament' in line_3 or 'Asia Trophy ODI' in line_3:
+            elif 'One Day International' in line_3 or 'World Cup -' in line_3 or 'Champions Cup' in line_3 or 'ODI Tournament' in line_3 or 'Asia Trophy ODI' in line_3 or 'Asia Trophy' in line_3:
                 match_format = 'ODI'
             elif '20 Over International' in line_3 or 'World Cup 20' in line_3 or '20 Over Tournament' in line_3 or 'Asia Trophy 20' in line_3 or 'Int20 Tournament' in line_3:
                 match_format = 'T20I'
