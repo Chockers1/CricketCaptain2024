@@ -420,8 +420,11 @@ def display_bowl_view():
         if comp_choice and 'All' not in comp_choice:
             filtered_df = filtered_df[filtered_df['comp'].isin(comp_choice)]
 
-        # Apply year filter
-        filtered_df = filtered_df[filtered_df['Year'].between(year_choice[0], year_choice[1])]
+        # Apply year filter (only if Year column exists)
+        if 'Year' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['Year'].between(year_choice[0], year_choice[1])]
+        else:
+            st.warning("Year column not available. Year filter will be skipped.")
 
         # Apply range filters
         filtered_df = filtered_df.groupby('Name').filter(lambda x: 
@@ -487,6 +490,9 @@ def display_bowl_view():
                 'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
+            
+            # Sort by Wickets (descending)
+            bowlcareer_df = bowlcareer_df.sort_values('Wickets', ascending=False)
 
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -591,6 +597,9 @@ def display_bowl_view():
                 'Name', 'Format', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets',
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
+            
+            # Sort by Wickets (descending)
+            bowlformat_df = bowlformat_df.sort_values('Wickets', ascending=False)
 
             st.markdown("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
@@ -639,13 +648,15 @@ def display_bowl_view():
             bowlseason_df['POM'] = bowlseason_df['POM'].fillna(0).astype(int)
 
             bowlseason_df = bowlseason_df.replace([np.inf, -np.inf], np.nan)
-            bowlseason_df = bowlseason_df.sort_values(['Name', 'Year'])
-
+            
             # Final column ordering
             bowlseason_df = bowlseason_df[[
                 'Name', 'Year', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets',
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
+            
+            # Sort by Wickets (descending)
+            bowlseason_df = bowlseason_df.sort_values('Wickets', ascending=False)
 
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
             st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
@@ -1322,6 +1333,9 @@ def display_bowl_view():
                 'Name', 'Innings', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
+            
+            # Sort by Wickets (descending)
+            innings_summary = innings_summary.sort_values('Wickets', ascending=False)
 
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
             
@@ -1456,6 +1470,9 @@ def display_bowl_view():
                 'Name', 'Position', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
             ]]
+            
+            # Sort by Wickets (descending)
+            position_summary = position_summary.sort_values('Wickets', ascending=False)
 
             st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
             
@@ -1919,13 +1936,15 @@ def display_bowl_view():
 
 
                 bowlhomeaway_df = bowlhomeaway_df.replace([np.inf, -np.inf], np.nan)
-                bowlhomeaway_df = bowlhomeaway_df.sort_values(['Name', 'Home/Away'])
 
                 # Final column ordering
                 bowlhomeaway_df = bowlhomeaway_df[[
                     'Name', 'Home/Away', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
                     'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
                 ]]
+                
+                # Sort by Wickets (descending)
+                bowlhomeaway_df = bowlhomeaway_df.sort_values('Wickets', ascending=False)
 
                 st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
                 st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
@@ -1961,36 +1980,30 @@ def display_bowl_view():
                                     legend_name = f'All Players - {ha_status}'
                                     show_legend_main = True # Show both Home and Away in legend for the first plot
 
-                                    fig_ha_metrics.add_trace(go.Scatter(
-                                        x=data_subset['Year'],
+                                    fig_ha_metrics.add_trace(go.Bar(
+                                        x=[ha_status],
                                         y=data_subset['Avg'],
-                                        mode='lines+markers',
                                         name=legend_name,
                                         legendgroup='All',
-                                        line=dict(color=all_color, dash=line_style),
-                                        marker=dict(color=all_color, size=8),
+                                        marker_color=all_color,
                                         showlegend=show_legend_main # Apply change here
                                     ), row=1, col=1)
 
-                                    fig_ha_metrics.add_trace(go.Scatter(
-                                        x=data_subset['Year'],
+                                    fig_ha_metrics.add_trace(go.Bar(
+                                        x=[ha_status],
                                         y=data_subset['SR'],
-                                        mode='lines+markers',
                                         name=legend_name, # Name needed for hover, but legend entry hidden
                                         legendgroup='All',
-                                        line=dict(color=all_color, dash=line_style),
-                                        marker=dict(color=all_color, size=8),
+                                        marker_color=all_color,
                                         showlegend=False # Keep False for SR plot
                                     ), row=1, col=2)
 
-                                    fig_ha_metrics.add_trace(go.Scatter(
-                                        x=data_subset['Year'],
+                                    fig_ha_metrics.add_trace(go.Bar(
+                                        x=[ha_status],
                                         y=data_subset['Econ'],
-                                        mode='lines+markers',
                                         name=legend_name, # Name needed for hover, but legend entry hidden
                                         legendgroup='All',
-                                        line=dict(color=all_color, dash=line_style),
-                                        marker=dict(color=all_color, size=8),
+                                        marker_color=all_color,
                                         showlegend=False # Keep False for Econ plot
                                     ), row=1, col=3)
                     else:
@@ -2172,38 +2185,41 @@ def display_bowl_view():
                             legend_name = f'All Players - {ha_status}'
                             show_legend_main = True # Show both Home and Away in legend for the first plot
 
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Avg'],
-                                mode='lines+markers',
-                                name=legend_name,
-                                legendgroup='All',
-                                line=dict(color=all_color, dash=line_style),
-                                marker=dict(color=all_color, size=8),
-                                showlegend=show_legend_main # Apply change here
-                            ), row=1, col=1)
+                            if 'Year' in data_subset.columns:
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Avg'],
+                                    mode='lines+markers',
+                                    name=legend_name,
+                                    legendgroup='All',
+                                    line=dict(color=all_color, dash=line_style),
+                                    marker=dict(color=all_color, size=8),
+                                    showlegend=show_legend_main # Apply change here
+                                ), row=1, col=1)
 
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['SR'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup='All',
-                                line=dict(color=all_color, dash=line_style),
-                                marker=dict(color=all_color, size=8),
-                                showlegend=False # Keep False for SR plot
-                            ), row=1, col=2)
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['SR'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup='All',
+                                    line=dict(color=all_color, dash=line_style),
+                                    marker=dict(color=all_color, size=8),
+                                    showlegend=False # Keep False for SR plot
+                                ), row=1, col=2)
 
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Econ'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup='All',
-                                line=dict(color=all_color, dash=line_style),
-                                marker=dict(color=all_color, size=8),
-                                showlegend=False # Keep False for Econ plot
-                            ), row=1, col=3)
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Econ'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup='All',
+                                    line=dict(color=all_color, dash=line_style),
+                                    marker=dict(color=all_color, size=8),
+                                    showlegend=False # Keep False for Econ plot
+                                ), row=1, col=3)
+                            else:
+                                st.warning("Year column not available for All players. Cannot display season trends.")
 
                 # Add individual player traces
                 for i, name in enumerate(individual_players):
@@ -2232,40 +2248,43 @@ def display_bowl_view():
                             show_legend_main = True # Show both Home and Away in legend for the first plot
 
                             # Add bowling average trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Avg'],
-                                mode='lines+markers',
-                                name=legend_name,
-                                legendgroup=name, # Group by player name
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=show_legend_main # Apply change here
-                            ), row=1, col=1)
+                            if 'Year' in data_subset.columns:
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Avg'],
+                                    mode='lines+markers',
+                                    name=legend_name,
+                                    legendgroup=name, # Group by player name
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=show_legend_main # Apply change here
+                                ), row=1, col=1)
 
-                            # Add strike rate trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['SR'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup=name,
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=False # Keep False for SR plot
-                            ), row=1, col=2)
+                                # Add strike rate trace
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['SR'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup=name,
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=False # Keep False for SR plot
+                                ), row=1, col=2)
 
-                            # Add economy rate trace
-                            fig_season_metrics_ha.add_trace(go.Scatter(
-                                x=data_subset['Year'],
-                                y=data_subset['Econ'],
-                                mode='lines+markers',
-                                name=legend_name, # Name needed for hover, but legend entry hidden
-                                legendgroup=name,
-                                line=dict(color=base_color, dash=line_style),
-                                marker=dict(color=base_color, size=8),
-                                showlegend=False # Keep False for Econ plot
-                            ), row=1, col=3)
+                                # Add economy rate trace
+                                fig_season_metrics_ha.add_trace(go.Scatter(
+                                    x=data_subset['Year'],
+                                    y=data_subset['Econ'],
+                                    mode='lines+markers',
+                                    name=legend_name, # Name needed for hover, but legend entry hidden
+                                    legendgroup=name,
+                                    line=dict(color=base_color, dash=line_style),
+                                    marker=dict(color=base_color, size=8),
+                                    showlegend=False # Keep False for Econ plot
+                                ), row=1, col=3)
+                            else:
+                                st.warning(f"Year column not available for player {name}. Cannot display season trends.")
 
                 # Update layout
                 fig_season_metrics_ha.update_layout( # Use renamed fig
