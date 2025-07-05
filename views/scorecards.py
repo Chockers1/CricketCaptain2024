@@ -217,11 +217,15 @@ def get_innings_data(match_innings_id):
         return game_info, bat_info, bowl_info
     return None
 
-# Create match selection interface with modern card styling
+# Create match selection interface with modern purple gradient banner
 st.markdown("""
-    <div class="filter-card">
-        <h2 style='color:#f04f53; text-align: center; margin-bottom: 20px;'>🔍 Scorecards</h2>
-        <p style='text-align: center; color: #666; margin-bottom: 15px;'>
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 30px; border-radius: 15px; text-align: center; margin: 20px 0;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.15);'>
+        <h1 style='color: white; font-size: 2.5rem; margin-bottom: 15px; font-weight: bold;'>
+            🔍 Scorecards
+        </h1>
+        <p style='color: rgba(255,255,255,0.9); font-size: 1.2rem; margin-bottom: 0;'>
             Use the filters below to find your scorecard and select it in the table below.
         </p>
     </div>

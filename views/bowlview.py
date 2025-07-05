@@ -17,13 +17,72 @@ thead tr th {
 tbody tr:nth-child(even) { background-color: #f0f2f6; }
 tbody tr:nth-child(odd) { background-color: white; }
 
-/* Tab styling for full width and centered */
+/* Tab styling for better fit and scrolling */
 .stTabs [data-baseweb="tab-list"] {
     width: 100%;
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    border-radius: 15px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
+    margin-bottom: 2rem;
+    overflow-x: auto; /* Make it scrollable horizontally */
+    white-space: nowrap; /* Prevent tabs from wrapping */
+    scrollbar-width: thin; /* For Firefox */
+    scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.2);
 }
+
+/* Custom Scrollbar for Tabs - Webkit browsers */
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+    height: 8px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    transition: background 0.3s ease;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.7);
+}
+
 .stTabs [data-baseweb="tab"] {
     flex-grow: 1;
+    flex-shrink: 1;
     text-align: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    margin: 0 3px;
+    transition: all 0.4s ease;
+    color: #2c3e50 !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 8px 12px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+    color: white !important;
+    box-shadow: 0 6px 20px rgba(240, 79, 83, 0.4);
+    transform: translateY(-3px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"]:hover {
+    background: linear-gradient(135deg, #e03a3e 0%, #f04f53 100%);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -52,24 +111,40 @@ def get_filtered_options(df, column, selected_filters=None):
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
         # Get the bowling dataframe with safer date parsing
+        bowl_df = st.session_state['bowl_df'].copy()
+        
+
+            
         try:
-            bowl_df = st.session_state['bowl_df'].copy()
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
-            bowl_df['Year'] = bowl_df['Date'].dt.year
+            # Safer date parsing with multiple fallbacks
+            if 'Date' in bowl_df.columns:
+                bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+                # If coerce resulted in NaT values, try without format
+                if bowl_df['Date'].isna().any():
+                    st.warning("Some dates couldn't be parsed with expected format, trying alternative parsing...")
+                    bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
+                
+                bowl_df['Year'] = bowl_df['Date'].dt.year
+                # Fill any remaining NaN years with a default value
+                bowl_df['Year'] = bowl_df['Year'].fillna(2024).astype(int)
+            else:
+                st.error("No 'Date' column found in bowl_df")
+                bowl_df['Year'] = 2024  # Default year
+                
             # Add HomeOrAway column
-            bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+            if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
+                bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+            else:
+                st.warning("Could not determine Home/Away status due to missing columns.")
+                bowl_df['HomeOrAway'] = 'Unknown'
 
         except Exception as e:
-            st.error(f"Error processing dates or adding HomeOrAway column. Using original dates.")
-            bowl_df = st.session_state['bowl_df'].copy()
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
-            bowl_df['Year'] = bowl_df['Date'].dt.year
-            # Add HomeOrAway column even if date parsing fails partially
-            if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
-                 bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
-            else:
-                 st.warning("Could not determine Home/Away status due to missing columns.")
-                 bowl_df['HomeOrAway'] = 'Unknown' # Default value
+            st.error(f"Error processing dates or adding columns: {str(e)}")
+            # Ensure Year column exists even if there's an error
+            if 'Year' not in bowl_df.columns:
+                bowl_df['Year'] = 2024  # Default year
+            if 'HomeOrAway' not in bowl_df.columns:
+                bowl_df['HomeOrAway'] = 'Unknown'
 
         # Add data validation check and reset filters if needed
         if 'prev_bowl_teams' not in st.session_state:
@@ -87,13 +162,67 @@ def display_bowl_view():
                 'comp': ['All']  # Initialize 'comp' filter
             }
             st.session_state.prev_bowl_teams = current_bowl_teams        ###-------------------------------------HEADER AND FILTERS-------------------------------------###
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Bowling Statistics</h1>", unsafe_allow_html=True)
+        # Modern Main Header
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 2rem; border-radius: 20px; margin: 1rem 0 2rem 0; text-align: center; 
+                    box-shadow: 0 12px 48px rgba(102, 126, 234, 0.3); 
+                    border: 1px solid rgba(255, 255, 255, 0.2);">
+            <h1 style="color: white !important; margin: 0 !important; font-weight: bold; 
+                       font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);">
+                🏏 Bowling Statistics & Analysis
+            </h1>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Check if only one scorecard is loaded
         unique_matches = bowl_df['File Name'].nunique()
         if unique_matches <= 1:
-            st.warning("⚠️ Please upload more than 1 scorecard to use the bowling statistics view effectively. With only one match loaded, statistical analysis and comparisons are limited.")
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+                        border-left: 4px solid #ffc107; padding: 1rem 1.5rem; border-radius: 10px;
+                        margin: 1rem 0; box-shadow: 0 4px 16px rgba(255, 193, 7, 0.2);">
+                <p style="margin: 0; font-weight: 600; color: #856404;">
+                    ⚠️ Please upload more than 1 scorecard to use the bowling statistics view effectively. 
+                    With only one match loaded, statistical analysis and comparisons are limited.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
             return
+        
+        # Get match_df to merge the standardized comp column
+        match_df = st.session_state.get('match_df', pd.DataFrame())
+        # Merge the standardized comp column from match_df
+        if not match_df.empty and 'File Name' in bowl_df.columns and 'comp' in match_df.columns:
+            
+            # Remove existing comp column if it exists to avoid conflicts
+            if 'comp' in bowl_df.columns:
+                bowl_df = bowl_df.drop(columns=['comp'])
+            
+            # Create a mapping of File Name to comp from match_df
+            comp_mapping = match_df[['File Name', 'comp']].drop_duplicates()
+            
+            # Merge to get the standardized comp column
+            bowl_df = bowl_df.merge(comp_mapping, on='File Name', how='left')
+            
+            # Check if comp column exists after merge and fill missing values
+            if 'comp' in bowl_df.columns:
+                bowl_df['comp'] = bowl_df['comp'].fillna(bowl_df['Competition'])
+            else:
+                bowl_df['comp'] = bowl_df['Competition']
+        else:
+            # Fallback: use Competition if merge fails
+            bowl_df['comp'] = bowl_df['Competition']
+            # Fallback: use Competition if merge fails
+            bowl_df['comp'] = bowl_df['Competition']
+            
+            # Show fallback info in web app
+            with st.expander("⚠️ Using Fallback Competition Values", expanded=False):
+                st.write("Merge conditions not met, using original Competition column")
+                st.write(f"- match_df empty: {match_df.empty}")
+                st.write(f"- 'File Name' in bowl_df: {'File Name' in bowl_df.columns}")
+                st.write(f"- 'comp' in match_df: {'comp' in match_df.columns if not match_df.empty else 'N/A'}")
+
         
         # Initialize session state for filters if not exists
         if 'bowl_filter_state' not in st.session_state:
@@ -163,17 +292,20 @@ def display_bowl_view():
                 st.rerun()
 
         with col5:
+            
             try:
                 available_comp = get_filtered_options(bowl_df, 'comp',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
-            except KeyError:
-                print("Error accessing comp column, using Competition instead")
+            except KeyError as e:
                 available_comp = get_filtered_options(bowl_df, 'Competition',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            except Exception as e:
+                available_comp = ['All']
             
             comp_choice = st.multiselect('Competition:',
                                        available_comp,
                                        default=[c for c in st.session_state.bowl_filter_state['comp'] if c in available_comp])
+            
             if comp_choice != st.session_state.bowl_filter_state['comp']:
                 st.session_state.bowl_filter_state['comp'] = comp_choice
                 st.rerun()
@@ -304,12 +436,11 @@ def display_bowl_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views
+        # Create tabs for different views with clean, short names
         tabs = main_container.tabs([
-            "Career Stats", "Format Stats", "Season Stats", 
-            "Latest Innings", "Opponent Stats", "Location Stats",
-            "Innings Stats", "Position Stats", "Cumulative Stats",
-            "Block Stats", "Home/Away Stats", "Records" # Added Records tab
+            "Career", "Format", "Season", "Latest", "Opponent", 
+            "Location", "Innings", "Position", "Cumulative", 
+            "Block", "Home/Away", "Records"
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
@@ -357,7 +488,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Career Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎳 Career Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
 
             # Create a new figure for the scatter plot
@@ -454,7 +592,14 @@ def display_bowl_view():
                 'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
             ]]
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Format Record</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(240, 147, 251, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📋 Format Record</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
 
         ###-------------------------------------SEASON STATS-------------------------------------###

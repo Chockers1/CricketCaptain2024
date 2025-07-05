@@ -198,11 +198,15 @@ if 'match_df' in st.session_state:
     all_teams.update(match_df['Home_Team'].unique())
     all_teams.update(match_df['Away_Team'].unique())
 
-# Create beautiful filter section
+# Create beautiful header section with purple gradient background
 st.markdown("""
-    <div class="filter-card">
-        <h2 style='color:#f04f53; text-align: center; margin-bottom: 20px;'>🔍 ELO Rating System</h2>
-        <p style='text-align: center; color: #666; margin-bottom: 15px;'>
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 30px 20px; border-radius: 20px; text-align: center; 
+                margin-bottom: 2rem; box-shadow: 0 8px 25px rgba(0,0,0,0.15);'>
+        <h1 style='color: white; font-size: 2.2rem; font-weight: 700; margin: 0 0 8px 0;'>
+            🔍 ELO Rankings
+        </h1>
+        <p style='color: white; font-size: 1rem; margin: 0; opacity: 0.9;'>
             Filter by format, team, and opponent to analyze ELO ratings
         </p>
     </div>

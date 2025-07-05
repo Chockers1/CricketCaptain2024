@@ -16,9 +16,152 @@ def get_image_path(filename):
         return f"assets/images/{filename}"
     return f"CricketCaptainStatPack/assets/images/{filename}"
 
-st.markdown("<h1 style='color:#f04f53; text-align: center;'>Version History</h1>", unsafe_allow_html=True)
-versions_data = [
+# Main Header with Modern Styling
+st.markdown("""
+<style>
+    /* Custom CSS for modern UI styling */
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 20px;
+        margin: 1rem 0 2rem 0;
+        text-align: center;
+        box-shadow: 0 12px 48px rgba(102, 126, 234, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .main-header h1 {
+        color: white !important;
+        margin: 0 !important;
+        font-weight: bold;
+        font-size: 2.5rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .version-container {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .version-container:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    .version-header {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 6px 24px rgba(240, 147, 251, 0.3);
+    }
+    
+    .version-number {
+        color: white !important;
+        font-size: 0.9rem;
+        font-weight: 500;
+        opacity: 0.9;
+        margin: 0 !important;
+    }
+    
+    .version-title {
+        color: white !important;
+        font-size: 1.4rem;
+        font-weight: bold;
+        margin: 0.3rem 0 0 0 !important;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    
+    .description-container {
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 10px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+        border-left: 4px solid #f093fb;
+    }
+    
+    .description-text {
+        color: #2c3e50 !important;
+        font-size: 1rem;
+        line-height: 1.6;
+        margin: 0 !important;
+    }
+    
+    .screenshot-container {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 1rem 0;
+        border: 1px solid rgba(240, 147, 251, 0.2);
+    }
+    
+    .screenshot-caption {
+        color: #6c757d !important;
+        font-style: italic;
+        font-size: 0.9rem;
+        text-align: center;
+        margin-top: 0.5rem !important;
+    }
+    
+    /* Hide default streamlit expander styling */
+    .stExpander > div > div > div > div {
+        padding: 0 !important;
+    }
+    
+    /* Custom expander button styling */
+    .stExpander > div > button {
+        background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 0.8rem 1.2rem !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 16px rgba(54, 209, 220, 0.3) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stExpander > div > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 20px rgba(54, 209, 220, 0.4) !important;
+    }
+</style>
 
+<div class="main-header">
+    <h1>🏏 Version History & Updates</h1>
+</div>
+""", unsafe_allow_html=True)
+versions_data = [
+    {
+        "version": "1.21, 2025-06-29",
+        "title": "UI Enhancements & Duplication Checker",
+        "description": ("Major UI modernization and scorecard management improvements:\n\n"
+                       "🎨 **Beautiful Modern UI:**\n"
+                       "• Complete visual overhaul with stunning gradient backgrounds\n"
+                       "• Each navigation tab now features unique, beautiful color schemes\n"
+                       "• Professional card layouts with hover effects and shadows\n"
+                       "• Consistent modern styling across all pages\n"
+                       "• Enhanced typography and visual hierarchy\n\n"
+                       
+                       "🔍 **Smart Duplication Checker:**\n"
+                       "• Automatic detection of duplicate scorecards during upload\n"
+                       "• Real-time alerts when duplicates are found\n"
+                       "• Prevention of data corruption from repeated imports\n"
+                       "• Clean database management with duplicate removal options\n\n"
+                       
+                       "⚙️ **Cricket Captain 2025 Integration:**\n"
+                       "• Updated step-by-step instructions for the new auto-save scorecard feature\n"
+                       "• Streamlined workflow taking advantage of CC2025's automatic scorecard generation\n"
+                       "• Simplified setup process for new users\n"
+                       "• Enhanced compatibility with the latest Cricket Captain features\n\n"
+                       
+                       "This update represents a significant leap forward in both visual appeal and functionality, making the application more intuitive and reliable than ever before.")
+    },
 
     {
         "version": "1.20, 2025-02-016",
@@ -110,58 +253,78 @@ versions_data = [
     }
 ]
 
-# Add custom CSS for styling the expander headers
-st.markdown("""
-<style>
-    .version-header {
-        color: #666;
-        font-size: 0.9em;
-    }
-    .title-header {
-        color: #f04f53;
-        font-weight: bold;
-        font-size: 1.1em;
-        margin-left: 8px;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Remove old CSS styling
+# (removing the old custom CSS section)
 
-# Modified CSS to style the version headers
-st.markdown("""
-<style>
-    .stExpander {
-        border-radius: 4px;
-        margin-bottom: 0.5rem;
-    }
-    .version-text {
-        color: #666;
-        font-size: 0.9em;
-    }
-    .title-text {
-        color: #f04f53;
-        font-weight: bold;
-        font-size: 1.1em;
-        margin-left: 8px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Modified expander display
-for item in versions_data:
-    # Create the header text
-    st.markdown(f"<div class='version-text' style='margin-bottom: -1em;'>Version {item['version']}"
-               f"<span class='title-text'>{item['title']}</span></div>", 
-               unsafe_allow_html=True)
+# Modern version display with beautiful cards
+for i, item in enumerate(versions_data):
+    # Create unique gradient colors for each version
+    gradient_colors = [
+        ("linear-gradient(135deg, #667eea 0%, #764ba2 100%)", "rgba(102, 126, 234, 0.3)"),  # Purple-Blue
+        ("linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", "rgba(240, 147, 251, 0.3)"),  # Pink-Red
+        ("linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%)", "rgba(78, 205, 196, 0.3)"),   # Teal-Green
+        ("linear-gradient(135deg, #fa709a 0%, #fee140 100%)", "rgba(250, 112, 154, 0.3)"),  # Orange-Yellow
+        ("linear-gradient(135deg, #a8caba 0%, #5d4e75 100%)", "rgba(168, 202, 186, 0.3)"),  # Green-Purple
+        ("linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%)", "rgba(54, 209, 220, 0.3)"),   # Cyan-Blue
+        ("linear-gradient(135deg, #8360c3 0%, #2ebf91 100%)", "rgba(131, 96, 195, 0.3)"),   # Purple-Teal
+        ("linear-gradient(135deg, #11998e 0%, #38ef7d 100%)", "rgba(17, 153, 142, 0.3)"),   # Dark Teal-Green
+        ("linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)", "rgba(255, 126, 95, 0.3)"),   # Orange-Peach
+        ("linear-gradient(135deg, #f7971e 0%, #ffd200 100%)", "rgba(247, 151, 30, 0.3)")    # Gold-Yellow
+    ]
     
-    with st.expander("", expanded=False):
-        st.markdown(f"**Description:** {item['description']}")
+    # Select gradient based on version index, cycling through available colors
+    gradient, shadow_color = gradient_colors[i % len(gradient_colors)]
+    
+    # Version container with dynamic styling
+    st.markdown(f"""
+    <div class="version-container">
+        <div class="version-header" style="background: {gradient}; box-shadow: 0 6px 24px {shadow_color};">
+            <p class="version-number">Version {item['version']}</p>
+            <h3 class="version-title">{item['title']}</h3>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Expandable details section
+    with st.expander("📖 View Details", expanded=False):
+        # Description section
+        st.markdown(f"""
+        <div class="description-container">
+            <p class="description-text"><strong>What's New:</strong><br>{item['description']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Screenshots section
         if "screenshots" in item:
-            for screenshot in item["screenshots"]:
-                col1, col2, col3 = st.columns([1,3,1])
+            st.markdown("### 📸 Screenshots")
+            for j, screenshot in enumerate(item["screenshots"]):
+                st.markdown(f"""
+                <div class="screenshot-container">
+                """, unsafe_allow_html=True)
+                
+                col1, col2, col3 = st.columns([1, 4, 1])
                 with col2:
-                    st.image(screenshot["path"], caption=screenshot["caption"])
+                    st.image(screenshot["path"], use_column_width=True)
+                    st.markdown(f"""
+                    <p class="screenshot-caption">{screenshot["caption"]}</p>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
         elif item.get("screenshot"):
-            col1, col2, col3 = st.columns([1,3,1])
+            st.markdown("### 📸 Screenshot")
+            st.markdown(f"""
+            <div class="screenshot-container">
+            """, unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns([1, 4, 1])
             with col2:
-                st.image(item["screenshot"], caption=f"Version {item['version']} screenshot")
-
+                st.image(item["screenshot"], use_column_width=True)
+                st.markdown(f"""
+                <p class="screenshot-caption">Version {item['version']} - {item['title']}</p>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Add some spacing between versions
+        st.markdown("<br>", unsafe_allow_html=True)

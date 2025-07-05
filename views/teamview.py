@@ -18,18 +18,260 @@ def parse_date(date_str):
         return pd.NaT
 
 def display_team_view():
-    st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Statistics</h1>", unsafe_allow_html=True)
+    # Beautiful main title with purple gradient background banner
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 30px 20px; border-radius: 20px; text-align: center; 
+                margin-bottom: 2rem; box-shadow: 0 8px 25px rgba(0,0,0,0.15);'>
+        <h1 style='color: white; font-size: 2.2rem; font-weight: 700; margin: 0 0 8px 0;'>
+            🏏 Team Statistics
+        </h1>
+        <p style='color: white; font-size: 1rem; margin: 0; opacity: 0.9;'>
+            Cricket team analysis system based on comprehensive performance metrics
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Custom CSS for styling
+    # Modern CSS styling for beautiful UI
     st.markdown("""
     <style>
-    table { color: black; width: 100%; }
-    thead tr th {
-        background-color: #f04f53 !important;
-        color: white !important;
+    /* Global styling */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
     }
-    tbody tr:nth-child(even) { background-color: #f0f2f6; }
-    tbody tr:nth-child(odd) { background-color: white; }
+    
+    /* Filter controls */
+    .stMultiSelect label {
+        color: #f04f53 !important;
+        font-weight: 500;
+        font-size: 1rem;
+    }
+    
+    .stSlider label {
+        color: #f04f53 !important;
+        font-weight: 500;
+    }
+    
+    /* Slider track styling - red color */
+    .stSlider [data-baseweb="slider-track"] {
+        background: linear-gradient(90deg, #f04f53 0%, #f04f53 100%) !important;
+    }
+    
+    /* Table styling with modern look */
+    table { 
+        color: black; 
+        width: 100%; 
+        border-collapse: collapse;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    thead tr th {
+        background: linear-gradient(135deg, #f04f53 0%, #e03a3e 100%) !important;
+        color: white !important;
+        font-weight: 600;
+        text-align: center;
+        padding: 12px 8px;
+        border: none;
+    }
+    
+    tbody tr:nth-child(even) { 
+        background-color: #f8f9fa; 
+    }
+    
+    tbody tr:nth-child(odd) { 
+        background-color: white; 
+    }
+    
+    tbody tr:hover {
+        background-color: #e8f4fd !important;
+        transition: background-color 0.3s ease;
+    }
+    
+    tbody td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #dee2e6;
+        text-align: center;
+    }
+    
+    /* Tab styling with beautiful gradients - matching playerrankings.py */
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        border-radius: 15px;
+        padding: 12px;
+        box-shadow: 0 8px 32px rgba(168, 237, 234, 0.3);
+        margin-bottom: 2rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        margin: 0 6px;
+        transition: all 0.4s ease;
+        color: #2c3e50 !important;
+        font-weight: 700;
+        font-size: 1.1rem;
+        padding: 12px 20px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(255, 255, 255, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(135deg, #f04f53 0%, #f5576c 100%);
+        color: white !important;
+        box-shadow: 0 6px 20px rgba(240, 79, 83, 0.4);
+        transform: translateY(-3px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"]:hover {
+        background: linear-gradient(135deg, #e03a3e 0%, #f04f53 100%);
+    }
+    
+    /* Card-style containers */
+    .metric-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e9ecef;
+        margin: 1rem 0;
+    }
+    
+    /* Section headers with gradients */
+    .section-header {
+        background: linear-gradient(135deg, #f04f53 0%, #e03a3e 100%);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(240, 79, 83, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .career-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .season-header {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .opposition-header {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .location-header {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        color: #2c3e50;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(168, 237, 234, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .position-header {
+        background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        color: #2c3e50;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(255, 154, 158, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .bowling-header {
+        background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        color: #2c3e50;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(255, 236, 210, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .chart-header {
+        background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        color: #2c3e50;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(132, 250, 176, 0.3);
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    /* Dataframe container styling */
+    .stDataFrame {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Custom multiselect styling */
+    .stMultiSelect > div > div > div {
+        border-radius: 8px;
+        border: 2px solid #e9ecef;
+        transition: border-color 0.3s ease;
+    }
+    
+    .stMultiSelect > div > div > div:focus-within {
+        border-color: #f04f53;
+        box-shadow: 0 0 0 3px rgba(240, 79, 83, 0.1);
+    }
+    
+    /* Filter container styling - transparent background */
+    .filter-container {
+        background: transparent;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -68,22 +310,28 @@ def display_team_view():
         bat_teams = ['All'] + sorted(set(list(bat_df['Bat_Team_y'].unique()) + list(bowl_df['Bat_Team'].unique())))
         bowl_teams = ['All'] + sorted(set(list(bat_df['Bowl_Team_y'].unique()) + list(bowl_df['Bowl_Team'].unique())))
 
+        # Modern Filter Controls with styling
+        st.markdown('<div class="filter-container">', unsafe_allow_html=True)
+        
         # Create the filters row
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            bat_team_choice = st.multiselect('Bat Team', bat_teams, default='All', key='bat_team_filter')
+            st.markdown("🏏 **Bat Team**", unsafe_allow_html=True)
+            bat_team_choice = st.multiselect('', bat_teams, default='All', key='bat_team_filter', label_visibility='collapsed')
 
         with col2:
-            bowl_team_choice = st.multiselect('Bowl Team', bowl_teams, default='All', key='bowl_team_filter')
+            st.markdown("🏏 **Bowl Team**", unsafe_allow_html=True)
+            bowl_team_choice = st.multiselect('', bowl_teams, default='All', key='bowl_team_filter', label_visibility='collapsed')
 
         with col3:
-            match_format_choice = st.multiselect('Format', match_formats, default='All', key='match_format_filter')
+            st.markdown("🏆 **Format**", unsafe_allow_html=True)
+            match_format_choice = st.multiselect('', match_formats, default='All', key='match_format_filter', label_visibility='collapsed')
 
         with col4:
-            st.markdown("<p style='margin-bottom: 5px;'>Year</p>", unsafe_allow_html=True)
+            st.markdown("📅 **Year**", unsafe_allow_html=True)
             if len(years) == 1:
-                st.markdown(f"<p style='text-align: center;'>{years[0]}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: #f04f53; font-weight: 500;'>{years[0]}</p>", unsafe_allow_html=True)
                 year_choice = (years[0], years[0])
             else:
                 year_choice = st.slider('',
@@ -92,6 +340,8 @@ def display_team_view():
                                     value=(min(years), max(years)),
                                     key='year_slider',
                                     label_visibility='collapsed')
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # Create filtered DataFrames based on selections
         filtered_bat_df = bat_df.copy()
@@ -135,41 +385,13 @@ def display_team_view():
         filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
 
 
-    ###############################################################################
-    # Section 2: Page Header and Styling
-    ###############################################################################
-        st.markdown("<h1 style='color:#f04f53; text-align: center;'>Team Stats</h1>", unsafe_allow_html=True)
-
-        # Custom CSS for styling
-        st.markdown("""
-        <style>
-        /* Table styling */
-        table { color: black; width: 100%; }
-        thead tr th {
-            background-color: #f04f53 !important;
-            color: white !important;
-        }
-        tbody tr:nth-child(even) { background-color: #f0f2f6; }
-        tbody tr:nth-child(odd) { background-color: white; }
-
-        /* Tab styling */
-        .stTabs [data-baseweb="tab-list"] {
-            width: 100%;
-        }
-        .stTabs [data-baseweb="tab"] {
-            flex-grow: 1;
-            text-align: center;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-    # Create tabs
-    tab1, tab2, tab3 = st.tabs(["Batting Statistics", "Bowling Statistics", "Rank"])
+        # Create tabs
+        tab1, tab2, tab3 = st.tabs(["🏏 Batting Statistics", "🎳 Bowling Statistics", "🏆 Rank"])
 
     # Batting  Statistics Tab
     with tab1:
         # Create subtabs for different batting statistics views
-        batting_subtabs = st.tabs(["Career", "Season", "Opposition", "Location", "Position"])
+        batting_subtabs = st.tabs(["🏏 Career", "📅 Season", "⚔️ Opposition", "🌍 Location", "📍 Position"])
         
         # Career Statistics Subtab
         with batting_subtabs[0]:
@@ -261,7 +483,7 @@ def display_team_view():
             bat_team_career_df = bat_team_career_df.sort_values(by='Runs', ascending=False)
 
             # Display the filtered and aggregated team career statistics
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Career Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="career-header">🏏 Team Career Statistics</div>', unsafe_allow_html=True)
             st.markdown(
                 """
                 <style>
@@ -316,7 +538,7 @@ def display_team_view():
                 ))
 
             # Display the title using Streamlit's markdown
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Batting Average v Strike Rate</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="chart-header">📊 Team Batting Average vs Strike Rate</div>', unsafe_allow_html=True)
 
             # Update layout
             scatter_fig.update_layout(
@@ -394,7 +616,7 @@ def display_team_view():
             bat_team_season_df = bat_team_season_df.sort_values(by=['Year', 'Runs'], ascending=[False, False])   
 
             # Display Season Stats
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="season-header">📅 Season Statistics</div>', unsafe_allow_html=True)
             st.dataframe(
                 bat_team_season_df,
                 use_container_width=True,
@@ -426,7 +648,7 @@ def display_team_view():
                 ))
 
             # Display the title using Streamlit's markdown
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Batting Average v Strike Rate Season</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="chart-header">📈 Team Batting Average vs Strike Rate Season</div>', unsafe_allow_html=True)
 
             # Update layout
             scatter_fig.update_layout(
@@ -494,7 +716,7 @@ def display_team_view():
             bat_team_opponent_df = bat_team_opponent_df.sort_values(by=['Team', 'Runs'], ascending=[True, False])
 
             # Display Opponents Stats
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="opposition-header">⚔️ Opposition Statistics</div>', unsafe_allow_html=True)
             st.dataframe(
                 bat_team_opponent_df,
                 use_container_width=True,
@@ -605,7 +827,7 @@ def display_team_view():
             bat_team_location_df = bat_team_location_df.sort_values(by='Runs', ascending=False)
 
             # Display Location Stats
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="location-header">🌍 Location Statistics</div>', unsafe_allow_html=True)
             st.dataframe(
                 bat_team_location_df,
                 use_container_width=True,
@@ -716,7 +938,7 @@ def display_team_view():
             bat_team_position_df = bat_team_position_df.sort_values(by=['Team', 'Position'])
 
             # Display Position Stats
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="position-header">📍 Position Statistics</div>', unsafe_allow_html=True)
             st.dataframe(
                 bat_team_position_df,
                 use_container_width=True,
@@ -780,7 +1002,7 @@ def display_team_view():
     # Bowling Statistics Tab
     with tab2:
         # Create subtabs for different bowling statistics views
-        bowling_subtabs = st.tabs(["Career", "Season", "Opposition", "Location", "Team Position"])
+        bowling_subtabs = st.tabs(["🎳 Career", "📅 Season", "⚔️ Opposition", "🌍 Location", "👥 Team Position"])
         
         # Career Statistics Subtab
         with bowling_subtabs[0]:
@@ -829,7 +1051,7 @@ def display_team_view():
             # Sort by bowling average for better presentation
             bowl_team_df = bowl_team_df.sort_values(by='Avg')
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Bowling Career Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="bowling-header">🎳 Team Bowling Career Statistics</div>', unsafe_allow_html=True)
             st.dataframe(bowl_team_df, use_container_width=True, hide_index=True)
 
             ###########--------------------------- SCATTER PLOT GRAPH--------------------------###################
@@ -871,10 +1093,7 @@ def display_team_view():
                 ))
 
             # Display the title using Streamlit's markdown
-            st.markdown(
-                "<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate Analysis</h3>",
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="chart-header">📊 Economy Rate vs Strike Rate Analysis</div>', unsafe_allow_html=True)
 
             # Update layout
             scatter_fig.update_layout(
@@ -938,7 +1157,7 @@ def display_team_view():
             bowl_team_season_df = bowl_team_season_df.sort_values(by=['Year', 'Avg'], ascending=[False, True])
 
             # Display in Streamlit with the title "Season Stats"
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Bowling Season Stats</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="season-header">📅 Team Bowling Season Stats</div>', unsafe_allow_html=True)
             st.dataframe(bowl_team_season_df, use_container_width=True, hide_index=True)
 
             # Create a new figure for the scatter plot
@@ -972,10 +1191,7 @@ def display_team_view():
                 ))
 
             # Display the title using Streamlit's markdown
-            st.markdown(
-                "<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate Analysis per Season</h3>",
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="chart-header">📈 Economy Rate vs Strike Rate Analysis per Season</div>', unsafe_allow_html=True)
 
             # Update layout
             scatter_fig.update_layout(
@@ -1072,7 +1288,7 @@ def display_team_view():
             # Sort by bowling team and then average
             bowl_team_opponent_df = bowl_team_opponent_df.sort_values(by=['Bowl_Team', 'Avg'])
 
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="opposition-header">⚔️ Opposition Statistics</div>', unsafe_allow_html=True)
             st.dataframe(
                 bowl_team_opponent_df,
                 use_container_width=True,
@@ -1412,7 +1628,7 @@ def display_team_view():
 
     # Rank Tab - Combined Season Stats
     with tab3:
-        st.markdown("<h3 style='color:#f04f53; text-align: center;'>Team Season Rankings</h3>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🏆 Team Season Rankings</div>', unsafe_allow_html=True)
         
         # Add explanation for performance metrics
         with st.expander("Understanding Performance Metrics", expanded=False):
@@ -1648,8 +1864,11 @@ def display_team_view():
                 }
             )
             
+            # Modern visualization section
+            st.markdown('<div class="chart-header">📊 Performance Visualizations</div>', unsafe_allow_html=True)
+            
             # Create tabs for different visualizations
-            viz_tabs = st.tabs(["Performance Index", "Average Difference"])
+            viz_tabs = st.tabs(["📈 Performance Index", "⚖️ Average Difference"])
 
             with viz_tabs[0]:
                 # Create a year filter for the visualization
@@ -1755,7 +1974,7 @@ def display_team_view():
                         """)
 
             # Create a scatter plot for batting vs bowling average
-            st.markdown("### Batting vs Bowling Average Comparison")
+            st.markdown('<div class="chart-header">🎯 Batting vs Bowling Average Comparison</div>', unsafe_allow_html=True)
             # Allow user to select year for the scatter plot
             selected_year_scatter = st.selectbox(
                 "Select Year for Analysis", 
@@ -1836,7 +2055,7 @@ def display_team_view():
                 """)
                     
                 # Add a Performance Index comparison chart
-                st.markdown("### Performance Index vs Average Difference")
+                st.markdown('<div class="chart-header">📊 Performance Index vs Average Difference</div>', unsafe_allow_html=True)
                 if not scatter_data.empty:
                     perf_index_fig = go.Figure()
                     for _, row in scatter_data.iterrows():

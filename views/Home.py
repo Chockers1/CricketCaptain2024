@@ -417,3 +417,51 @@ with col2:
             ⚾ Player Editor Tutorial
         </a>
     """, unsafe_allow_html=True)
+
+# Second row of buttons
+col3, col4 = st.columns(2)
+with col3:
+    st.markdown("""
+        <a href='https://youtu.be/PqdVAuRwx0g' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #ff7b7b 0%, #667eea 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🏏 T20 Tips and Tricks
+        </a>
+    """, unsafe_allow_html=True)
+
+with col4:
+    st.markdown("""
+        <a href='https://youtu.be/N-u7zwACAPk' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #a8e6cf 0%, #dcedc8 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            💼 Master Player Contracts
+        </a>
+    """, unsafe_allow_html=True)
+
+# Third row of buttons
+col5, col6 = st.columns(2)
+with col5:
+    st.markdown("""
+        <a href='https://youtu.be/OggYwlM_mv4' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #fd79a8 0%, #fdcb6e 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🎯 Coaching Tutorial
+        </a>
+    """, unsafe_allow_html=True)
+
+with col6:
+    st.markdown("""
+        <a href='https://youtu.be/GU75BvgRax0' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🌦️ Weather & Pitch Tutorial
+        </a>
+    """, unsafe_allow_html=True)

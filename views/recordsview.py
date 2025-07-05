@@ -2040,7 +2040,7 @@ with tabs[4]:
                 lambda row: round(row['Bowler_Runs'] / row['Bowler_Overs'], 2) if row['Bowler_Overs'] > 0 else 0, axis=1
             )
             
-            # Rename columns for display
+            # Rename columns for display 
             series_bowl_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
                                        'Matches', 'Overs', 'Wickets', 'Runs', '5w', '10w', 
                                        'Average', 'Economy']
