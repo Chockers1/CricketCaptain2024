@@ -676,12 +676,11 @@ def display_bat_view():
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views - Added "Win/Loss record" tab
+        # Create tabs for different views - Removed "Distributions" and "Percentile" tabs for performance
         tabs = main_container.tabs([
             "Career", "Format", "Season", "Latest", "Opponent", 
             "Location", "Innings", "Position", "Home/Away",
-            "Cumulative", "Block", "Distributions", "Percentile",
-            "Records", "Win/Loss"
+            "Cumulative", "Block", "Records", "Win/Loss"
         ])
         
         # Career Stats Tab
@@ -2940,470 +2939,78 @@ def display_bat_view():
             # Display the bar chart
             st.plotly_chart(fig, key="final_bar_chart")  # Added unique key
 
-        # Renamed from "Visualizations" to "Distributions" Tab
+        # Records Tab with lazy loading - only loads when clicked
         with tabs[11]:
-            # Advanced metrics caching
-            advanced_metrics_cache_key = f"{cache_key}_advanced_metrics"
-            advanced_metrics = get_cached_dataframe(advanced_metrics_cache_key)
-
-            if advanced_metrics is None:
-                # Create three columns for additional metrics
-                col1, col2, col3 = st.columns(3)
+            # Check if Records tab content should be loaded
+            if f'records_tab_loaded_{cache_key}' not in st.session_state:
+                st.session_state[f'records_tab_loaded_{cache_key}'] = False
+            
+            # Show a button to load records data
+            if not st.session_state[f'records_tab_loaded_{cache_key}']:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Records Analysis</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("🚀 Load Records Data", key="load_records_btn", type="primary"):
+                    st.session_state[f'records_tab_loaded_{cache_key}'] = True
+                    st.rerun()
+                else:
+                    st.info("📈 Click the button above to load detailed records analysis. This tab contains complex calculations and may take a moment to load.")
+            else:
+                # Load the actual records content
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Single Innings Bests</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                # Create columns for layout
+                col1, col2 = st.columns(2)
 
                 with col1:
-                    # Boundary Rate Analysis
-                    boundary_fig = go.Figure()
-                    boundary_fig.add_trace(go.Pie(
-                        labels=['4s', '6s', 'Other Runs'],
-                        values=[filtered_df['4s'].sum() * 4, 
-                                filtered_df['6s'].sum() * 6,
-                                filtered_df['Runs'].sum() - (filtered_df['4s'].sum() * 4 + filtered_df['6s'].sum() * 6)],
-                        hole=.3,
-                        marker_colors=['#f84e4e', '#4ef84e', '#4e4ef8']
-                    ))
-                    boundary_fig.update_layout(
-                        height=400,
-                        showlegend=True,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
+                    # --- Top 10 Highest Scores ---
+                    best_inns_cache_key = f"{cache_key}_best_innings"
+                    best_inns_df = get_cached_dataframe(best_inns_cache_key)
+
+                    if best_inns_df is None:
+                        # Select relevant columns and sort by Runs
+                        best_inns_df = filtered_df[['Name', 'Runs', 'Balls', 'Bowl_Team_y', 'Year']].copy()
+                        best_inns_df = best_inns_df.sort_values(by='Runs', ascending=False).head(10)
+
+                        # Add Rank column
+                        best_inns_df.insert(0, 'Rank', range(1, 1 + len(best_inns_df)))
+
+                        # Rename columns
+                        best_inns_df = best_inns_df.rename(columns={'Bowl_Team_y': 'Opponent'})
+
+                        # Reorder columns
+                        best_inns_df = best_inns_df[['Rank', 'Name', 'Runs', 'Balls', 'Opponent', 'Year']] # Year was already added
+
+                        # Cache the best innings data
+                        cache_dataframe(best_inns_cache_key, best_inns_df)
+
+                    # Display the Best Innings header
                     st.markdown("""
                     <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                                 padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
                                 border: 1px solid rgba(255, 255, 255, 0.2);">
-                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Run Distribution</h3>
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Highest Scores</h3>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.plotly_chart(boundary_fig, use_container_width=True)
+                    # Display the dataframe
+                    st.dataframe(best_inns_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
                 with col2:
-                    # Dismissal Analysis
-                    dismissal_fig = go.Figure()
-                    dismissal_types = ['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Not Out']
-                    dismissal_values = [
-                        filtered_df['Caught'].sum(),
-                        filtered_df['Bowled'].sum(),
-                        filtered_df['LBW'].sum(),
-                        filtered_df['Run Out'].sum(),
-                        filtered_df['Stumped'].sum(),
-                        filtered_df['Not Out'].sum()
-                    ]
-                    dismissal_fig.add_trace(go.Pie(
-                        labels=dismissal_types,
-                        values=dismissal_values,
-                        hole=.3
-                    ))
-                    dismissal_fig.update_layout(
-                        height=400,
-                        showlegend=True,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
-                    st.markdown("""
-                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                                box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
-                                border: 1px solid rgba(255, 255, 255, 0.2);">
-                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚰️ Dismissal Distribution</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.plotly_chart(dismissal_fig, use_container_width=True)
-
-                with col3:
-                    # Score Range Distribution
-                    score_ranges = ['0-24', '25-49', '50-99', '100+']
-                    score_values = [
-                        filtered_df[filtered_df['Runs'] < 25]['File Name'].count(),
-                        filtered_df[(filtered_df['Runs'] >= 25) & (filtered_df['Runs'] < 50)]['File Name'].count(),
-                        filtered_df[(filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)]['File Name'].count(),
-                        filtered_df[filtered_df['Runs'] >= 100]['File Name'].count()
-                    ]
-                    score_fig = go.Figure()
-                    score_fig.add_trace(go.Pie(
-                        labels=score_ranges,
-                        values=score_values,
-                        hole=.3,
-                        marker_colors=['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
-                    ))
-                    score_fig.update_layout(
-                        height=400,
-                        showlegend=True,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
-                    st.markdown("""
-                    <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
-                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                                box-shadow: 0 6px 24px rgba(78, 205, 196, 0.25);
-                                border: 1px solid rgba(255, 255, 255, 0.2);">
-                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Score Range Distribution</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.plotly_chart(score_fig, use_container_width=True)
-
-                # Cache the advanced metrics
-                advanced_metrics = {
-                    'boundary_fig': boundary_fig,
-                    'dismissal_fig': dismissal_fig,
-                    'score_fig': score_fig
-                }
-                cache_dataframe(advanced_metrics_cache_key, advanced_metrics)
-            else:
-                # Display cached figures
-                st.plotly_chart(advanced_metrics['boundary_fig'], use_container_width=True)
-                st.plotly_chart(advanced_metrics['dismissal_fig'], use_container_width=True)
-                st.plotly_chart(advanced_metrics['score_fig'], use_container_width=True)
-
-            # Create a section for distribution analysis
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Distribution Analysis</h3>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Create three columns for the distribution charts
-            col1, col2, col3 = st.columns(3)
-
-            # Create a color map for players (excluding 'All')
-            player_colors = {
-                player: f'#{random.randint(0xFF4040, 0xFF9999):06x}'  # Different shades of red
-                for player in name_choice if player != 'All'
-            }
-
-            # Get the unfiltered data for overall statistics
-            overall_df = bat_df.copy()
-
-            with col1:
-                # Run Distribution Analysis
-                boundary_fig = go.Figure()
-                
-                # Calculate overall statistics using unfiltered data
-                overall_stats = {
-                    '4s': (overall_df['4s'].sum() * 4 / overall_df['Runs'].sum() * 100),
-                    '6s': (overall_df['6s'].sum() * 6 / overall_df['Runs'].sum() * 100),
-                    'Other': (100 - ((overall_df['4s'].sum() * 4 + overall_df['6s'].sum() * 6) / overall_df['Runs'].sum() * 100))
-                }
-
-                # Add overall bar (always show this)
-                boundary_fig.add_trace(go.Bar(
-                    name='Overall',
-                    x=['4s', '6s', 'Other Runs'],
-                    y=[overall_stats['4s'], overall_stats['6s'], overall_stats['Other']],
-                    marker_color='#808080',
-                    opacity=0.7
-                ))
-
-                # Add selected players with their unique colors
-                for player in name_choice:
-                    if player != 'All':
-                        player_df = filtered_df[filtered_df['Name'] == player]
-                        if len(player_df) > 0:
-                            fours_pct = player_df['4s'].sum() * 4 / player_df['Runs'].sum() * 100
-                            sixes_pct = player_df['6s'].sum() * 6 / player_df['Runs'].sum() * 100
-                            other_pct = 100 - (fours_pct + sixes_pct)
-                            
-                            boundary_fig.add_trace(go.Bar(
-                                name=player,
-                                x=['4s', '6s', 'Other Runs'],
-                                y=[fours_pct, sixes_pct, other_pct],
-                                marker_color=player_colors[player]
-                            ))
-
-                boundary_fig.update_layout(
-                    barmode='group',
-                    #title='Run Distribution (%)',
-                    height=400,
-                    showlegend=True,
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis_title='Percentage',
-                    yaxis=dict(range=[0, 100])
-                )
-                st.plotly_chart(boundary_fig, use_container_width=True)
-
-            with col2:
-                # Dismissal Analysis
-                dismissal_fig = go.Figure()
-                dismissal_types = ['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Not Out']
-                
-                # Calculate overall percentages using unfiltered data
-                total_dismissals_overall = sum([overall_df[type].sum() for type in dismissal_types])
-                overall_percentages = [overall_df[type].sum() / total_dismissals_overall * 100 for type in dismissal_types]
-                
-                # Add overall bar (always show this)
-                dismissal_fig.add_trace(go.Bar(
-                    name='Overall',
-                    x=dismissal_types,
-                    y=overall_percentages,
-                    marker_color='#808080',
-                    opacity=0.7
-                ))
-
-                # Add selected players with their unique colors
-                for player in name_choice:
-                    if player != 'All':
-                        player_df = filtered_df[filtered_df['Name'] == player]
-                        if len(player_df) > 0:  # Fixed curly brace { to colon :
-                            player_total = sum([player_df[type].sum() for type in dismissal_types])
-                            player_percentages = [player_df[type].sum() / player_total * 100 for type in dismissal_types]
-                            
-                            dismissal_fig.add_trace(go.Bar(
-                                name=player,
-                                x=dismissal_types,
-                                y=player_percentages,
-                                marker_color=player_colors[player]
-                            ))
-
-                dismissal_fig.update_layout(
-                    barmode='group',
-                    #title='Dismissal Distribution (%)',
-                    height=400,
-                    showlegend=True,
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis_title='Percentage',
-                    yaxis=dict(range=[0, 100])
-                )
-                st.plotly_chart(dismissal_fig, use_container_width=True)
-
-            with col3:
-                # Score Range Analysis
-                score_fig = go.Figure()
-                score_ranges = ['0-24', '25-49', '50-99', '100+']
-                
-                # Calculate overall percentages using unfiltered data
-                total_innings_overall = len(overall_df)
-                overall_percentages = [
-                    len(overall_df[overall_df['Runs'] < 25]) / total_innings_overall * 100,
-                    len(overall_df[(overall_df['Runs'] >= 25) & (overall_df['Runs'] < 50)]) / total_innings_overall * 100,
-                    len(overall_df[(overall_df['Runs'] >= 50) & (overall_df['Runs'] < 100)]) / total_innings_overall * 100,
-                    len(overall_df[overall_df['Runs'] >= 100]) / total_innings_overall * 100
-                ]
-                
-                # Add overall bar (always show this)
-                score_fig.add_trace(go.Bar(
-                    name='Overall',
-                    x=score_ranges,
-                    y=overall_percentages,
-                    marker_color='#808080',
-                    opacity=0.7
-                ))
-
-                # Add selected players with their unique colors
-                for player in name_choice:
-                    if player != 'All':
-                        player_df = filtered_df[filtered_df['Name'] == player]
-                        if len(player_df) > 0:
-                            player_percentages = [
-                                len(player_df[player_df['Runs'] < 25]) / len(player_df) * 100,
-                                len(player_df[(player_df['Runs'] >= 25) & (player_df['Runs'] < 50)]) / len(player_df) * 100,
-                                len(player_df[(player_df['Runs'] >= 50) & (player_df['Runs'] < 100)]) / len(player_df) * 100,
-                                len(player_df[player_df['Runs'] >= 100]) / len(player_df) * 100
-                            ]
-                            
-                            score_fig.add_trace(go.Bar(
-                                name=player,
-                                x=score_ranges,
-                                y=player_percentages,
-                                marker_color=player_colors[player]
-                            ))
-
-                score_fig.update_layout(
-                    barmode='group',
-                    #title='Score Range Distribution (%)',
-                    height=400,
-                    showlegend=True,
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis_title='Percentage',
-                    yaxis=dict(range=[0, 100])
-                )
-                st.plotly_chart(score_fig, use_container_width=True)
-
-            # Display the bar chart
-            #st.plotly_chart(fig)
-
-        # New Percentile tab - moved from Visualizations tab
-        with tabs[12]:
-            # Create percentile analysis
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Percentile Analysis (Min 10 Matches)</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Create a copy of df_format for percentile analysis
-            percentile_df = df_format.copy()
-            
-            # Filter for players with 10 or more matches
-            percentile_df = percentile_df[percentile_df['Matches'] >= 10]
-            
-            # Check if there are any players with 10+ matches
-            if len(percentile_df) == 0:
-                st.markdown("""
-                <div style="
-                    background: linear-gradient(135deg, #3b82f6, #1e40af);
-                    padding: 1rem;
-                    border-radius: 10px;
-                    border-left: 4px solid #60a5fa;
-                    margin: 1rem 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                ">
-                    <p style="color: white; margin: 0; font-weight: 500;">
-                        ℹ️ No players found with 10 or more matches in the current selection.
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                # Calculate percentiles for each format separately
-                for format in percentile_df['Match_Format'].unique():
-                    format_mask = percentile_df['Match_Format'] == format
-                    
-                    # Calculate percentiles for each metric
-                    percentile_df.loc[format_mask, 'Avg_Percentile'] = percentile_df.loc[format_mask, 'Avg'].rank(pct=True) * 100
-                    percentile_df.loc[format_mask, 'BPO_Percentile'] = percentile_df.loc[format_mask, 'BPO'].rank(pct=True) * 100
-                    percentile_df.loc[format_mask, 'SR_Percentile'] = percentile_df.loc[format_mask, 'SR'].rank(pct=True) * 100
-                    percentile_df.loc[format_mask, '50+PI_Percentile'] = percentile_df.loc[format_mask, '50+PI'].rank(pct=True) * 100
-                    percentile_df.loc[format_mask, '100PI_Percentile'] = percentile_df.loc[format_mask, '100PI'].rank(pct=True) * 100
-
-                # Round percentiles to 1 decimal place
-                percentile_columns = ['Avg_Percentile', 'BPO_Percentile', 'SR_Percentile', '50+PI_Percentile', '100PI_Percentile']
-                for col in percentile_columns:
-                    percentile_df[col] = percentile_df[col].round(1)
-
-                # Calculate total percentile score (sum of all percentile columns)
-                percentile_df['Total_Score'] = percentile_df[percentile_columns].sum(axis=1)
-
-                # Calculate the total percentile ranking within each format
-                for format in percentile_df['Match_Format'].unique():
-                    format_mask = percentile_df['Match_Format'] == format
-                    percentile_df.loc[format_mask, 'Total_Percentile'] = (
-                        percentile_df.loc[format_mask, 'Total_Score'].rank(pct=True) * 100
-                    ).round(1)
-
-                # Select and reorder columns for display
-                display_columns = ['Name', 'Match_Format', 'Matches', 'Runs', 'Avg', 'BPO', 'SR', '50+PI', '100PI'] + percentile_columns + ['Total_Score', 'Total_Percentile']
-                
-                # Sort by Total_Percentile in descending order within each format
-                percentile_df = percentile_df[display_columns].sort_values(['Match_Format', 'Total_Percentile'], ascending=[True, False])
-                
-                # Display the percentile analysis
-                st.dataframe(percentile_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
-                
-                # Add visual representation of percentiles
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Percentile Visualization</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Create a radar chart for the top player in each format
-                for format in percentile_df['Match_Format'].unique():
-                    format_data = percentile_df[percentile_df['Match_Format'] == format]
-                    if len(format_data) > 0:
-                        top_player = format_data.iloc[0]
-                        
-                        # Create radar chart
-                        fig = go.Figure()
-                        
-                        # Add the top player's percentiles
-                        fig.add_trace(go.Scatterpolar(
-                            r=[top_player['Avg_Percentile'], 
-                               top_player['BPO_Percentile'], 
-                               top_player['SR_Percentile'], 
-                               top_player['50+PI_Percentile'],
-                               top_player['100PI_Percentile']],
-                            theta=['Avg', 'BPO', 'SR', '50+PI', '100PI'],
-                            fill='toself',
-                            name=f"{top_player['Name']} ({format})"
-                        ))
-                        
-                        # Add a reference line at 50th percentile
-                        fig.add_trace(go.Scatterpolar(
-                            r=[50, 50, 50, 50, 50],
-                            theta=['Avg', 'BPO', 'SR', '50+PI', '100PI'],
-                            fill='toself',
-                            name='50th Percentile',
-                            line=dict(color='gray', dash='dash'),
-                            opacity=0.3
-                        ))
-                        
-                        fig.update_layout(
-                            polar=dict(
-                                radialaxis=dict(
-                                    visible=True,
-                                    range=[0, 100]
-                                )
-                            ),
-                            showlegend=True,
-                            height=500,
-                            title=f"Top Player in {format}",
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)'
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-
-        # Records Tab (now Records Tab)
-        with tabs[13]:
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Single Innings Bests</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            # Create columns for layout
-            col1, col2 = st.columns(2)
-
-            with col1:
-                # --- Top 10 Highest Scores ---
-                best_inns_cache_key = f"{cache_key}_best_innings"
-                best_inns_df = get_cached_dataframe(best_inns_cache_key)
-
-                if best_inns_df is None:
-                    # Select relevant columns and sort by Runs
-                    best_inns_df = filtered_df[['Name', 'Runs', 'Balls', 'Bowl_Team_y', 'Year']].copy()
-                    best_inns_df = best_inns_df.sort_values(by='Runs', ascending=False).head(10)
-
-                    # Add Rank column
-                    best_inns_df.insert(0, 'Rank', range(1, 1 + len(best_inns_df)))
-
-                    # Rename columns
-                    best_inns_df = best_inns_df.rename(columns={'Bowl_Team_y': 'Opponent'})
-
-                    # Reorder columns
-                    best_inns_df = best_inns_df[['Rank', 'Name', 'Runs', 'Balls', 'Opponent', 'Year']] # Year was already added
-
-                    # Cache the best innings data
-                    cache_dataframe(best_inns_cache_key, best_inns_df)
-
-                # Display the Best Innings header
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Highest Scores</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(best_inns_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
-
-            with col2:
-                # --- Top 10 Best Strike Rate (Innings, min 50 runs) ---
-                best_inns_sr_cache_key = f"{cache_key}_best_inns_sr_min50"
+                    # --- Top 10 Best Strike Rate (Innings, min 50 runs) ---
+                    best_inns_sr_cache_key = f"{cache_key}_best_inns_sr_min50"
                 best_inns_sr_df = get_cached_dataframe(best_inns_sr_cache_key)
 
                 if best_inns_sr_df is None:
@@ -3441,53 +3048,52 @@ def display_bat_view():
                 # Display the dataframe
                 st.dataframe(best_inns_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-
-            # --- Seasonal Bests ---
-            st.divider()
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Seasonal Bests (by Format)</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            col3, col4 = st.columns(2)
-
-            with col3:
-                # --- Top 10 Most Runs in a Season by Format ---
-                best_season_runs_cache_key = f"{cache_key}_best_season_runs"
-                best_season_runs_df = get_cached_dataframe(best_season_runs_cache_key)
-
-                if best_season_runs_df is None:
-                    # Group by Name, Year, Match_Format and sum Runs
-                    season_runs_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
-                        Runs=('Runs', 'sum')
-                    ).reset_index()
-
-                    # Sort by Runs descending and get top 10
-                    best_season_runs_df = season_runs_df.sort_values(by='Runs', ascending=False).head(10)
-
-                    # Add Rank column
-                    best_season_runs_df.insert(0, 'Rank', range(1, 1 + len(best_season_runs_df)))
-
-                    # Reorder columns
-                    best_season_runs_df = best_season_runs_df[['Rank', 'Name', 'Year', 'Match_Format', 'Runs']]
-
-                    # Cache the data
-                    cache_dataframe(best_season_runs_cache_key, best_season_runs_df)
-
-                # Display the header
+                # --- Seasonal Bests ---
+                st.divider()
                 st.markdown("""
-                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
                             border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs (Season)</h3>
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Seasonal Bests (by Format)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(best_season_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+                col3, col4 = st.columns(2)
+
+                with col3:
+                    # --- Top 10 Most Runs in a Season by Format ---
+                    best_season_runs_cache_key = f"{cache_key}_best_season_runs"
+                    best_season_runs_df = get_cached_dataframe(best_season_runs_cache_key)
+
+                    if best_season_runs_df is None:
+                        # Group by Name, Year, Match_Format and sum Runs
+                        season_runs_df = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg(
+                            Runs=('Runs', 'sum')
+                        ).reset_index()
+
+                        # Sort by Runs descending and get top 10
+                        best_season_runs_df = season_runs_df.sort_values(by='Runs', ascending=False).head(10)
+
+                        # Add Rank column
+                        best_season_runs_df.insert(0, 'Rank', range(1, 1 + len(best_season_runs_df)))
+
+                        # Reorder columns
+                        best_season_runs_df = best_season_runs_df[['Rank', 'Name', 'Year', 'Match_Format', 'Runs']]
+
+                        # Cache the data
+                        cache_dataframe(best_season_runs_cache_key, best_season_runs_df)
+
+                    # Display the header
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs (Season)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    # Display the dataframe
+                    st.dataframe(best_season_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col4:
                 # --- Top 10 Best Average Per Season by Format ---
@@ -4518,7 +4124,7 @@ def display_bat_view():
             # col26 is empty
 
         # Win/Loss record Tab
-        with tabs[14]:
+        with tabs[12]:
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
