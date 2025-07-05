@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import re
 import traceback
+import numpy as np
+from pathlib import Path
 
 def process_bat_stats(directory_path, game_df, match_df):
     """
@@ -24,129 +26,128 @@ def process_bat_stats(directory_path, game_df, match_df):
         print(f"Match DataFrame shape: {match_df.shape}")
         print(f"Match DataFrame columns: {match_df.columns}")
 
-        # Initialize an empty list to hold DataFrames for each file
-        # Each file will become a DataFrame, and they'll all be combined at the end
-        dataframes = []
+        # Pre-compile regex pattern for better performance
+        player_pattern = re.compile(
+            r"^(?P<Name>.+?)(?:\s+(?P<How_Out>(lbw|c|b|not out|run out|st|retired).+?))?\s+(?P<Runs>\d+)\s+(?P<Balls>\d+)\s+(?P<Fours>\d+|-)\s+(?P<Sixes>\d+|-)$"
+        )
+        
+        # Use pathlib for faster file operations
+        directory = Path(directory_path)
+        txt_files = list(directory.glob("*.txt"))
+        
+        # Pre-allocate list for all batting data
+        all_batting_data = []
 
-        # Loop through all files in the specified directory
-        for filename in os.listdir(directory_path):
-            # Process only text files - these contain the match batting data
-            if filename.endswith('.txt'):
-                file_path = os.path.join(directory_path, filename)
+        # Loop through all text files
+        for file_path in txt_files:
+            filename = file_path.name
 
-                # Open and read the file with UTF-8 encoding to handle special characters
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    file_content = file.read()
+            # Read file content more efficiently
+            file_content = file_path.read_text(encoding='utf-8')
+            file_lines = file_content.splitlines()
 
-                # Split file content into separate lines for processing
-                file_lines = file_content.splitlines()
+            # Initialize variables for tracking position in the file
+            Row_No = 0           # Current row number being processed
+            Inns = 0             # Current innings (1-4 for Test matches, 1-2 for limited overs)
+            Line_no = 0          # Track separator lines to determine innings
+            Bat_Team = ""        # Team currently batting
+            Bowl_Team = ""       # Team currently bowling
+            Home_Team = ""       # Home team
+            Away_Team = ""       # Away team
+            
+            # Process the file line by line
+            for i, line in enumerate(file_lines):
+                Row_No += 1
 
-                # Initialize variables for tracking position in the file
-                Row_No = 0           # Current row number being processed
-                Inns = 0             # Current innings (1-4 for Test matches, 1-2 for limited overs)
-                Line_no = 0          # Track separator lines to determine innings
-                Bat_Team = ""        # Team currently batting
-                Bowl_Team = ""       # Team currently bowling
-                innings_data = []    # List to collect player data rows
-                
-                # Process the file line by line
-                for i, line in enumerate(file_lines):
-                    Row_No += 1
+                # Extract Home_Team and Away_Team from Row 2 (format: "TeamA v TeamB")
+                if Row_No == 2:
+                    teams = line.split(" v ", 1)  # Limit split for efficiency
+                    if len(teams) == 2:
+                        Home_Team = teams[0].strip()
+                        Away_Team = teams[1].strip()
 
-                    # Extract Home_Team and Away_Team from Row 2 (format: "TeamA v TeamB")
-                    if Row_No == 2:
-                        teams = line.split(" v ")
-                        if len(teams) == 2:
-                            Home_Team = teams[0].strip()
-                            Away_Team = teams[1].strip()
+                # Check for innings separator lines (format: "TeamName -----------")
+                if "-------------" in line:
+                    Line_no += 1
+                    # Lines 1, 5, 9, 13 indicate the start of innings 1, 2, 3, 4 respectively
+                    if Line_no in [1, 5, 9, 13]:
+                        Inns += 1  # Increment innings counter
 
-                    # Check for innings separator lines (format: "TeamName -----------")
-                    if "-------------" in line:
-                        Line_no += 1
-                        # Lines 1, 5, 9, 13 indicate the start of innings 1, 2, 3, 4 respectively
-                        if Line_no in [1, 5, 9, 13]:
-                            Inns += 1  # Increment innings counter
+                        # Extract batting team name from left side of separator
+                        Bat_Team = line.split('-', 1)[0].strip()  # Limit split for efficiency
+                        # Determine bowling team (if not batting, must be bowling)
+                        Bowl_Team = Away_Team if Bat_Team == Home_Team else Home_Team
 
-                            # Extract batting team name from left side of separator
-                            Bat_Team = line.split('-')[0].strip()
-                            # Determine bowling team (if not batting, must be bowling)
-                            Bowl_Team = Away_Team if Bat_Team == Home_Team else Home_Team
+                        # Initialize batting position counter for this innings
+                        position = 1
 
-                            # Initialize batting position counter for this innings
-                            position = 1
+                        # Process up to 11 players (maximum in a cricket team)
+                        for j in range(11):
+                            # Avoid index errors at end of file
+                            if i + j + 1 >= len(file_lines):
+                                break
 
-                            # Process up to 11 players (maximum in a cricket team)
-                            for j in range(11):
-                                # Avoid index errors at end of file
-                                if i + j + 1 >= len(file_lines):
-                                    break
+                            # Get the line containing player data
+                            player_line = file_lines[i + j + 1]
+                            if player_line.strip() == "":  # Skip empty lines
+                                continue
 
-                                # Get the line containing player data
-                                player_line = file_lines[i + j + 1]
-                                if player_line.strip() == "":  # Skip empty lines
-                                    continue
+                            # Use pre-compiled regex to extract player stats
+                            player_match = player_pattern.search(player_line)
+                            
+                            if player_match:
+                                # Extract and clean player data from regex match
+                                Name = player_match.group('Name').replace('rtrd ht', '').strip()
+                                How_Out = player_match.group('How_Out').strip() if player_match.group('How_Out') else "Did not bat"
+                                Runs = int(player_match.group('Runs'))
+                                Balls = int(player_match.group('Balls'))
+                                # Handle '-' notation for no boundaries
+                                Fours = int(player_match.group('Fours')) if player_match.group('Fours') != '-' else 0
+                                Sixes = int(player_match.group('Sixes')) if player_match.group('Sixes') != '-' else 0
 
-                                # Use regex to extract player stats from the line
-                                # Format: Name How_Out Runs Balls 4s 6s
-                                player_match = re.search(
-                                    r"^(?P<Name>.+?)(?:\s+(?P<How_Out>(lbw|c|b|not out|run out|st|retired).+?))?\s+(?P<Runs>\d+)\s+(?P<Balls>\d+)\s+(?P<Fours>\d+|-)\s+(?P<Sixes>\d+|-)$",
-                                    player_line
-                                )
-                                
-                                if player_match:
-                                    # Extract and clean player data from regex match
-                                    Name = player_match.group('Name').replace('rtrd ht', '').strip()
-                                    How_Out = player_match.group('How_Out').strip() if player_match.group('How_Out') else "Did not bat"
-                                    Runs = int(player_match.group('Runs'))
-                                    Balls = int(player_match.group('Balls'))
-                                    # Handle '-' notation for no boundaries
-                                    Fours = int(player_match.group('Fours')) if player_match.group('Fours') != '-' else 0
-                                    Sixes = int(player_match.group('Sixes')) if player_match.group('Sixes') != '-' else 0
-
-                                    # Add player data to innings_data list
-                                    innings_data.append([
-                                        filename, Inns, Bat_Team, Bowl_Team, position, 
-                                        Name, How_Out, Runs, Balls, Fours, Sixes, 
-                                        Home_Team, Away_Team
-                                    ])
-                                    position += 1  # Increment batting position
-                                else:
-                                    # If regex doesn't match, treat as "Did not bat"
-                                    innings_data.append([
-                                        filename, Inns, Bat_Team, Bowl_Team, position,
-                                        player_line.strip(), "Did not bat", 0, 0, 0, 0,
-                                        Home_Team, Away_Team
-                                    ])
-                                    position += 1
-
-                            # Fill remaining positions up to 11 with empty "Did not bat" entries
-                            # This ensures consistent team size across all innings
-                            while position <= 11:
-                                innings_data.append([
+                                # Add player data directly to main list
+                                all_batting_data.append([
+                                    filename, Inns, Bat_Team, Bowl_Team, position, 
+                                    Name, How_Out, Runs, Balls, Fours, Sixes, 
+                                    Home_Team, Away_Team
+                                ])
+                                position += 1  # Increment batting position
+                            else:
+                                # If regex doesn't match, treat as "Did not bat"
+                                all_batting_data.append([
                                     filename, Inns, Bat_Team, Bowl_Team, position,
-                                    '', 'Did not bat', 0, 0, 0, 0,
+                                    player_line.strip(), "Did not bat", 0, 0, 0, 0,
                                     Home_Team, Away_Team
                                 ])
                                 position += 1
 
-                # Convert innings data to DataFrame with appropriate column names
-                df_innings = pd.DataFrame(
-                    innings_data, 
-                    columns=[
-                        'File Name', 'Innings', 'Bat Team', 'Bowl Team', 'Position', 
-                        'Name', 'How Out', 'Runs', 'Balls', '4s', '6s', 
-                        'Home Team', 'Away Team'
-                    ]
-                )
+                        # Fill remaining positions up to 11 with empty "Did not bat" entries
+                        # This ensures consistent team size across all innings
+                        while position <= 11:
+                            all_batting_data.append([
+                                filename, Inns, Bat_Team, Bowl_Team, position,
+                                '', 'Did not bat', 0, 0, 0, 0,
+                                Home_Team, Away_Team
+                            ])
+                            position += 1
 
-                # Add this file's DataFrame to our list
-                dataframes.append(df_innings)
+        # Create single DataFrame at the end instead of concatenating multiple
+        if not all_batting_data:
+            return pd.DataFrame(columns=[
+                'File Name', 'Innings', 'Bat Team', 'Bowl Team', 'Position', 
+                'Name', 'How Out', 'Runs', 'Balls', '4s', '6s', 
+                'Home Team', 'Away Team'
+            ])
 
-        # Combine all individual file DataFrames into one master DataFrame
-        final_innings_df = pd.concat(dataframes, ignore_index=True)
-
-        # Create batting DataFrame from the final innings data
-        bat_df = final_innings_df
+        # Convert all batting data to DataFrame with appropriate column names
+        bat_df = pd.DataFrame(
+            all_batting_data, 
+            columns=[
+                'File Name', 'Innings', 'Bat Team', 'Bowl Team', 'Position', 
+                'Name', 'How Out', 'Runs', 'Balls', '4s', '6s', 
+                'Home Team', 'Away Team'
+            ]
+        )
 
         # Rename columns to match game_df naming convention (standardize column names)
         bat_df = bat_df.rename(columns={
@@ -170,31 +171,31 @@ def process_bat_stats(directory_path, game_df, match_df):
         bat_df['Year'] = bat_df['Year'].astype(int)  # Convert to integer
         bat_df['Year'] = bat_df['Year'].apply(lambda x: f"{x:d}")  # Format without commas
         
-        # Add derived boolean columns for different batting statistics
-        # These will be useful for aggregations and filtering
-        bat_df['Batted'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' else 1)
-        bat_df['Out'] = bat_df['How Out'].apply(lambda x: 0 if x == 'Did not bat' or x == 'not out' else 1)
-        bat_df['Not Out'] = bat_df['How Out'].apply(lambda x: 1 if x == 'not out' else 0)
-        bat_df['DNB'] = bat_df['How Out'].apply(lambda x: 1 if x == 'Did not bat' else 0)
+        # Vectorized calculations for derived columns
+        bat_df['Batted'] = (bat_df['How Out'] != 'Did not bat').astype(int)
+        bat_df['Out'] = ((bat_df['How Out'] != 'Did not bat') & (bat_df['How Out'] != 'not out')).astype(int)
+        bat_df['Not Out'] = (bat_df['How Out'] == 'not out').astype(int)
+        bat_df['DNB'] = (bat_df['How Out'] == 'Did not bat').astype(int)
         
-        # Add milestone innings indicators
-        bat_df['50s'] = bat_df['Runs'].apply(lambda x: 1 if 50 <= x < 100 else 0)
-        bat_df['100s'] = bat_df['Runs'].apply(lambda x: 1 if 100 <= x < 200 else 0)
-        bat_df['200s'] = bat_df['Runs'].apply(lambda x: 1 if x >= 200 else 0)
-        bat_df['<25&Out'] = bat_df.apply(lambda row: 1 if row['Runs'] <= 25 and row['Out'] == 1 else 0, axis=1)
+        # Vectorized milestone calculations
+        bat_df['50s'] = ((bat_df['Runs'] >= 50) & (bat_df['Runs'] < 100)).astype(int)
+        bat_df['100s'] = ((bat_df['Runs'] >= 100) & (bat_df['Runs'] < 200)).astype(int)
+        bat_df['200s'] = (bat_df['Runs'] >= 200).astype(int)
+        bat_df['<25&Out'] = ((bat_df['Runs'] <= 25) & (bat_df['Out'] == 1)).astype(int)
 
-        # Add dismissal type indicators
-        bat_df['Caught'] = bat_df['How Out'].apply(lambda x: 1 if x.startswith('c ') else 0)
-        bat_df['Bowled'] = bat_df['How Out'].apply(lambda x: 1 if x.startswith('b ') else 0)
-        bat_df['LBW'] = bat_df['How Out'].apply(lambda x: 1 if x.startswith('lbw ') else 0)
-        bat_df['Run Out'] = bat_df['How Out'].apply(lambda x: 1 if x.startswith('run') else 0)
-        bat_df['Stumped'] = bat_df['How Out'].apply(lambda x: 1 if x.startswith('st') else 0)
+        # Vectorized dismissal type calculations
+        bat_df['Caught'] = bat_df['How Out'].str.startswith('c ').astype(int)
+        bat_df['Bowled'] = bat_df['How Out'].str.startswith('b ').astype(int)
+        bat_df['LBW'] = bat_df['How Out'].str.startswith('lbw ').astype(int)
+        bat_df['Run Out'] = bat_df['How Out'].str.startswith('run').astype(int)
+        bat_df['Stumped'] = bat_df['How Out'].str.startswith('st').astype(int)
 
         # Calculate boundary runs (4s and 6s)
         bat_df['Boundary Runs'] = (bat_df['4s'] * 4) + (bat_df['6s'] * 6)
 
-        # Calculate strike rate (runs per 100 balls)
-        bat_df['Strike Rate'] = (bat_df['Runs'] / bat_df['Balls'] * 100).round(2)
+        # Vectorized strike rate calculation
+        bat_df['Strike Rate'] = np.where(bat_df['Balls'] > 0, 
+                                        (bat_df['Runs'] / bat_df['Balls'] * 100).round(2), 0)
 
         # Function to calculate total team balls based on format and innings state
         def calculate_team_balls(row):
@@ -206,20 +207,22 @@ def process_bat_stats(directory_path, game_df, match_df):
                 ]['Balls'].sum()
             else:
                 # For incomplete innings, use format-specific ball counts
-                if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
+                format_val = row['Match_Format']
+                if format_val in ['The Hundred', '100 Ball Trophy']:
                     return 100  # 100-ball format
-                elif row['Match_Format'] == 'T20':
+                elif format_val == 'T20':
                     return 120  # 20 overs = 120 balls
-                elif row['Match_Format'] == 'One Day':
+                elif format_val == 'One Day':
                     return 300  # 50 overs = 300 balls
                 else:  # Test Match or First Class
                     # Handle decimal overs (e.g., 90.3 overs = 90*6 + 3 = 543 balls)
-                    if pd.isna(row['Overs']):
+                    overs_val = row['Overs']
+                    if pd.isna(overs_val):
                         return 0
                     try:
                         # Split overs into whole and partial
-                        whole_overs = int(float(row['Overs']))
-                        partial_balls = int((float(row['Overs']) % 1) * 10)
+                        whole_overs = int(float(overs_val))
+                        partial_balls = int((float(overs_val) % 1) * 10)
                         return (whole_overs * 6) + partial_balls
                     except (ValueError, TypeError):
                         # Fallback: calculate from actual balls faced
@@ -231,8 +234,7 @@ def process_bat_stats(directory_path, game_df, match_df):
         # Apply team balls calculation to each row
         bat_df['Team Balls'] = bat_df.apply(calculate_team_balls, axis=1)
 
-        # Handle division by zero in strike rate calculation
-        bat_df['Strike Rate'] = bat_df.apply(lambda x: x['Strike Rate'] if x['Balls'] > 0 else 0, axis=1)
+        # Handle division by zero in strike rate calculation (already handled above)
 
         # Transform competition names to standardized format
         def transform_competition(row):
