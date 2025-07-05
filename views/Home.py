@@ -375,7 +375,9 @@ uploaded_files = st.file_uploader(
 
 # File info display
 if uploaded_files:
-    estimated_time = len(uploaded_files) * 0.5  # Rough estimate of 0.5 seconds per file
+    # More accurate estimation based on real processing time
+    # Using ~0.05 seconds per file (20 files per second) as a more realistic estimate
+    estimated_time = len(uploaded_files) * 0.05
     if estimated_time < 60:
         time_estimate = f"~{estimated_time:.0f} seconds"
     else:
