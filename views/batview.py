@@ -289,6 +289,11 @@ def get_filtered_options(df, column, selected_filters=None):
     return ['All'] + sorted(filtered_df[column].unique().tolist())
 
 def display_bat_view():
+    # Force clear any cached content that might be causing issues
+    if 'force_clear_cache' not in st.session_state:
+        st.cache_data.clear()
+        st.session_state['force_clear_cache'] = True
+    
     # Modern Main Header
     st.markdown("""
     <div class="main-header">
@@ -1392,65 +1397,46 @@ def display_bat_view():
 
         # Latest Innings Tab
         with tabs[3]:
-            # Cache key for latest innings statistics
-            latest_inns_cache_key = f"{cache_key}_latest_innings"
-            latest_inns_df = get_cached_dataframe(latest_inns_cache_key)
-
-            if latest_inns_df is None:
-                # Create the latest_inns_df by grouping by 'Name', 'Match_Format', 'Date', and 'Innings'
-                latest_inns_df = filtered_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
-                    'Bat_Team_y': 'first',
-                    'Bowl_Team_y': 'first',
-                    'How Out': 'first',    
-                    'Balls': 'sum',        
-                    'Runs': ['sum'],       
-                    '4s': 'sum',           
-                    '6s': 'sum',           
-                }).reset_index()
-
-                # Flatten multi-level columns
-                latest_inns_df.columns = [
-                    'Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 
-                    'How Out', 'Balls', 'Runs', '4s', '6s'
-                ]
-
-                # Convert Date to datetime for proper sorting - using a more flexible format
-                latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'], format='%d %b %Y')
-
-                # Sort by Date in descending order (newest to oldest)
-                latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(20)
-
-                # Convert Date format to 'dd/mm/yyyy' for display
-                latest_inns_df['Date'] = latest_inns_df['Date'].dt.strftime('%d/%m/%Y')
-
-                # Reorder columns to put Runs before Balls
-                latest_inns_df = latest_inns_df[['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 
-                                            'How Out', 'Runs', 'Balls', '4s', '6s']]
-                
-                # Cache the latest innings data
-                cache_dataframe(latest_inns_cache_key, latest_inns_df)
-
-            # Calculate the 'Out' column based on 'How Out'
-            latest_inns_df['Out'] = latest_inns_df['How Out'].apply(lambda x: 1 if x not in ['not out', 'did not bat', ''] else 0)
-
-            # Calculate summary statistics for the last 20 innings
-            last_20_stats = latest_inns_df.agg({
-                'Runs': 'sum',
+            # Create latest innings dataframe
+            fresh_latest_df = filtered_df.copy()
+            
+            # Process the latest innings data
+            latest_innings_raw = fresh_latest_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
+                'Bat_Team_y': 'first',
+                'Bowl_Team_y': 'first', 
+                'How Out': 'first',
                 'Balls': 'sum',
+                'Runs': 'sum',
                 '4s': 'sum',
-                '6s': 'sum',
-                'Innings': 'count',
-                'Out': 'sum'
-            }).to_dict()
-
-            last_20_stats['Matches'] = latest_inns_df['Date'].nunique()
-            last_20_stats['50s'] = latest_inns_df[(latest_inns_df['Runs'] >= 50) & (latest_inns_df['Runs'] <= 99)].shape[0]
-            last_20_stats['100s'] = latest_inns_df[latest_inns_df['Runs'] >= 100].shape[0]
-            last_20_stats['Average'] = last_20_stats['Runs'] / last_20_stats['Out'] if last_20_stats['Out'] > 0 else 0
-            last_20_stats['Strike Rate'] = (last_20_stats['Runs'] / last_20_stats['Balls']) * 100 if last_20_stats['Balls'] > 0 else 0
-            last_20_stats['Balls Per Out'] = last_20_stats['Balls'] / last_20_stats['Out'] if last_20_stats['Out'] > 0 else 0
-
-            # Display summary cards
+                '6s': 'sum'
+            }).reset_index()
+            
+            # Rename columns
+            latest_innings_raw.columns = ['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 'How Out', 'Balls', 'Runs', '4s', '6s']
+            
+            # Convert and sort dates
+            latest_innings_raw['Date'] = pd.to_datetime(latest_innings_raw['Date'], format='%d %b %Y')
+            latest_innings_raw = latest_innings_raw.sort_values(by='Date', ascending=False).head(20)
+            latest_innings_raw['Date'] = latest_innings_raw['Date'].dt.strftime('%d/%m/%Y')
+            
+            # Reorder columns
+            final_latest_df = latest_innings_raw[['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 'How Out', 'Runs', 'Balls', '4s', '6s']]
+            
+            # Calculate stats
+            final_latest_df['Out'] = final_latest_df['How Out'].apply(lambda x: 1 if x not in ['not out', 'did not bat', ''] else 0)
+            
+            total_runs = final_latest_df['Runs'].sum()
+            total_balls = final_latest_df['Balls'].sum()
+            total_outs = final_latest_df['Out'].sum()
+            total_innings = len(final_latest_df)
+            total_matches = final_latest_df['Date'].nunique()
+            total_50s = len(final_latest_df[(final_latest_df['Runs'] >= 50) & (final_latest_df['Runs'] < 100)])
+            total_100s = len(final_latest_df[final_latest_df['Runs'] >= 100])
+            
+            calculated_avg = total_runs / total_outs if total_outs > 0 else 0
+            calculated_sr = (total_runs / total_balls * 100) if total_balls > 0 else 0
+            
+            # Title section
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
@@ -1459,82 +1445,48 @@ def display_bat_view():
                 <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">⚡ Last 20 Innings</h3>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Metrics section
+            st.markdown("### 📊 Summary Statistics")
             col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
-
-
+            
             with col1:
-                st.metric("Matches", last_20_stats['Matches'], border=True)
+                st.metric("Matches", total_matches, border=True)
             with col2:
-                st.metric("Innings", last_20_stats['Innings'], border=True)
+                st.metric("Innings", total_innings, border=True)
             with col3:
-                st.metric("Outs", last_20_stats['Out'], border=True)
+                st.metric("Outs", total_outs, border=True)
             with col4:
-                st.metric("Runs", last_20_stats['Runs'], border=True)
+                st.metric("Runs", total_runs, border=True)
             with col5:
-                st.metric("Balls", last_20_stats['Balls'], border=True)
+                st.metric("Balls", total_balls, border=True)
             with col6:
-                st.metric("50s", last_20_stats['50s'], border=True)
+                st.metric("50s", total_50s, border=True)
             with col7:
-                st.metric("100s", last_20_stats['100s'], border=True)
+                st.metric("100s", total_100s, border=True)
             with col8:
-                st.metric("Average", f"{last_20_stats['Average']:.2f}", border=True)
+                st.metric("Average", f"{calculated_avg:.2f}", border=True)
             with col9:
-                st.metric("Strike Rate", f"{last_20_stats['Strike Rate']:.2f}", border=True)
-
-            # Function to apply background color based on Runs
-            def color_runs(value):
-                if value <= 20:
-                    return 'background-color: #DE6A73'  # Light Red
-                elif 21 <= value <= 49:
-                    return 'background-color: #DEAD68'  # Light Yellow
-                elif 50 <= value < 100:
-                    return 'background-color: #6977DE'  # Light Blue
-                elif value >= 100:
-                    return 'background-color: #69DE85'  # Light Green
-                return ''  # Default (no background color)
-
-            # Apply conditional formatting to the 'Runs' column
-            styled_df = latest_inns_df.style.applymap(color_runs, subset=['Runs'])
-
-            # Display the dataframe
-            st.dataframe(styled_df, height=735, use_container_width=True, hide_index=True)
-
-            # Ensure 'Date' column is in datetime format
-            filtered_df['Date'] = pd.to_datetime(filtered_df['Date'], format='%d %b %Y')
-
-            # Calculate the last 20 innings for each player
-            last_20_innings_all_players = filtered_df.groupby('Name').apply(lambda x: x.nlargest(20, 'Date')).reset_index(drop=True)
-
-            # Display a dataframe with Name, Match_Format, and calculated metrics
-            metrics_df = last_20_innings_all_players.groupby(['Name', 'Match_Format']).agg({
-                'Date': 'nunique',
-                'Innings': 'count',
-                'Out': 'sum',
-                'Runs': 'sum',
-                'Balls': 'sum'
-            }).reset_index()
-
-            # Now calculate '50s' and '100s' after the aggregation
-            metrics_df['50s'] = last_20_innings_all_players.groupby(['Name', 'Match_Format'])['Runs'].apply(lambda x: ((x >= 50) & (x <= 99)).sum()).reset_index(drop=True)
-            metrics_df['100s'] = last_20_innings_all_players.groupby(['Name', 'Match_Format'])['Runs'].apply(lambda x: (x >= 100).sum()).reset_index(drop=True)
-
-            # Calculate Average and Strike Rate
-            metrics_df['Average'] = metrics_df['Runs'] / metrics_df['Out']
-            metrics_df['Strike Rate'] = (metrics_df['Runs'] / metrics_df['Balls']) * 100
-
-            # Rename columns for clarity
-            metrics_df.columns = ['Name', 'Match_Format', 'Matches', 'Innings', 'Outs', 'Runs', 'Balls', '50s', '100s', 'Average', 'Strike Rate']
-
-            # Display the dataframe
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                        box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Summary Metrics</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+                st.metric("Strike Rate", f"{calculated_sr:.2f}", border=True)
+            
+            # Dataframe section
+            st.markdown("### 📋 Recent Innings Details")
+            
+            # Simple styling function for runs
+            def style_runs_column(val):
+                if val <= 20:
+                    return 'background-color: #ffebee; color: #c62828;'
+                elif 21 <= val <= 49:
+                    return 'background-color: #fff3e0; color: #ef6c00;'
+                elif 50 <= val < 100:
+                    return 'background-color: #e8f5e8; color: #2e7d32;'
+                elif val >= 100:
+                    return 'background-color: #e3f2fd; color: #1565c0;'
+                return ''
+            
+            # Apply styling and display
+            styled_latest_df = final_latest_df.style.applymap(style_runs_column, subset=['Runs'])
+            st.dataframe(styled_latest_df, height=735, use_container_width=True, hide_index=True)
 
         # Opponent Stats Tab  
         with tabs[4]:
@@ -3122,7 +3074,6 @@ def display_bat_view():
                     # Cache the data
                     cache_dataframe(best_season_avg_cache_key, best_season_avg_df)
 
-                # Display the header
                 # Display the header
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
