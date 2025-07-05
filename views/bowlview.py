@@ -111,24 +111,40 @@ def get_filtered_options(df, column, selected_filters=None):
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
         # Get the bowling dataframe with safer date parsing
+        bowl_df = st.session_state['bowl_df'].copy()
+        
+
+            
         try:
-            bowl_df = st.session_state['bowl_df'].copy()
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
-            bowl_df['Year'] = bowl_df['Date'].dt.year
+            # Safer date parsing with multiple fallbacks
+            if 'Date' in bowl_df.columns:
+                bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+                # If coerce resulted in NaT values, try without format
+                if bowl_df['Date'].isna().any():
+                    st.warning("Some dates couldn't be parsed with expected format, trying alternative parsing...")
+                    bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
+                
+                bowl_df['Year'] = bowl_df['Date'].dt.year
+                # Fill any remaining NaN years with a default value
+                bowl_df['Year'] = bowl_df['Year'].fillna(2024).astype(int)
+            else:
+                st.error("No 'Date' column found in bowl_df")
+                bowl_df['Year'] = 2024  # Default year
+                
             # Add HomeOrAway column
-            bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+            if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
+                bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
+            else:
+                st.warning("Could not determine Home/Away status due to missing columns.")
+                bowl_df['HomeOrAway'] = 'Unknown'
 
         except Exception as e:
-            st.error(f"Error processing dates or adding HomeOrAway column. Using original dates.")
-            bowl_df = st.session_state['bowl_df'].copy()
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], errors='coerce')
-            bowl_df['Year'] = bowl_df['Date'].dt.year
-            # Add HomeOrAway column even if date parsing fails partially
-            if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
-                 bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
-            else:
-                 st.warning("Could not determine Home/Away status due to missing columns.")
-                 bowl_df['HomeOrAway'] = 'Unknown' # Default value
+            st.error(f"Error processing dates or adding columns: {str(e)}")
+            # Ensure Year column exists even if there's an error
+            if 'Year' not in bowl_df.columns:
+                bowl_df['Year'] = 2024  # Default year
+            if 'HomeOrAway' not in bowl_df.columns:
+                bowl_df['HomeOrAway'] = 'Unknown'
 
         # Add data validation check and reset filters if needed
         if 'prev_bowl_teams' not in st.session_state:
@@ -173,6 +189,40 @@ def display_bowl_view():
             </div>
             """, unsafe_allow_html=True)
             return
+        
+        # Get match_df to merge the standardized comp column
+        match_df = st.session_state.get('match_df', pd.DataFrame())
+        # Merge the standardized comp column from match_df
+        if not match_df.empty and 'File Name' in bowl_df.columns and 'comp' in match_df.columns:
+            
+            # Remove existing comp column if it exists to avoid conflicts
+            if 'comp' in bowl_df.columns:
+                bowl_df = bowl_df.drop(columns=['comp'])
+            
+            # Create a mapping of File Name to comp from match_df
+            comp_mapping = match_df[['File Name', 'comp']].drop_duplicates()
+            
+            # Merge to get the standardized comp column
+            bowl_df = bowl_df.merge(comp_mapping, on='File Name', how='left')
+            
+            # Check if comp column exists after merge and fill missing values
+            if 'comp' in bowl_df.columns:
+                bowl_df['comp'] = bowl_df['comp'].fillna(bowl_df['Competition'])
+            else:
+                bowl_df['comp'] = bowl_df['Competition']
+        else:
+            # Fallback: use Competition if merge fails
+            bowl_df['comp'] = bowl_df['Competition']
+            # Fallback: use Competition if merge fails
+            bowl_df['comp'] = bowl_df['Competition']
+            
+            # Show fallback info in web app
+            with st.expander("⚠️ Using Fallback Competition Values", expanded=False):
+                st.write("Merge conditions not met, using original Competition column")
+                st.write(f"- match_df empty: {match_df.empty}")
+                st.write(f"- 'File Name' in bowl_df: {'File Name' in bowl_df.columns}")
+                st.write(f"- 'comp' in match_df: {'comp' in match_df.columns if not match_df.empty else 'N/A'}")
+
         
         # Initialize session state for filters if not exists
         if 'bowl_filter_state' not in st.session_state:
@@ -242,17 +292,20 @@ def display_bowl_view():
                 st.rerun()
 
         with col5:
+            
             try:
                 available_comp = get_filtered_options(bowl_df, 'comp',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
-            except KeyError:
-                print("Error accessing comp column, using Competition instead")
+            except KeyError as e:
                 available_comp = get_filtered_options(bowl_df, 'Competition',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            except Exception as e:
+                available_comp = ['All']
             
             comp_choice = st.multiselect('Competition:',
                                        available_comp,
                                        default=[c for c in st.session_state.bowl_filter_state['comp'] if c in available_comp])
+            
             if comp_choice != st.session_state.bowl_filter_state['comp']:
                 st.session_state.bowl_filter_state['comp'] = comp_choice
                 st.rerun()
