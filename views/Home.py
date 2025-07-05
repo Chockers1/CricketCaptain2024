@@ -15,6 +15,7 @@ from bowl import process_bowl_stats
 def load_data(uploaded_files):
     """Process uploaded scorecard files with modern progress tracking"""
     total_files = len(uploaded_files)
+    start_time = time.time()  # Start timing
     
     # Modern progress container
     progress_container = st.container()
@@ -93,11 +94,14 @@ def load_data(uploaded_files):
                             
                             # Complete processing
                             progress_bar.progress(1.0)
-                            status_text.text("✅ Processing complete!")
+                            end_time = time.time()
+                            processing_time = end_time - start_time
+                            
+                            status_text.text(f"✅ Processing complete! ({processing_time:.1f} seconds)")
                             st.session_state['data_loaded'] = True
                             
-                            # Show final results
-                            show_processing_results(total_files, duplicates_result)
+                            # Show final results with timing
+                            show_processing_results(total_files, duplicates_result, processing_time)
                             
                         else:
                             show_error("Batting statistics processing failed")
@@ -109,7 +113,9 @@ def load_data(uploaded_files):
                 show_error("Match data processing failed")
                 
     except Exception as e:
-        show_error(f"Processing error: {str(e)}", traceback.format_exc())
+        end_time = time.time()
+        processing_time = end_time - start_time
+        show_error(f"Processing error after {processing_time:.1f} seconds: {str(e)}", traceback.format_exc())
 
 def process_duplicates(bat_df):
     """Process duplicate player detection with modern error handling"""
@@ -176,16 +182,30 @@ def process_duplicates(bat_df):
         st.error(f"Error processing duplicates: {str(e)}")
         return {'multi_team': pd.DataFrame(), 'team_duplicates': pd.DataFrame(), 'has_duplicates': False}
 
-def show_processing_results(total_files, duplicates_result):
+def show_processing_results(total_files, duplicates_result, processing_time=None):
     """Show modern processing results with enhanced styling"""
-    # Success message
+    # Format time display
+    if processing_time:
+        if processing_time < 60:
+            time_text = f"{processing_time:.1f} seconds"
+        else:
+            minutes = int(processing_time // 60)
+            seconds = processing_time % 60
+            time_text = f"{minutes}m {seconds:.1f}s"
+    else:
+        time_text = ""
+    
+    # Success message with timing
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                     padding: 25px; border-radius: 15px; text-align: center; margin: 20px 0;
                     box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
             <h2 style="color: white; margin: 0;">🎉 Processing Complete!</h2>
             <p style="color: white; margin: 10px 0; font-size: 18px;">
-                Successfully processed {total_files} scorecards. Your cricket data is ready to explore!
+                Successfully processed {total_files} scorecards in {time_text}
+            </p>
+            <p style="color: white; margin: 5px 0; font-size: 14px; opacity: 0.9;">
+                Your cricket data is ready to explore!
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -355,10 +375,18 @@ uploaded_files = st.file_uploader(
 
 # File info display
 if uploaded_files:
+    estimated_time = len(uploaded_files) * 0.5  # Rough estimate of 0.5 seconds per file
+    if estimated_time < 60:
+        time_estimate = f"~{estimated_time:.0f} seconds"
+    else:
+        time_estimate = f"~{estimated_time/60:.1f} minutes"
+    
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
                     padding: 15px; border-radius: 10px; margin: 15px 0;">
             <strong>📊 Files Selected:</strong> {len(uploaded_files)} scorecard files ready for processing
+            <br>
+            <strong>⏱️ Estimated Time:</strong> {time_estimate}
         </div>
     """, unsafe_allow_html=True)
 
