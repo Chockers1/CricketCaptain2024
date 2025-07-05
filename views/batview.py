@@ -319,8 +319,25 @@ def display_bat_view():
 
         # Pre-process data once at the beginning
         if 'processed_bat_df' not in st.session_state:
-            # Ensure comp column exists
-            if 'comp' not in bat_df.columns:
+            # Merge the standardized comp column from match_df
+            if not match_df.empty and 'File Name' in bat_df.columns and 'comp' in match_df.columns:
+                # Remove existing comp column if it exists to avoid conflicts
+                if 'comp' in bat_df.columns:
+                    bat_df = bat_df.drop(columns=['comp'])
+                
+                # Create a mapping of File Name to comp from match_df
+                comp_mapping = match_df[['File Name', 'comp']].drop_duplicates()
+                
+                # Merge to get the standardized comp column
+                bat_df = bat_df.merge(comp_mapping, on='File Name', how='left')
+                
+                # Check if comp column exists after merge and fill missing values
+                if 'comp' in bat_df.columns:
+                    bat_df['comp'] = bat_df['comp'].fillna(bat_df['Competition'])
+                else:
+                    bat_df['comp'] = bat_df['Competition']
+            else:
+                # Fallback: use Competition if merge fails
                 bat_df['comp'] = bat_df['Competition']
                 
             # Convert Date to datetime once for all future operations
@@ -412,25 +429,23 @@ def display_bat_view():
                 st.rerun()
 
         # Ensure comp column exists
-        if 'comp' not in bat_df.columns:
-            print("Warning: comp column not found, creating from Competition")
-            bat_df['comp'] = bat_df['Competition']
-
         with col5:
             try:
                 available_comp = get_filtered_options(bat_df, 'comp',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
-            except KeyError:
-                print("Error accessing comp column, using Competition instead")
+            except KeyError as e:
                 available_comp = get_filtered_options(bat_df, 'Competition',
                     {k: v for k, v in selected_filters.items() if k != 'comp' and 'All' not in v})
+            except Exception as e:
+                available_comp = ['All']
             
             comp_choice = st.multiselect('Competition:',
                                        available_comp,
                                        default=[c for c in st.session_state.filter_state['comp'] if c in available_comp])
+            
             if comp_choice != st.session_state.filter_state['comp']:
                 st.session_state.filter_state['comp'] = comp_choice
-                st.rerun()  # Add this line to trigger rerun when competition filter changes
+                st.rerun()
 
         # Calculate career statistics
         career_stats = bat_df.groupby('Name').agg({
