@@ -2083,3 +2083,4 @@ def display_ar_view():
 # Call the function to display with modern styling
 if __name__ == "__main__":
     display_ar_view()
+ 
