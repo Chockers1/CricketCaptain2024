@@ -237,7 +237,7 @@ def login():
         """
         <div class="login-container">
             <div class="login-header">
-                <h1 style="color: #f04f53; margin-bottom: 8px; font-size: 1.8rem;">🏏 Cricket Captain Stats Dashboard</h1>
+                <h1 style="color: #f04f53; margin-bottom: 8px; font-size: 1.6rem;">🏏 Cricket Captain 2025 Stats Pack</h1>
                 <p style="margin-bottom: 12px; font-size: 0.95rem; color: #666;">Access your comprehensive cricket analytics below</p>
                 <div style="background: linear-gradient(135deg, #fff3cd, #ffeaa7); border-left: 4px solid #f39c12; padding: 10px 15px; border-radius: 8px; margin-bottom: 12px;">
                     <p style="margin: 0; font-size: 0.9rem; color: #856404;"><strong>🔐 New July Password:</strong> Check the latest <a href="https://buymeacoffee.com/leadingedgepod/cricket-captain-2025-stats-pack-password-update" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee post</a></p>
