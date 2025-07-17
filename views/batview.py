@@ -4398,3 +4398,4 @@ def display_bat_view():
 
 # Call the function to display the batting view
 display_bat_view()
+ 
