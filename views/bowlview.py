@@ -2848,3 +2848,4 @@ def display_bowl_view():
 
 # Display the bowling view
 display_bowl_view()
+ 
