@@ -138,6 +138,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 versions_data = [
     {
+        "version": "1.22, 2025-07-17",
+        "title": "All-Time Elo, Performance Charts & Head-to-Head Revamp",
+        "description": ("Another major update focused on historical context, player comparisons, and deeper data insights:\n\n"
+                       
+                       "📈 **All-Time Elo Rating Table:**\n"
+                       "• New section showing the highest Elo ratings in County Championship history\n"
+                       "• See how teams rank historically across all eras\n"
+                       "• Highlights sustained excellence and peak performance\n\n"
+                       
+                       "🆚 **Head-to-Head View Enhancements:**\n"
+                       "• Team record and match summary moved to the top for instant visibility\n"
+                       "• Improved layout flow for faster comparison\n\n"
+                       "🏏 **Player Rankings Adjustments:**\n"
+                       "• Hall of Fame thresholds lowered to make rankings more inclusive\n"
+                       "• New cutoffs: 7.5k, 10k, 12.5k points (down from 10k, 15k, 20k)\n\n"
+                       "📊 **Player Comparison Upgrade:**\n"
+                       "• New performance breakdown sections:\n"
+                       "   - Batting Performance\n"
+                       "   - Batting Milestones\n"
+                       "   - Bowling Performance\n"
+                       "   - Bowling Milestones\n"
+                       "   - Awards\n"
+                       "• Combined performance totals added to help spot best all-round contributors\n\n"
+                       "🛠️ **Bug Fixes & Classification Improvements:**\n"
+                       "• Three Day Friendly matches now correctly classified as First Class\n\n"
+                       "📌 **New Graphs & Analytics:**\n"
+                       "• **Bowling Tab (Position):** Added Strike Rate, Economy Rate graphs + scatter plot for performance by position\n"
+                       "• **Batting Tab:** Position and Innings tabs now include Strike Rate graphs alongside batting averages\n\n"
+                       
+                       "This version adds depth to analysis, cleans up key visual areas, and ensures broader recognition of player excellence.")
+    },
+    {
         "version": "1.21, 2025-06-29",
         "title": "UI Enhancements & Duplication Checker",
         "description": ("Major UI modernization and scorecard management improvements:\n\n"

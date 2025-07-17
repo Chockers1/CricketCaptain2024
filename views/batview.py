@@ -1975,18 +1975,106 @@ def display_bat_view():
                 # Cache the innings chart
                 cache_dataframe(innings_chart_cache_key, fig)
 
-            # Display chart title
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
-                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                        box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Average Runs by Innings Number</h3>
-            </div>
-            """, unsafe_allow_html=True)
+            # Create two columns for side-by-side charts
+            col1, col2 = st.columns(2)
             
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
+            with col1:
+                # Display Average chart title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Average Runs by Innings Number</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display the average bar chart
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Cache key for strike rate chart
+                innings_sr_chart_cache_key = f"{cache_key}_innings_sr_chart"
+                sr_fig = get_cached_dataframe(innings_sr_chart_cache_key)
+
+                if sr_fig is None:
+                    # Calculate strike rate by innings
+                    sr_fig = go.Figure()
+
+                    # Calculate Strike Rate
+                    average_runs_innings_df['SR'] = ((average_runs_innings_df['Runs'] / average_runs_innings_df['Balls']) * 100).round(2)
+
+                    # Add Strike Rate trace
+                    sr_fig.add_trace(
+                        go.Bar(
+                            x=average_runs_innings_df['Innings'], 
+                            y=average_runs_innings_df['SR'], 
+                            name='Strike Rate', 
+                            marker_color='#2ecc71'
+                        )
+                    )
+
+                    # Calculate the appropriate strike rate based on selection
+                    if 'All' in name_choice and len(name_choice) == 1:
+                        # Calculate overall strike rate across all innings
+                        overall_sr = average_runs_innings_df['SR'].mean()
+                    else:
+                        # Use individual player's strike rate from bat_career_df
+                        overall_sr = bat_career_df['SR'].iloc[0]
+
+                    # Add horizontal line for strike rate
+                    sr_fig.add_trace(
+                        go.Scatter(
+                            x=[1, max(average_runs_innings_df['Innings'])],
+                            y=[overall_sr, overall_sr],
+                            mode='lines+text',
+                            name='Strike Rate',
+                            line=dict(color='black', width=2, dash='dash'),
+                            text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} SR: {overall_sr:.2f}", ''],
+                            textposition='top center',
+                            showlegend=False
+                        )
+                    )
+
+                    # Update layout
+                    sr_fig.update_layout(
+                        height=500,
+                        xaxis_title='Innings',
+                        yaxis_title='Strike Rate',
+                        margin=dict(l=50, r=50, t=0, b=50),
+                        font=dict(size=12),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+
+                    # Update y-axis to show intervals of 10
+                    sr_fig.update_yaxes(
+                        tickmode='linear',
+                        dtick=10
+                    )
+
+                    # Update x-axis to show all bar positions
+                    sr_fig.update_xaxes(
+                        tickmode='linear',
+                        tick0=0,
+                        dtick=1,
+                    )
+
+                    # Cache the strike rate chart
+                    cache_dataframe(innings_sr_chart_cache_key, sr_fig)
+
+                # Display Strike Rate chart title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(46, 204, 113, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Strike Rate by Innings Number</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display the strike rate bar chart
+                st.plotly_chart(sr_fig, use_container_width=True)
         
         # Position Stats Tab
         with tabs[7]:
@@ -2170,18 +2258,109 @@ def display_bat_view():
                 # Cache the position chart
                 cache_dataframe(position_chart_cache_key, fig)
 
-            # Display chart title
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
-                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                        box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average Runs by Batting Position</h3>
-            </div>
-            """, unsafe_allow_html=True)
+            # Create two columns for side-by-side charts
+            col1, col2 = st.columns(2)
             
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
+            with col1:
+                # Display Average chart title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📍 Average Runs by Batting Position</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display the average bar chart
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Cache key for position strike rate chart
+                position_sr_chart_cache_key = f"{cache_key}_position_sr_chart"
+                sr_fig = get_cached_dataframe(position_sr_chart_cache_key)
+
+                if sr_fig is None:
+                    # Calculate strike rate by position
+                    sr_fig = go.Figure()
+
+                    # Calculate Strike Rate
+                    position_avg_stats_df['SR'] = ((position_avg_stats_df['Runs'] / position_avg_stats_df['Balls']) * 100).round(2)
+                    position_avg_stats_df['SR'] = position_avg_stats_df['SR'].fillna(0)
+
+                    # Add Strike Rate trace
+                    sr_fig.add_trace(
+                        go.Bar(
+                            y=position_avg_stats_df['Position'], 
+                            x=position_avg_stats_df['SR'], 
+                            name='Strike Rate', 
+                            marker_color='#2ecc71',
+                            orientation='h'
+                        )
+                    )
+
+                    # Calculate the appropriate strike rate based on selection
+                    if 'All' in name_choice and len(name_choice) == 1:
+                        # Calculate overall strike rate across all positions
+                        overall_sr = position_avg_stats_df[position_avg_stats_df['SR'] > 0]['SR'].mean()
+                    else:
+                        # Use individual player's strike rate from bat_career_df
+                        overall_sr = bat_career_df['SR'].iloc[0]
+
+                    # Add vertical line for strike rate
+                    sr_fig.add_trace(
+                        go.Scatter(
+                            y=[1, 11],  # Show only positions 1-11
+                            x=[overall_sr, overall_sr],
+                            mode='lines+text',
+                            name='Strike Rate',
+                            line=dict(color='black', width=2, dash='dash'),
+                            text=[f"{'Overall' if 'All' in name_choice and len(name_choice) == 1 else 'Career'} SR: {overall_sr:.2f}", ''],
+                            textposition='top center',
+                            showlegend=False
+                        )
+                    )
+
+                    # Update layout
+                    sr_fig.update_layout(
+                        height=500,
+                        yaxis_title='Position',
+                        xaxis_title='Strike Rate',
+                        margin=dict(l=50, r=50, t=0, b=50),
+                        font=dict(size=12),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+
+                    # Update y-axis to show intervals of 1
+                    sr_fig.update_yaxes(
+                        tickmode='linear',
+                        dtick=1,
+                        range=[0.5, 11.5]  # Add padding on either side of the bars
+                    )
+
+                    # Update x-axis to show intervals of 10
+                    sr_fig.update_xaxes(
+                        tickmode='linear',
+                        dtick=10,
+                        range=[0, max(position_avg_stats_df['SR']) + 10]  # Add some padding to the top
+                    )
+
+                    # Cache the position strike rate chart
+                    cache_dataframe(position_sr_chart_cache_key, sr_fig)
+
+                # Display Strike Rate chart title
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(46, 204, 113, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Strike Rate by Batting Position</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display the strike rate bar chart
+                st.plotly_chart(sr_fig, use_container_width=True)
 
         # Home/Away Stats Tab
         with tabs[8]:
