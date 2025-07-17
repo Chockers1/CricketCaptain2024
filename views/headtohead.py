@@ -17,6 +17,17 @@ def parse_date(date_str):
     except Exception:
         return pd.NaT
 
+def is_part_of_series(competition: str) -> bool:
+    """Check if competition is a numbered series match."""
+    parts = competition.lower().split()
+    return parts[0] in ['1st', '2nd', '3rd', '4th', '5th']
+
+def get_series_number(competition: str) -> int:
+    """Extract the numeric indicator from competition name."""
+    number_map = {'1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5}
+    parts = competition.lower().split()
+    return number_map.get(parts[0], 1)
+
 
 
 # Modern CSS for beautiful UI - Full styling with enhanced elements
@@ -397,162 +408,7 @@ tabs = st.tabs(["Match", "Series", "Tournaments"])
 
 # Existing Match Tab code
 with tabs[0]:
-    #########====================CREATE HEAD TO HEAD TABLE===================######################
-    if 'match_df' in st.session_state:
-        match_df = st.session_state['match_df']
-        
-        # Create two versions of each match: one for home team and one for away team
-        home_stats = match_df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
-        away_stats = match_df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
-        
-        # Prepare home team records
-        home_stats.columns = ['Team', 'Opponent', 'Won', 'Lost', 'Drawn', 'Match_Format']
-        
-        # Prepare away team records (need to flip Win/Loss since they're from home team perspective)
-        away_stats.columns = ['Opponent', 'Team', 'Lost', 'Won', 'Drawn', 'Match_Format']
-        
-        # Combine both perspectives
-        all_matches = pd.concat([home_stats, away_stats], ignore_index=True)
-        
-        # Apply filters before aggregation
-        filtered_matches = filter_by_all(all_matches)
-        
-        # Group by Team and Opponent to get aggregate statistics
-        head2headrecord_df = filtered_matches.groupby(['Team', 'Opponent']).agg({
-            'Won': 'sum',
-            'Lost': 'sum',
-            'Drawn': 'sum'
-        }).reset_index()
-        
-        # Calculate total matches and percentages
-        head2headrecord_df['Matches'] = (head2headrecord_df['Won'] + 
-                                        head2headrecord_df['Lost'] + 
-                                        head2headrecord_df['Drawn'])
-        
-        head2headrecord_df['Win_Percentage'] = (head2headrecord_df['Won'] / 
-                                            head2headrecord_df['Matches'] * 100).round(1)
-        
-        head2headrecord_df['Loss_Percentage'] = (head2headrecord_df['Lost'] / 
-                                                head2headrecord_df['Matches'] * 100).round(1)
-        
-        head2headrecord_df['Draw_Percentage'] = (head2headrecord_df['Drawn'] / 
-                                                head2headrecord_df['Matches'] * 100).round(1)
-        
-        # Sort by number of matches and win percentage
-        head2headrecord_df = head2headrecord_df.sort_values(['Matches', 'Win_Percentage'], 
-                                                        ascending=[False, False])
-        
-        # Display the head-to-head records
-        # Beautiful banner header
-        st.markdown("""
-            <div style="text-align: center; margin: 30px 0;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                        📊 Head to Head Records
-                    </h2>
-                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                        Complete match-by-match analysis
-                    </p>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.dataframe(head2headrecord_df, use_container_width=True, hide_index=True)
-        
-        # Store in session state for future use
-        st.session_state['head2headrecord_df'] = head2headrecord_df
-        
-        # Display raw matches table
-        # Beautiful banner header
-        st.markdown("""
-            <div style="text-align: center; margin: 30px 0;">
-                <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
-                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                        📋 All Matches
-                    </h2>
-                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                        Complete match records and details
-                    </p>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Create a filtered and sorted version of the raw matches with selected columns
-        raw_matches = match_df.copy()
-        raw_matches['Date'] = raw_matches['Date'].apply(parse_date)  # Ensure dates are parsed
-        
-        # Select and rename columns
-        raw_matches = raw_matches[['Date', 'Home_Team', 'Away_Team', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Margin']]
-        raw_matches.columns = ['Date', 'Home Team', 'Away Team', 'Competition', 'Format', 'POM', 'Margin']
-        
-        # Apply format filter to raw matches
-        if 'All' not in format_choice:
-            raw_matches = raw_matches[raw_matches['Format'].isin(format_choice)]
-        
-        # Apply team filters to raw matches (checking both Home Team and Away Team)
-        if 'All' not in team_choice:
-            raw_matches = raw_matches[
-                (raw_matches['Home Team'].isin(team_choice)) | 
-                (raw_matches['Away Team'].isin(team_choice))
-            ]
-        
-        if 'All' not in opponent_choice:
-            raw_matches = raw_matches[
-                (raw_matches['Home Team'].isin(opponent_choice)) | 
-                (raw_matches['Away Team'].isin(opponent_choice))
-            ]
-        
-        # Sort by date (newest to oldest)
-        raw_matches = raw_matches.sort_values('Date', ascending=False)
-        
-        # Format Date columns to dd/mm/yyyy after parsing
-        raw_matches['Date'] = raw_matches['Date'].apply(
-            lambda d: d.strftime('%d/%m/%Y') if not pd.isnull(d) else ''
-        )
-        
-        # Display the filtered and sorted matches
-        st.dataframe(raw_matches, use_container_width=True, hide_index=True)
-        
-        # Add metrics if a team is selected
-        if 'All' not in team_choice and team_choice:
-            total_matches = len(raw_matches)
-            total_wins = sum(1 for margin in raw_matches['Margin'] if any(team in margin for team in team_choice) and 'won' in margin)
-            total_losses = sum(1 for margin in raw_matches['Margin'] if all(team not in margin for team in team_choice) and 'won' in margin)
-            total_draws = sum(1 for margin in raw_matches['Margin'] if 'drawn' in margin)
-            win_percentage = (total_wins / total_matches) * 100 if total_matches > 0 else 0
-            loss_percentage = (total_losses / total_matches) * 100 if total_matches > 0 else 0
-
-            # Beautiful banner header
-            st.markdown("""
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-                            🏆 Team Record
-                        </h2>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                            Performance statistics summary
-                        </p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                st.metric("Matches", total_matches, border=True)
-            with col2:
-                st.metric("Won", total_wins, border=True)
-            with col3:
-                st.metric("Lost", total_losses, border=True)
-            with col4:
-                st.metric("Win %", f"{win_percentage:.2f}%", border=True)
-            with col5:
-                st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
-    else:
-        st.info("No match records available for head-to-head analysis.")
-
+    # SECTION 1: Match Summary by Format (moved to top)
     if 'match_df' in st.session_state:
         df = st.session_state['match_df'].copy()
         df['Date'] = df['Date'].apply(parse_date)
@@ -592,7 +448,7 @@ with tabs[0]:
                 <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
                            padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
                     <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                        📈 Match Summary by Format
+                        � Match Summary by Format
                     </h2>
                     <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
                         Performance breakdown across different formats
@@ -602,10 +458,105 @@ with tabs[0]:
         """, unsafe_allow_html=True)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-    ###################
+    # SECTION 2: Team Record (moved up, only shown when team filter is selected)
+    if 'match_df' in st.session_state and 'All' not in team_choice and team_choice:
+        match_df = st.session_state['match_df']
+        
+        # Create a filtered and sorted version of the raw matches with selected columns
+        raw_matches = match_df.copy()
+        raw_matches['Date'] = raw_matches['Date'].apply(parse_date)  # Ensure dates are parsed
+        
+        # Select and rename columns
+        raw_matches = raw_matches[['Date', 'Home_Team', 'Away_Team', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Margin']]
+        raw_matches.columns = ['Date', 'Home Team', 'Away Team', 'Competition', 'Format', 'POM', 'Margin']
+        
+        # Apply format filter to raw matches
+        if 'All' not in format_choice:
+            raw_matches = raw_matches[raw_matches['Format'].isin(format_choice)]
+        
+        # Apply team filters to raw matches (checking both Home Team and Away Team)
+        if 'All' not in team_choice:
+            raw_matches = raw_matches[
+                (raw_matches['Home Team'].isin(team_choice)) | 
+                (raw_matches['Away Team'].isin(team_choice))
+            ]
+        
+        if 'All' not in opponent_choice:
+            raw_matches = raw_matches[
+                (raw_matches['Home Team'].isin(opponent_choice)) | 
+                (raw_matches['Away Team'].isin(opponent_choice))
+            ]
+        
+        # Sort by date (newest to oldest)
+        raw_matches = raw_matches.sort_values('Date', ascending=False)
+        
+        # Format Date columns to dd/mm/yyyy after parsing
+        raw_matches['Date'] = raw_matches['Date'].apply(
+            lambda d: d.strftime('%d/%m/%Y') if not pd.isnull(d) else ''
+        )
+        
+        # Calculate team record metrics
+        total_matches = len(raw_matches)
+        total_wins = sum(1 for margin in raw_matches['Margin'] if any(team in margin for team in team_choice) and 'won' in margin)
+        total_losses = sum(1 for margin in raw_matches['Margin'] if all(team not in margin for team in team_choice) and 'won' in margin)
+        total_draws = sum(1 for margin in raw_matches['Margin'] if 'drawn' in margin)
+        win_percentage = (total_wins / total_matches) * 100 if total_matches > 0 else 0
+        loss_percentage = (total_losses / total_matches) * 100 if total_matches > 0 else 0
 
-    # Form Guide
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        🏆 Team Record
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Performance statistics summary
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Matches", total_matches, border=True)
+        with col2:
+            st.metric("Won", total_wins, border=True)
+        with col3:
+            st.metric("Lost", total_losses, border=True)
+        with col4:
+            st.metric("Win %", f"{win_percentage:.2f}%", border=True)
+        with col5:
+            st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
+
+    # SECTION 3: Form Guide (moved up, only shown when team filter is selected)
     if 'match_df' in st.session_state and 'All' not in team_choice:
+        # Get raw_matches data for form guide
+        if 'raw_matches' not in locals():
+            match_df = st.session_state['match_df']
+            raw_matches = match_df.copy()
+            raw_matches['Date'] = raw_matches['Date'].apply(parse_date)
+            raw_matches = raw_matches[['Date', 'Home_Team', 'Away_Team', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Margin']]
+            raw_matches.columns = ['Date', 'Home Team', 'Away Team', 'Competition', 'Format', 'POM', 'Margin']
+            
+            if 'All' not in format_choice:
+                raw_matches = raw_matches[raw_matches['Format'].isin(format_choice)]
+            if 'All' not in team_choice:
+                raw_matches = raw_matches[
+                    (raw_matches['Home Team'].isin(team_choice)) | 
+                    (raw_matches['Away Team'].isin(team_choice))
+                ]
+            if 'All' not in opponent_choice:
+                raw_matches = raw_matches[
+                    (raw_matches['Home Team'].isin(opponent_choice)) | 
+                    (raw_matches['Away Team'].isin(opponent_choice))
+                ]
+            raw_matches = raw_matches.sort_values('Date', ascending=False)
+            raw_matches['Date'] = raw_matches['Date'].apply(
+                lambda d: d.strftime('%d/%m/%Y') if not pd.isnull(d) else ''
+            )
+
         # Beautiful banner header for Form Guide
         st.markdown("""
             <div style="text-align: center; margin: 30px 0;">
@@ -809,11 +760,133 @@ with tabs[0]:
                             </div>
                             """
                             st.markdown(form_html, unsafe_allow_html=True)
-
-
     else:
         if 'match_df' in st.session_state:
             st.info("Select a team in the filter to see their form guide.")
+
+    # SECTION 4: Head to Head Records (moved down)
+    if 'match_df' in st.session_state:
+        match_df = st.session_state['match_df']
+        
+        # Create two versions of each match: one for home team and one for away team
+        home_stats = match_df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
+        away_stats = match_df[['Home_Team', 'Away_Team', 'Home_Win', 'Home_Lost', 'Home_Drawn', 'Match_Format']].copy()
+        
+        # Prepare home team records
+        home_stats.columns = ['Team', 'Opponent', 'Won', 'Lost', 'Drawn', 'Match_Format']
+        
+        # Prepare away team records (need to flip Win/Loss since they're from home team perspective)
+        away_stats.columns = ['Opponent', 'Team', 'Lost', 'Won', 'Drawn', 'Match_Format']
+        
+        # Combine both perspectives
+        all_matches = pd.concat([home_stats, away_stats], ignore_index=True)
+        
+        # Apply filters before aggregation
+        filtered_matches = filter_by_all(all_matches)
+        
+        # Group by Team and Opponent to get aggregate statistics
+        head2headrecord_df = filtered_matches.groupby(['Team', 'Opponent']).agg({
+            'Won': 'sum',
+            'Lost': 'sum',
+            'Drawn': 'sum'
+        }).reset_index()
+        
+        # Calculate total matches and percentages
+        head2headrecord_df['Matches'] = (head2headrecord_df['Won'] + 
+                                        head2headrecord_df['Lost'] + 
+                                        head2headrecord_df['Drawn'])
+        
+        head2headrecord_df['Win_Percentage'] = (head2headrecord_df['Won'] / 
+                                            head2headrecord_df['Matches'] * 100).round(1)
+        
+        head2headrecord_df['Loss_Percentage'] = (head2headrecord_df['Lost'] / 
+                                                head2headrecord_df['Matches'] * 100).round(1)
+        
+        head2headrecord_df['Draw_Percentage'] = (head2headrecord_df['Drawn'] / 
+                                                head2headrecord_df['Matches'] * 100).round(1)
+        
+        # Sort by number of matches and win percentage
+        head2headrecord_df = head2headrecord_df.sort_values(['Matches', 'Win_Percentage'], 
+                                                        ascending=[False, False])
+        
+        # Display the head-to-head records
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📊 Head to Head Records
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Complete match-by-match analysis
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.dataframe(head2headrecord_df, use_container_width=True, hide_index=True)
+        
+        # Store in session state for future use
+        st.session_state['head2headrecord_df'] = head2headrecord_df
+        
+    # SECTION 5: All Matches (moved down)
+    if 'match_df' in st.session_state:
+        match_df = st.session_state['match_df']
+        
+        # Display raw matches table
+        # Beautiful banner header
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        � All Matches
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Complete match records and details
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Create a filtered and sorted version of the raw matches with selected columns
+        raw_matches = match_df.copy()
+        raw_matches['Date'] = raw_matches['Date'].apply(parse_date)  # Ensure dates are parsed
+        
+        # Select and rename columns
+        raw_matches = raw_matches[['Date', 'Home_Team', 'Away_Team', 'Competition', 'Match_Format', 'Player_of_the_Match', 'Margin']]
+        raw_matches.columns = ['Date', 'Home Team', 'Away Team', 'Competition', 'Format', 'POM', 'Margin']
+        
+        # Apply format filter to raw matches
+        if 'All' not in format_choice:
+            raw_matches = raw_matches[raw_matches['Format'].isin(format_choice)]
+        
+        # Apply team filters to raw matches (checking both Home Team and Away Team)
+        if 'All' not in team_choice:
+            raw_matches = raw_matches[
+                (raw_matches['Home Team'].isin(team_choice)) | 
+                (raw_matches['Away Team'].isin(team_choice))
+            ]
+        
+        if 'All' not in opponent_choice:
+            raw_matches = raw_matches[
+                (raw_matches['Home Team'].isin(opponent_choice)) | 
+                (raw_matches['Away Team'].isin(opponent_choice))
+            ]
+        
+        # Sort by date (newest to oldest)
+        raw_matches = raw_matches.sort_values('Date', ascending=False)
+        
+        # Format Date columns to dd/mm/yyyy after parsing
+        raw_matches['Date'] = raw_matches['Date'].apply(
+            lambda d: d.strftime('%d/%m/%Y') if not pd.isnull(d) else ''
+        )
+        
+        # Display the filtered and sorted matches
+        st.dataframe(raw_matches, use_container_width=True, hide_index=True)
+    else:
+        st.info("No match records available for head-to-head analysis.")
 
     #######
     if 'match_df' in st.session_state and 'All' not in team_choice:
@@ -1420,23 +1493,11 @@ with tabs[1]:
     if ('All' in team_choice and len(team_choice) > 1) or (len(team_choice) > 1 and 'All' not in team_choice):
         st.error("Please select either 'All' or one team to view the series data.")
     else:
-        # Always show Series Data section
+        # Initialize series_grouped for use in moved sections
+        series_grouped = pd.DataFrame()
+        
+        # Process series data first (needed for the moved sections)
         if 'match_df' in st.session_state:
-            # Beautiful banner header for Series Data
-            st.markdown("""
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                            🏆 Series Data
-                        </h2>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                            Multi-match series records and results
-                        </p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
             match_df = st.session_state['match_df']
             series_df = match_df.copy()
             series_df['Date'] = pd.to_datetime(series_df['Date'], dayfirst=True).dt.date
@@ -1458,17 +1519,6 @@ with tabs[1]:
                     (series_df['Away_Team'].isin(opponent_choice))
                 ]
 
-            def is_part_of_series(competition: str) -> bool:
-                """Check if competition is a numbered series match."""
-                parts = competition.lower().split()
-                return parts[0] in ['1st', '2nd', '3rd', '4th', '5th']
-
-            def get_series_number(competition: str) -> int:
-                """Extract the numeric indicator from competition name."""
-                number_map = {'1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5}
-                parts = competition.lower().split()
-                return number_map.get(parts[0], 1)
-
             # Filter out competitions we regard for series
             potential_series = [
                 '1st Test Match','2nd Test Match','3rd Test Match','4th Test Match','5th Test Match',
@@ -1483,251 +1533,547 @@ with tabs[1]:
             series_df = series_df.sort_values('Date', ascending=True)
 
             series_list = []
-            series_grouped = pd.DataFrame()  # Initialize to prevent errors
             
             for _, match in series_df.iterrows():
-                comp = match['Competition']
-                match_date = pd.to_datetime(match['Date'], dayfirst=True)
-                if is_part_of_series(comp):
-                    # Group all matches in this series within 60 days, same teams & format
-                    subset = series_df[
-                        (series_df['Home_Team'] == match['Home_Team']) &
-                        (series_df['Away_Team'] == match['Away_Team']) &
-                        (series_df['Match_Format'] == match['Match_Format']) &
-                        (abs(pd.to_datetime(series_df['Date'], dayfirst=True) - match_date).dt.days <= 60)
-                    ]
-                    if not subset.empty:
-                        info = {
-                            'Start_Date': min(pd.to_datetime(subset['Date'], dayfirst=True)).date(),
-                            'End_Date': max(pd.to_datetime(subset['Date'], dayfirst=True)).date(),
-                            'Home_Team': match['Home_Team'],
-                            'Away_Team': match['Away_Team'],
-                            'Match_Format': match['Match_Format'],
-                            'Games_Played': len(subset),
-                            'Total_Home_Wins': subset['Home_Win'].sum(),
-                            'Total_Away_Wins': subset['Home_Lost'].sum(),
-                            'Total_Draws': subset['Home_Drawn'].sum(),
-                            'Show_Matches': False  # Add default value for checkbox
-                        }
-                        key = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
-                        if not any(x.get('key') == key for x in series_list):
-                            info['key'] = key
-                            series_list.append(info)
-                elif comp in [
-                    'Only One Day International','Only 20 Over International','Only Test Match','Test Championship Final'
-                ]:
-                    info = {
-                        'Start_Date': match_date.date(),
-                        'End_Date': match_date.date(),
-                        'Home_Team': match['Home_Team'],
-                        'Away_Team': match['Away_Team'],
-                        'Match_Format': match['Match_Format'],
-                        'Games_Played': 1,
-                        'Total_Home_Wins': match['Home_Win'],
-                        'Total_Away_Wins': match['Home_Lost'],
-                        'Total_Draws': match['Home_Drawn'],
-                        'Show_Matches': False  # Add default value for checkbox
+                # Group matches into series
+                home_team = match['Home_Team']
+                away_team = match['Away_Team']
+                match_format = match['Match_Format']
+                date = match['Date']
+                competition = match['Competition']
+                
+                # Find existing series or create new one
+                series_found = False
+                for series in series_list:
+                    if (series['Home_Team'] == home_team and 
+                        series['Away_Team'] == away_team and 
+                        series['Match_Format'] == match_format and
+                        abs((date - series['End_Date']).days) <= 30):  # Within 30 days
+                        
+                        # Add match to existing series (convert Series to dict)
+                        series['Matches'].append(match.to_dict())
+                        series['End_Date'] = max(series['End_Date'], date)
+                        series_found = True
+                        break
+                
+                if not series_found:
+                    # Create new series (convert Series to dict)
+                    new_series = {
+                        'Home_Team': home_team,
+                        'Away_Team': away_team,
+                        'Match_Format': match_format,
+                        'Start_Date': date,
+                        'End_Date': date,
+                        'Matches': [match.to_dict()],
+                        'Series_Result': ''
                     }
-                    info['key'] = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
-                    series_list.append(info)
-
-            # Process series data
-            edited_df = pd.DataFrame()  # Initialize to prevent errors
+                    series_list.append(new_series)
+            
+            # Process series results
             if series_list:
-                try:
-                    series_grouped = pd.DataFrame(series_list)
-                    if 'key' in series_grouped.columns:
-                        series_grouped = series_grouped.drop_duplicates('key').drop('key', axis=1)
-                    series_grouped = series_grouped.sort_values('Start_Date')
-                    series_grouped['Series'] = range(1, len(series_grouped) + 1)
+                for series in series_list:
+                    matches = series['Matches']
+                    home_wins = sum(1 for m in matches if str(m['Margin']).startswith(series['Home_Team']))
+                    away_wins = sum(1 for m in matches if str(m['Margin']).startswith(series['Away_Team']))
+                    draws = sum(1 for m in matches if 'drawn' in str(m['Margin']).lower())
+                    
+                    if home_wins > away_wins:
+                        series['Series_Result'] = f"{series['Home_Team']} won {home_wins}-{away_wins}"
+                    elif away_wins > home_wins:
+                        series['Series_Result'] = f"{series['Away_Team']} won {away_wins}-{home_wins}"
+                    else:
+                        series['Series_Result'] = f"Series drawn {home_wins}-{away_wins}"
+                
+                # Create DataFrame excluding the Matches column to avoid conversion issues
+                series_data_for_df = []
+                for series in series_list:
+                    series_copy = {k: v for k, v in series.items() if k != 'Matches'}
+                    series_data_for_df.append(series_copy)
+                
+                series_grouped = pd.DataFrame(series_data_for_df)
 
-                    def determine_series_winner(row):
-                        if row['Total_Home_Wins'] > row['Total_Away_Wins']:
-                            return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                        elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
-                            return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
-                        else:
-                            if row['Total_Draws'] > 0:
-                                return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                            return f"Series Tied {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-
-                    series_grouped['Series_Result'] = series_grouped.apply(determine_series_winner, axis=1)
-
-                    # Ensure all required columns are present and properly formatted
-                    required_columns = ['Show_Matches', 'Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Match_Format', 'Games_Played', 'Total_Home_Wins', 'Total_Away_Wins', 'Total_Draws', 'Series_Result']
-                    for col in required_columns:
-                        if col not in series_grouped.columns:
-                            if col == 'Show_Matches':
-                                series_grouped[col] = False
+        # Series Summary by Format (moved to top)
+        if 'match_df' in st.session_state and not series_grouped.empty and 'Match_Format' in series_grouped.columns:
+            # Calculate format-wise statistics
+            format_stats = []
+            available_formats = series_grouped['Match_Format'].unique()
+            
+            for match_format in available_formats:
+                format_series = series_grouped[series_grouped['Match_Format'] == match_format]
+                
+                # If team is selected, filter for that team
+                if 'All' not in team_choice and team_choice:
+                    format_series = format_series[
+                        (format_series['Home_Team'].isin(team_choice)) | 
+                        (format_series['Away_Team'].isin(team_choice))
+                    ]
+                
+                total_series = len(format_series)
+                
+                if total_series > 0:
+                    # Calculate wins/losses/draws
+                    wins = 0
+                    losses = 0
+                    draws = 0
+                    
+                    if 'All' not in team_choice and team_choice:
+                        # For specific team
+                        for _, series in format_series.iterrows():
+                            result = series['Series_Result']
+                            if any(team in result and result.startswith(team) for team in team_choice):
+                                wins += 1
+                            elif 'Drawn' in result or 'Tied' in result:
+                                draws += 1
                             else:
-                                series_grouped[col] = None
-
-                    # Configure columns including checkbox with error handling
-                    edited_df = st.data_editor(
-                        series_grouped,
-                        column_config={
-                            "Show_Matches": st.column_config.CheckboxColumn(
-                                "Show Matches",
-                                help="Show matches for this series",
-                                default=False,
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                except Exception as e:
-                    st.error(f"Error processing series data: {str(e)}")
-                    series_grouped = pd.DataFrame()
-                    edited_df = pd.DataFrame()
+                                losses += 1
+                    else:
+                        # For all teams combined - count all results
+                        for _, series in format_series.iterrows():
+                            result = series['Series_Result']
+                            if 'Drawn' in result or 'Tied' in result:
+                                draws += 1
+                            else:
+                                # This counts both wins and losses for all teams
+                                wins += 1
+                    
+                    win_percentage = (wins / total_series) * 100 if total_series > 0 else 0
+                    draw_percentage = (draws / total_series) * 100 if total_series > 0 else 0
+                    loss_percentage = (losses / total_series) * 100 if total_series > 0 else 0
+                    
+                    format_stats.append({
+                        'Format': match_format,
+                        'Series': total_series,
+                        'Won': wins,
+                        'Drawn': draws,
+                        'Lost': losses,
+                        'Win%': round(win_percentage, 1),
+                        'Draw%': round(draw_percentage, 1),
+                        'Lost%': round(loss_percentage, 1)
+                    })
+            
+            if format_stats:
+                summary_df = pd.DataFrame(format_stats)
+                
+                # Beautiful banner header matching the Match tab format
+                st.markdown("""
+                    <div style="text-align: center; margin: 30px 0;">
+                        <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                                   padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                            <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                                📊 Series Summary by Format
+                            </h2>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                                Performance breakdown across different formats
+                            </p>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
             else:
-                series_grouped = pd.DataFrame()
-                st.info("No series data found for the selected filters.")
+                st.info("No format-specific series data available.")
 
-            # Handle "Show Matches" functionality - moved outside the else block
-            if not edited_df.empty and 'Show_Matches' in edited_df.columns:
-                # Get series with checked boxes
-                checked_series = edited_df[edited_df['Show_Matches']]
+        # MOVED SECTION 1: Team Series Record (moved to top)
+        if 'All' not in team_choice and team_choice and not series_grouped.empty and 'Series_Result' in series_grouped.columns:
+            total_series = len(series_grouped)
+            total_wins = series_grouped['Series_Result'].apply(lambda x: 1 if any(team in x for team in team_choice) and x.startswith(tuple(team_choice)) else 0).sum()
+            total_losses = series_grouped['Series_Result'].apply(lambda x: 1 if not any(team in x for team in team_choice) and 'Drawn' not in x and 'Tied' not in x else 0).sum()
+            total_draws = series_grouped['Series_Result'].apply(lambda x: 1 if 'Drawn' in x or 'Tied' in x else 0).sum()
+            win_percentage = (total_wins / total_series) * 100 if total_series > 0 else 0
+            loss_percentage = (total_losses / total_series) * 100 if total_series > 0 else 0
 
-                if not checked_series.empty:
-                    # Beautiful banner header for Selected Series Matches
-                    st.markdown("""
+            # Beautiful banner header for Team Series Record
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            📊 Team Series Record
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Overall series performance statistics
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Series", total_series, border=True)
+            with col2:
+                st.metric("Won", total_wins, border=True)
+            with col3:
+                st.metric("Lost", total_losses, border=True)
+            with col4:
+                st.metric("Win %", f"{win_percentage:.2f}%", border=True)
+            with col5:
+                st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
+
+        # MOVED SECTION 2: Series Form Guide and Performance Trend (moved to top)
+        if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
+            for team in team_choice:
+                # Series Form Guide
+                # Beautiful banner header for Series Form Guide
+                st.markdown("""
+                    <div style="text-align: center; margin: 30px 0;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                   padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                            <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                                📋 Series Form Guide
+                            </h2>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                                Latest series results →
+                            </p>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Check if series_grouped has the required columns
+                if not series_grouped.empty and 'Home_Team' in series_grouped.columns and 'Away_Team' in series_grouped.columns:
+                    # All formats row first
+                    team_series = series_grouped[
+                        (series_grouped['Home_Team'] == team) | 
+                        (series_grouped['Away_Team'] == team)
+                    ].sort_values('Start_Date', ascending=False).head(20)
+
+                    # Calculate team record for all formats
+                    total_series = len(team_series)
+                    win_count = team_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
+                    draw_count = team_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
+                    loss_count = total_series - win_count - draw_count
+                    record_str = f"P{total_series}, W{win_count}, L{loss_count}, D{draw_count}"
+                    
+                    if not team_series.empty:
+                        form_indicators = []
+                        for _, series in team_series.iterrows():
+                            is_home = series['Home_Team'] == team
+                            opponent = series['Away_Team'] if is_home else series['Home_Team']
+                            result = series['Series_Result']
+                            
+                            tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
+                                    f"<b>vs {opponent}</b><br>"
+                                    f"<b>Format:</b> {series['Match_Format']}<br>"
+                                    f"<b>Result:</b> {result}")
+                            
+                            if result.startswith(team):
+                                form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
+                            elif 'Drawn' in result or 'Tied' in result:
+                                form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
+                            else:
+                                form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
+
+                        if form_indicators:
+                            form_html = f"""
+                            <div class="form-container">
+                                <span class="team-name">{team} {record_str}</span>
+                                <div class="form-indicators-container">
+                                    {''.join(reversed(form_indicators))}
+                                </div>
+                            </div>
+                            """
+                            st.markdown(form_html, unsafe_allow_html=True)
+
+                    # Add rows for each format - only if series_grouped has data and required columns
+                    if not series_grouped.empty and 'Match_Format' in series_grouped.columns:
+                        available_formats = format_choice if 'All' not in format_choice else series_grouped['Match_Format'].unique()
+                        for fmt in available_formats:
+                            format_series = series_grouped[
+                                ((series_grouped['Home_Team'] == team) | 
+                                (series_grouped['Away_Team'] == team)) &
+                                (series_grouped['Match_Format'] == fmt)
+                            ].sort_values('Start_Date', ascending=False).head(20)
+
+                            # Calculate team record for this format
+                            total_series_fmt = len(format_series)
+                            win_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
+                            draw_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
+                        loss_count_fmt = total_series_fmt - win_count_fmt - draw_count_fmt
+                        record_str_fmt = f"P{total_series_fmt}, W{win_count_fmt}, L{loss_count_fmt}, D{draw_count_fmt}"
+                    
+                    if not format_series.empty:
+                        form_indicators = []
+                        for _, series in format_series.iterrows():
+                            is_home = series['Home_Team'] == team
+                            opponent = series['Away_Team'] if is_home else series['Home_Team']
+                            result = series['Series_Result']
+                            
+                            tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
+                                    f"<b>vs {opponent}</b><br>"
+                                    f"<b>Format:</b> {series['Match_Format']}<br>"
+                                    f"<b>Result:</b> {result}")
+                            
+                            if result.startswith(team):
+                                form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
+                            elif 'Drawn' in result or 'Tied' in result:
+                                form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
+                            else:
+                                form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
+
+                        if form_indicators:
+                            form_html = f"""
+                            <div class="form-container">
+                                <span class="team-name">{team} ({fmt}) {record_str_fmt}</span>
+                                <div class="form-indicators-container">
+                                    {''.join(reversed(form_indicators))}
+                                </div>
+                            </div>
+                            """
+                            st.markdown(form_html, unsafe_allow_html=True)
+
+                # Series Performance Trend - only show if we have valid series data
+                if not series_grouped.empty and 'Home_Team' in series_grouped.columns:
+                    # Beautiful banner header for Series Performance Trend
+                    st.markdown(f"""
                         <div style="text-align: center; margin: 30px 0;">
-                            <div style="background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%); 
-                                       padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                            <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+                                       padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
                                 <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                                    📋 Selected Series Matches
+                                    📈 {team} - Series Performance Trend
                                 </h2>
-                                <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                                    Detailed match breakdown
+                                <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
+                                    Series results over time
                                 </p>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
+
+                    team_series_trend = series_grouped[
+                        (series_grouped['Home_Team'] == team) | 
+                        (series_grouped['Away_Team'] == team)
+                    ].sort_values('Start_Date').tail(50)
                     
-                    # Create empty list to store matches from all selected series
-                    all_selected_matches = []
-
-                    # Filter matches for each selected series with proper error handling
-                    try:
-                        for _, row in checked_series.iterrows():
-                            if all(col in row.index for col in ['Home_Team', 'Away_Team', 'Match_Format', 'Start_Date', 'End_Date']):
-                                try:
-                                    # Additional validation for row values
-                                    if pd.isna(row['Home_Team']) or pd.isna(row['Away_Team']) or pd.isna(row['Match_Format']):
-                                        continue
-                                    
-                                    # Check if the required columns exist in series_df
-                                    required_cols = ['Date', 'Competition', 'Match_Format', 'Home_Team', 'Away_Team']
-                                    optional_cols = ['Player_of_the_Match', 'Margin']
-                                    
-                                    # Start with required columns
-                                    available_cols = [col for col in required_cols if col in series_df.columns]
-                                    # Add optional columns that exist
-                                    available_cols.extend([col for col in optional_cols if col in series_df.columns])
-                                        
-                                    series_matches = series_df[
-                                        (series_df['Home_Team'] == row['Home_Team']) &
-                                        (series_df['Away_Team'] == row['Away_Team']) &
-                                        (series_df['Match_Format'] == row['Match_Format']) &
-                                        (series_df['Date'] >= row['Start_Date']) &
-                                        (series_df['Date'] <= row['End_Date'])
-                                    ][available_cols]
-                                    
-                                    if not series_matches.empty:
-                                        # Clean the matches data before adding
-                                        series_matches = series_matches.copy()
-                                        
-                                        # Convert Date column to string FIRST to prevent datetime issues
-                                        if 'Date' in series_matches.columns:
-                                            # Handle both datetime.date and datetime objects
-                                            series_matches['Date'] = series_matches['Date'].apply(
-                                                lambda x: str(x) if hasattr(x, 'strftime') else str(x)
-                                            )
-                                        
-                                        # Fill NaN values in this subset
-                                        series_matches = series_matches.fillna('N/A')
-                                        all_selected_matches.append(series_matches)
-                                except Exception as row_error:
-                                    st.error(f"Error processing row: {str(row_error)}")
-                                    st.write(f"Debug - Row data: {row.to_dict()}")
-                                    continue
-
-                        # Combine all selected series matches
-                        if all_selected_matches:
-                            combined_matches = pd.concat(all_selected_matches, ignore_index=True)
-                            
-                            # Simple cleanup - just convert dates to strings and fill NaN
-                            if 'Date' in combined_matches.columns:
-                                combined_matches['Date'] = combined_matches['Date'].astype(str)
-                            combined_matches = combined_matches.fillna('N/A')
-                            
-                            # Sort by date
-                            combined_matches = combined_matches.sort_values('Date')
-                            combined_matches = combined_matches.reset_index(drop=True)
-                            
-                            if not combined_matches.empty:
-                                # Clean and prepare data for display
-                                display_df = combined_matches.copy()
-                                
-                                # Remove any index column if present
-                                if 'index' in display_df.columns:
-                                    display_df = display_df.drop('index', axis=1)
-                                
-                                # Convert all data to strings and handle any problematic values
-                                for col in display_df.columns:
-                                    display_df[col] = display_df[col].astype(str).replace('nan', 'N/A').replace('None', 'N/A')
-                                
-                                # Reset index and convert to HTML table to completely remove index
-                                display_df = display_df.reset_index(drop=True)
-                                
-                                # Use st.markdown with HTML table to avoid any index display
-                                html_table = display_df.to_html(index=False, classes='dataframe', table_id='matches-table')
-                                
-                                # Add custom CSS for table styling
-                                st.markdown("""
-                                <style>
-                                .dataframe {
-                                    width: 100%;
-                                    border-collapse: collapse;
-                                    margin: 20px 0;
-                                    font-size: 14px;
-                                    background: white;
-                                    border-radius: 8px;
-                                    overflow: hidden;
-                                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                                }
-                                .dataframe th {
-                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                    color: white;
-                                    font-weight: bold;
-                                    padding: 12px 8px;
-                                    text-align: left;
-                                    border: none;
-                                }
-                                .dataframe td {
-                                    padding: 10px 8px;
-                                    border-bottom: 1px solid #eee;
-                                    text-align: left;
-                                }
-                                .dataframe tr:nth-child(even) {
-                                    background-color: #f8f9fa;
-                                }
-                                .dataframe tr:hover {
-                                    background-color: #e3f2fd;
-                                    transition: background-color 0.2s;
-                                }
-                                </style>
-                                """, unsafe_allow_html=True)
-                                
-                                # Display the HTML table
-                                st.markdown(html_table, unsafe_allow_html=True)
+                    if not team_series_trend.empty:
+                        results = []
+                        colors = []
+                        for _, series in team_series_trend.iterrows():
+                            if series['Series_Result'].startswith(team):
+                                results.append(1)    # Win
+                                colors.append('#28a745')
+                            elif 'Drawn' in series['Series_Result'] or 'Tied' in series['Series_Result']:
+                                results.append(0.5)  # Draw
+                                colors.append('#ffc107')
                             else:
-                                st.info("No valid match data found after processing.")
+                                results.append(0)    # Loss
+                                colors.append('#dc3545')
+                        
+                        fig = go.Figure()
+                        
+                        # Add the main line
+                        fig.add_trace(go.Scatter(
+                            y=results,
+                            mode='lines',
+                            name='Performance',
+                            line=dict(shape='spline', smoothing=0.8, width=2, color='#666666')
+                        ))
+                        
+                        # Add colored markers
+                        fig.add_trace(go.Scatter(
+                            y=results,
+                            mode='markers',
+                            marker=dict(size=10, color=colors, line=dict(width=2, color='white')),
+                            showlegend=False
+                        ))
+                        
+                        fig.update_layout(
+                            yaxis=dict(
+                                ticktext=["Loss", "Draw", "Win"],
+                                tickvals=[0, 0.5, 1],
+                                range=[-0.1, 1.1],
+                                gridcolor='lightgray'
+                            ),
+                            xaxis=dict(
+                                title="Last 50 Series (Recent ← Old)",
+                                gridcolor='lightgray'
+                            ),
+                            plot_bgcolor='white',
+                            showlegend=False,
+                            height=300
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+
+        # Always show Series Data section (moved down)
+        if 'match_df' in st.session_state:
+            # Beautiful banner header for Series Data
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                            🏆 Series Data
+                        </h2>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Multi-match series records and results
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Process series data if not already done
+            if series_grouped.empty:
+                match_df = st.session_state['match_df']
+                series_df = match_df.copy()
+                series_df['Date'] = pd.to_datetime(series_df['Date'], dayfirst=True).dt.date
+
+                # Apply format filter
+                if 'All' not in format_choice:
+                    series_df = series_df[series_df['Match_Format'].isin(format_choice)]
+
+                # Apply team and opponent filters
+                if 'All' not in team_choice:
+                    series_df = series_df[
+                        (series_df['Home_Team'].isin(team_choice)) | 
+                        (series_df['Away_Team'].isin(team_choice))
+                    ]
+
+                if 'All' not in opponent_choice:
+                    series_df = series_df[
+                        (series_df['Home_Team'].isin(opponent_choice)) | 
+                        (series_df['Away_Team'].isin(opponent_choice))
+                    ]
+
+                # Filter out competitions we regard for series
+                potential_series = [
+                    '1st Test Match','2nd Test Match','3rd Test Match','4th Test Match','5th Test Match',
+                    '1st One Day International','2nd One Day International','3rd One Day International',
+                    '4th One Day International','5th One Day International',
+                    '1st 20 Over International','2nd 20 Over International','3rd 20 Over International',
+                    '4th 20 Over International','5th 20 Over International',
+                    'Only One Day International','Only 20 Over International','Only Test Match',
+                    'Test Championship Final'
+                ]
+                series_df = series_df[series_df['Competition'].isin(potential_series)].copy()
+                series_df = series_df.sort_values('Date', ascending=True)
+
+                series_list = []
+                
+                for _, match in series_df.iterrows():
+                    # Group matches into series
+                    home_team = match['Home_Team']
+                    away_team = match['Away_Team']
+                    match_format = match['Match_Format']
+                    date = match['Date']
+                    competition = match['Competition']
+                    
+                    # Find existing series or create new one
+                    series_found = False
+                    for series in series_list:
+                        if (series['Home_Team'] == home_team and 
+                            series['Away_Team'] == away_team and 
+                            series['Match_Format'] == match_format and
+                            abs((date - series['End_Date']).days) <= 30):  # Within 30 days
+                            
+                            # Add match to existing series (convert Series to dict)
+                            series['Matches'].append(match.to_dict())
+                            series['End_Date'] = max(series['End_Date'], date)
+                            series_found = True
+                            break
+                    
+                    if not series_found:
+                        # Create new series (convert Series to dict)
+                        new_series = {
+                            'Home_Team': home_team,
+                            'Away_Team': away_team,
+                            'Match_Format': match_format,
+                            'Start_Date': date,
+                            'End_Date': date,
+                            'Matches': [match.to_dict()],
+                            'Series_Result': ''
+                        }
+                        series_list.append(new_series)
+                
+                # Process series results
+                if series_list:
+                    for series in series_list:
+                        matches = series['Matches']
+                        home_wins = sum(1 for m in matches if str(m['Margin']).startswith(series['Home_Team']))
+                        away_wins = sum(1 for m in matches if str(m['Margin']).startswith(series['Away_Team']))
+                        draws = sum(1 for m in matches if 'drawn' in str(m['Margin']).lower())
+                        
+                        if home_wins > away_wins:
+                            series['Series_Result'] = f"{series['Home_Team']} won {home_wins}-{away_wins}"
+                        elif away_wins > home_wins:
+                            series['Series_Result'] = f"{series['Away_Team']} won {away_wins}-{home_wins}"
                         else:
-                            st.info("No matches found for selected series.")
-                    except Exception as e:
-                        st.error(f"Error processing selected series: {str(e)}")
-                        st.info("Please try selecting different series.")
+                            series['Series_Result'] = f"Series drawn {home_wins}-{away_wins}"
+                    
+                    # Create DataFrame excluding the Matches column to avoid conversion issues
+                    series_data_for_df = []
+                    for series in series_list:
+                        series_copy = {k: v for k, v in series.items() if k != 'Matches'}
+                        series_data_for_df.append(series_copy)
+                    
+                    series_grouped = pd.DataFrame(series_data_for_df)
+
+            # Process series data
+            edited_df = pd.DataFrame()  # Initialize to prevent errors
+            if series_list:
+                # Create display DataFrame excluding the Matches column to avoid conversion issues
+                series_data_for_display = []
+                for series in series_list:
+                    series_copy = {k: v for k, v in series.items() if k != 'Matches'}
+                    series_data_for_display.append(series_copy)
+                
+                series_grouped_display = pd.DataFrame(series_data_for_display)
+                series_grouped_display['Start_Date'] = pd.to_datetime(series_grouped_display['Start_Date']).dt.strftime('%d/%m/%Y')
+                series_grouped_display['End_Date'] = pd.to_datetime(series_grouped_display['End_Date']).dt.strftime('%d/%m/%Y')
+                series_grouped_display['Show_Matches'] = False
+                
+                # Allow user to edit the dataframe to select series to show matches for
+                edited_df = st.data_editor(
+                    series_grouped_display[['Home_Team', 'Away_Team', 'Match_Format', 'Start_Date', 'End_Date', 'Series_Result', 'Show_Matches']],
+                    column_config={
+                        "Show_Matches": st.column_config.CheckboxColumn(
+                            "Show Matches",
+                            help="Check to show individual matches for this series",
+                            default=False,
+                        )
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+            else:
+                st.info("No series data available based on current filters.")
+
+            # Handle "Show Matches" functionality
+            if not edited_df.empty and 'Show_Matches' in edited_df.columns:
+                checked_series = edited_df[edited_df['Show_Matches'] == True]
+                if not checked_series.empty:
+                    st.markdown("### Detailed Matches for Selected Series")
+                    for _, selected_series in checked_series.iterrows():
+                        # Find the original series with matches
+                        original_series = None
+                        for series in series_list:
+                            if (series['Home_Team'] == selected_series['Home_Team'] and
+                                series['Away_Team'] == selected_series['Away_Team'] and
+                                series['Match_Format'] == selected_series['Match_Format']):
+                                original_series = series
+                                break
+                        
+                        if original_series and 'Matches' in original_series:
+                            st.write(f"**{selected_series['Home_Team']} vs {selected_series['Away_Team']} ({selected_series['Match_Format']})**")
+                            try:
+                                # Convert matches to DataFrame - matches should now be dictionaries
+                                matches_data = original_series['Matches']
+                                if matches_data:
+                                    matches_df = pd.DataFrame(matches_data)
+                                    if 'Date' in matches_df.columns:
+                                        matches_df['Date'] = pd.to_datetime(matches_df['Date']).dt.strftime('%d/%m/%Y')
+                                    
+                                    # Select available columns for display
+                                    display_cols = []
+                                    for col in ['Date', 'Home_Team', 'Away_Team', 'Competition', 'Margin']:
+                                        if col in matches_df.columns:
+                                            display_cols.append(col)
+                                    
+                                    if display_cols:
+                                        st.dataframe(matches_df[display_cols], use_container_width=True, hide_index=True)
+                                    else:
+                                        st.warning("No suitable columns found for display")
+                                else:
+                                    st.info("No match data available for this series")
+                            except Exception as e:
+                                st.error(f"Error displaying matches: {str(e)}")
+                                st.write("Raw match data:", original_series.get('Matches', []))
 
 
 
@@ -1748,7 +2094,7 @@ with tabs[1]:
         """, unsafe_allow_html=True)
 
         # Create a dataframe for series records
-        if not series_grouped.empty:
+        if not series_grouped.empty and all(col in series_grouped.columns for col in ['Home_Team', 'Away_Team', 'Match_Format', 'Series_Result']):
             # Prepare home team records 
             home_stats = series_grouped[['Home_Team', 'Away_Team', 'Match_Format', 'Series_Result']].copy()
             # Extract wins based on Series_Result
@@ -1788,227 +2134,8 @@ with tabs[1]:
         else:
             st.info("No series data available for head-to-head analysis.")
 
-        # Add metrics if a team is selected
-        if 'All' not in team_choice and team_choice and not series_grouped.empty:
-            total_series = len(series_grouped)
-            total_wins = series_grouped['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
-            total_losses = series_grouped['Series_Result'].apply(lambda x: 1 if not x.startswith(team) and 'Drawn' not in x and 'Tied' not in x else 0).sum()
-            total_draws = series_grouped['Series_Result'].apply(lambda x: 1 if 'Drawn' in x or 'Tied' in x else 0).sum()
-            win_percentage = (total_wins / total_series) * 100 if total_series > 0 else 0
-            loss_percentage = (total_losses / total_series) * 100 if total_series > 0 else 0
-
-            # Beautiful banner header for Team Series Record
-            st.markdown("""
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
-                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                            📊 Team Series Record
-                        </h2>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                            Overall series performance statistics
-                        </p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                st.metric("Series", total_series, border=True)
-            with col2:
-                st.metric("Won", total_wins, border=True)
-            with col3:
-                st.metric("Lost", total_losses, border=True)
-            with col4:
-                st.metric("Win %", f"{win_percentage:.2f}%", border=True)
-            with col5:
-                st.metric("Lost %", f"{loss_percentage:.2f}%", border=True)
-
-
-                
-
-    # Only show Form Guide and Performance Trend if specific team(s) selected
-    if 'match_df' in st.session_state and team_choice and 'All' not in team_choice and not series_grouped.empty:
-        # Performance Trend
-
-        for team in team_choice:
-            # Series Form Guide
-            # Beautiful banner header for Series Form Guide
-            st.markdown("""
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                            📋 Series Form Guide
-                        </h2>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                            Latest series results →
-                        </p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # All formats row first
-            team_series = series_grouped[
-                (series_grouped['Home_Team'] == team) | 
-                (series_grouped['Away_Team'] == team)
-            ].sort_values('Start_Date', ascending=False).head(20)
-
-            # Calculate team record for all formats
-            total_series = len(team_series)
-            win_count = team_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
-            draw_count = team_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
-            loss_count = total_series - win_count - draw_count
-            record_str = f"P{total_series}, W{win_count}, L{loss_count}, D{draw_count}"
-            
-            if not team_series.empty:
-                form_indicators = []
-                for _, series in team_series.iterrows():
-                    is_home = series['Home_Team'] == team
-                    opponent = series['Away_Team'] if is_home else series['Home_Team']
-                    result = series['Series_Result']
-                    
-                    tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
-                            f"<b>vs {opponent}</b><br>"
-                            f"<b>Format:</b> {series['Match_Format']}<br>"
-                            f"<b>Result:</b> {result}")
-                    
-                    if result.startswith(team):
-                        form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
-                    elif 'Drawn' in result or 'Tied' in result:
-                        form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
-                    else:
-                        form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
-
-                if form_indicators:
-                    form_html = f"""
-                    <div class="form-container">
-                        <span class="team-name">{team} {record_str}</span>
-                        <div class="form-indicators-container">
-                            {''.join(reversed(form_indicators))}
-                        </div>
-                    </div>
-                    """
-                    st.markdown(form_html, unsafe_allow_html=True)
-
-            # Add rows for each format
-            for fmt in format_choice if 'All' not in format_choice else series_grouped['Match_Format'].unique():
-                format_series = series_grouped[
-                    ((series_grouped['Home_Team'] == team) | 
-                    (series_grouped['Away_Team'] == team)) &
-                    (series_grouped['Match_Format'] == fmt)
-                ].sort_values('Start_Date', ascending=False).head(20)
-
-                # Calculate team record for this format
-                total_series_fmt = len(format_series)
-                win_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if x.startswith(team) else 0).sum()
-                draw_count_fmt = format_series['Series_Result'].apply(lambda x: 1 if ('Drawn' in x or 'Tied' in x) else 0).sum()
-                loss_count_fmt = total_series_fmt - win_count_fmt - draw_count_fmt
-                record_str_fmt = f"P{total_series_fmt}, W{win_count_fmt}, L{loss_count_fmt}, D{draw_count_fmt}"
-                
-                if not format_series.empty:
-                    form_indicators = []
-                    for _, series in format_series.iterrows():
-                        is_home = series['Home_Team'] == team
-                        opponent = series['Away_Team'] if is_home else series['Home_Team']
-                        result = series['Series_Result']
-                        
-                        tooltip = (f"<b>Dates:</b> {series['Start_Date']} to {series['End_Date']}<br>"
-                                f"<b>vs {opponent}</b><br>"
-                                f"<b>Format:</b> {series['Match_Format']}<br>"
-                                f"<b>Result:</b> {result}")
-                        
-                        if result.startswith(team):
-                            form_indicators.append(f'<div class="form-indicator win"><span class="tooltip">{tooltip}</span>W</div>')
-                        elif 'Drawn' in result or 'Tied' in result:
-                            form_indicators.append(f'<div class="form-indicator draw"><span class="tooltip">{tooltip}</span>D</div>')
-                        else:
-                            form_indicators.append(f'<div class="form-indicator loss"><span class="tooltip">{tooltip}</span>L</div>')
-
-                    if form_indicators:
-                        form_html = f"""
-                        <div class="form-container">
-                            <span class="team-name">{team} ({fmt}) {record_str_fmt}</span>
-                            <div class="form-indicators-container">
-                                {''.join(reversed(form_indicators))}
-                            </div>
-                        </div>
-                        """
-                        st.markdown(form_html, unsafe_allow_html=True)
-
-            # Beautiful banner header for Series Performance Trend
-            st.markdown(f"""
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
-                               padding: 20px; border-radius: 15px; color: #d4572a; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
-                            📈 {team} - Series Performance Trend
-                        </h2>
-                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 0.9em;">
-                            Series results over time
-                        </p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-
-            team_series_trend = series_grouped[
-                (series_grouped['Home_Team'] == team) | 
-                (series_grouped['Away_Team'] == team)
-            ].sort_values('Start_Date').tail(50)
-            
-            if not team_series_trend.empty:
-                results = []
-                colors = []
-                for _, series in team_series_trend.iterrows():
-                    if series['Series_Result'].startswith(team):
-                        results.append(1)    # Win
-                        colors.append('#28a745')
-                    elif 'Drawn' in series['Series_Result'] or 'Tied' in series['Series_Result']:
-                        results.append(0.5)  # Draw
-                        colors.append('#ffc107')
-                    else:
-                        results.append(0)    # Loss
-                        colors.append('#dc3545')
-                
-                fig = go.Figure()
-                
-                # Add the main line
-                fig.add_trace(go.Scatter(
-                    y=results,
-                    mode='lines',
-                    name='Performance',
-                    line=dict(shape='spline', smoothing=0.8, width=2, color='#666666')
-                ))
-                
-                # Add colored markers
-                fig.add_trace(go.Scatter(
-                    y=results,
-                    mode='markers',
-                    marker=dict(size=10, color=colors, line=dict(width=2, color='white')),
-                    showlegend=False
-                ))
-                
-                fig.update_layout(
-                    yaxis=dict(
-                        ticktext=["Loss", "Draw", "Win"],
-                        tickvals=[0, 0.5, 1],
-                        range=[-0.1, 1.1],
-                        gridcolor='lightgray'
-                    ),
-                    xaxis=dict(
-                        title="Last 50 Series (Recent ← Old)",
-                        gridcolor='lightgray'
-                    ),
-                    plot_bgcolor='white',
-                    showlegend=False,
-                    height=300
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-
         # Add a win percentage by year chart for series data
-        if 'match_df' in st.session_state and 'All' not in team_choice:
+        if 'match_df' in st.session_state and 'All' not in team_choice and not series_grouped.empty and 'Home_Team' in series_grouped.columns:
             # Beautiful banner header for Win Percentage by Year (Series)
             st.markdown("""
                 <div style="text-align: center; margin: 30px 0;">
