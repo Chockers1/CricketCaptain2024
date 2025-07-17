@@ -663,9 +663,9 @@ def display_number_one_rankings(bat_df, bowl_df):
     
     # Hall of Fame thresholds by format
     HOF_THRESHOLDS = {
-        'hall_of_fame': 10000,      # Standard HOF threshold
-        'elite': 15000,             # Elite status
-        'legendary': 20000          # Legendary status
+        'hall_of_fame': 7500,      # Standard HOF threshold
+        'elite': 10000,             # Elite status
+        'legendary': 12500          # Legendary status
     }
     
     def get_hof_status(points):
@@ -749,9 +749,9 @@ def display_number_one_rankings(bat_df, bowl_df):
                                padding: 15px; border-radius: 10px; margin: 20px 0; color: white;">
                         <h4 style="margin: 0 0 10px 0;">🏛️ Hall of Fame Criteria</h4>
                         <p style="margin: 0; font-size: 0.9em;">
-                            <strong>🏛️ Hall of Fame:</strong> 10,000+ career rating points | 
-                            <strong>💎 Elite:</strong> 15,000+ points | 
-                            <strong>🌟 Legendary:</strong> 20,000+ points
+                            <strong>🏛️ Hall of Fame:</strong> 7500+ career rating points | 
+                            <strong>💎 Elite:</strong> 10,000+ points | 
+                            <strong>🌟 Legendary:</strong> 12,500+ points
                         </p>
                     </div>
                 """, unsafe_allow_html=True)

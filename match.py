@@ -59,7 +59,7 @@ def process_match_data(directory_path):
                 match_format = 'Test Match'
             elif '100 Ball Trophy' in line_3 or 'The Hundred' in line_3:
                 match_format = 'The Hundred'
-            elif 'English FC League' in line_3 or 'Australian League' in line_3 or 'FC League' in line_3 or 'FC Plate' in line_3 or '4 Day Competition' in line_3 or 'Vitality County Championship' in line_3 or 'University Match' in line_3 or 'Sheffield Shield' in line_3 or 'County Championship' in line_3:
+            elif 'English FC League' in line_3 or 'Australian League' in line_3 or 'FC League' in line_3 or 'FC Plate' in line_3 or '4 Day Competition' in line_3 or 'Vitality County Championship' in line_3 or 'University Match' in line_3 or 'Sheffield Shield' in line_3 or 'County Championship' in line_3 or 'Three Day Friendly' in line_3:
                 match_format = 'First Class'
             elif 'Challenge Trophy' in line_3 or 'One Day Cup' in line_3 or 'One Day Friendly' in line_3 or 'Dean Jones Trophy' in line_3:
                 match_format = 'One Day'

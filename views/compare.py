@@ -432,6 +432,150 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
 
         st.markdown("</div></div>", unsafe_allow_html=True)
 
+        # Comparison Summary Section
+        st.markdown("<div class='comparison-container'>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='comparison-header'>
+            <div class='player-header'>Category Comparison Summary</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div class='comparison-body'>", unsafe_allow_html=True)
+        
+        # Calculate category scores
+        def calculate_category_scores():
+            scores = {
+                "Batting Performance": [0, 0],
+                "Batting Milestones": [0, 0], 
+                "Bowling Performance": [0, 0],
+                "Bowling Milestones": [0, 0],
+                "Awards": [0, 0]
+            }
+            
+            # Batting Performance metrics (higher is better)
+            batting_perf_metrics = ["Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match"]
+            for metric in batting_perf_metrics:
+                p1_val = player1_stats[metric].values[0]
+                p2_val = player2_stats[metric].values[0]
+                if p1_val > p2_val:
+                    scores["Batting Performance"][0] += 1
+                elif p2_val > p1_val:
+                    scores["Batting Performance"][1] += 1
+            
+            # Batting Milestones (higher is better)
+            batting_milestone_metrics = ["50+ Scores", "50s", "100s", "50+ Scores Per Match", "100s Per Match"]
+            for metric in batting_milestone_metrics:
+                p1_val = player1_stats[metric].values[0]
+                p2_val = player2_stats[metric].values[0]
+                if p1_val > p2_val:
+                    scores["Batting Milestones"][0] += 1
+                elif p2_val > p1_val:
+                    scores["Batting Milestones"][1] += 1
+            
+            # Bowling Performance metrics (mix of higher/lower is better)
+            bowling_perf_metrics = ["Overs", "Wickets", "Bowl Average", "Economy Rate", "Bowl Strike Rate", "Wickets Per Match"]
+            for metric in bowling_perf_metrics:
+                p1_val = player1_stats[metric].values[0]
+                p2_val = player2_stats[metric].values[0]
+                
+                # For these metrics, higher is better
+                if metric in ["Overs", "Wickets", "Wickets Per Match"]:
+                    if p1_val > p2_val:
+                        scores["Bowling Performance"][0] += 1
+                    elif p2_val > p1_val:
+                        scores["Bowling Performance"][1] += 1
+                # For these metrics, lower is better (but avoid division by zero issues)
+                else:
+                    # Handle special cases for averages/rates
+                    if metric == "Bowl Average":
+                        if p1_val == np.inf and p2_val == np.inf:
+                            continue  # Both players have no wickets
+                        elif p1_val == np.inf:
+                            scores["Bowling Performance"][1] += 1
+                        elif p2_val == np.inf:
+                            scores["Bowling Performance"][0] += 1
+                        elif p1_val < p2_val:
+                            scores["Bowling Performance"][0] += 1
+                        elif p2_val < p1_val:
+                            scores["Bowling Performance"][1] += 1
+                    elif metric == "Economy Rate":
+                        # Skip if both players haven't bowled
+                        if p1_val == 0.0 and p2_val == 0.0:
+                            continue
+                        elif p1_val == 0.0:
+                            scores["Bowling Performance"][1] += 1
+                        elif p2_val == 0.0:
+                            scores["Bowling Performance"][0] += 1
+                        elif p1_val < p2_val:
+                            scores["Bowling Performance"][0] += 1
+                        elif p2_val < p1_val:
+                            scores["Bowling Performance"][1] += 1
+                    elif metric == "Bowl Strike Rate":
+                        if p1_val == np.inf and p2_val == np.inf:
+                            continue
+                        elif p1_val == np.inf:
+                            scores["Bowling Performance"][1] += 1
+                        elif p2_val == np.inf:
+                            scores["Bowling Performance"][0] += 1
+                        elif p1_val < p2_val:
+                            scores["Bowling Performance"][0] += 1
+                        elif p2_val < p1_val:
+                            scores["Bowling Performance"][1] += 1
+            
+            # Bowling Milestones (higher is better)
+            bowling_milestone_metrics = ["5Ws", "5Ws Per Match", "10Ws"]
+            for metric in bowling_milestone_metrics:
+                p1_val = player1_stats[metric].values[0]
+                p2_val = player2_stats[metric].values[0]
+                if p1_val > p2_val:
+                    scores["Bowling Milestones"][0] += 1
+                elif p2_val > p1_val:
+                    scores["Bowling Milestones"][1] += 1
+            
+            # Awards (higher is better)
+            award_metrics = ["POM", "POM Per Match"]
+            for metric in award_metrics:
+                p1_val = player1_stats[metric].values[0]
+                p2_val = player2_stats[metric].values[0]
+                if p1_val > p2_val:
+                    scores["Awards"][0] += 1
+                elif p2_val > p1_val:
+                    scores["Awards"][1] += 1
+            
+            return scores
+        
+        category_scores = calculate_category_scores()
+        
+        # Display category comparisons
+        for category, (p1_score, p2_score) in category_scores.items():
+            p1_class = "highlight-green" if p1_score > p2_score else ("highlight-red" if p1_score < p2_score else "")
+            p2_class = "highlight-green" if p2_score > p1_score else ("highlight-red" if p2_score < p1_score else "")
+            
+            st.markdown(f"""
+            <div class='comparison-row'>
+                <div class='comparison-column {p1_class}'>{p1_score}</div>
+                <div class='comparison-metric'>{category}</div>
+                <div class='comparison-column {p2_class}'>{p2_score}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Combined totals
+        p1_total = category_scores["Batting Performance"][0] + category_scores["Bowling Performance"][0]
+        p2_total = category_scores["Batting Performance"][1] + category_scores["Bowling Performance"][1]
+        
+        p1_combined_class = "highlight-green" if p1_total > p2_total else ("highlight-red" if p1_total < p2_total else "")
+        p2_combined_class = "highlight-green" if p2_total > p1_total else ("highlight-red" if p2_total < p1_total else "")
+        
+        st.markdown(f"""
+        <div class='comparison-row'>
+            <div class='comparison-column {p1_combined_class}'>{p1_total}</div>
+            <div class='comparison-metric'>Combined Performance</div>
+            <div class='comparison-column {p2_combined_class}'>{p2_total}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
         # Enhanced Radar Chart
         st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
         st.markdown("<div class='chart-title'>📊 Performance Radar</div>", unsafe_allow_html=True)
