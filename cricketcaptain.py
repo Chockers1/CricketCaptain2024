@@ -91,6 +91,104 @@ st.markdown("""
         margin-top: 5px;
         color: #666;
     }
+    
+    /* Preview grid styling */
+    .preview-section {
+        margin-top: 40px;
+        padding: 20px;
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .preview-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    .preview-header h2 {
+        color: #333;
+        font-size: 2rem;
+        margin-bottom: 10px;
+    }
+    
+    .preview-header p {
+        color: #666;
+        font-size: 1.1rem;
+    }
+    
+    .preview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 30px;
+        margin-top: 40px;
+    }
+    
+    .preview-card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        border: 1px solid #e0e0e0;
+    }
+    
+    .preview-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    .preview-card img {
+        width: 100%;
+        height: 350px;
+        object-fit: cover;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        transition: transform 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .preview-card:hover img {
+        transform: scale(1.02);
+    }
+    
+    .preview-card h3 {
+        color: #333;
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+        font-weight: bold;
+    }
+    
+    .preview-card p {
+        color: #666;
+        font-size: 1.1rem;
+        line-height: 1.7;
+        margin: 0;
+    }
+    
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .preview-grid {
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        
+        .preview-card {
+            padding: 20px;
+        }
+        
+        .preview-card img {
+            height: 250px;
+        }
+        
+        .preview-header h2 {
+            font-size: 1.8rem;
+        }
+        
+        .preview-header p {
+            font-size: 1rem;
+        }
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -131,7 +229,6 @@ def get_credentials():
     # This should only be used in development, never in production
     return "CC", "CCapril2025"
 
-# --- LOGIN FUNCTIONALITY ---
 def login():
     # Get credentials securely
     CORRECT_USERNAME, CORRECT_PASSWORD = get_credentials()
@@ -140,10 +237,14 @@ def login():
         """
         <div class="login-container">
             <div class="login-header">
-                <h1 style="color: #f04f53;">Cricket Captain Stats Dashboard</h1>
-                <p>To access the Cricket Captain Stats Dashboard, please login below.</p>
-                <p><strong>Please note:</strong> There is a new password for July - check the latest <a href="https://buymeacoffee.com/leadingedgepod/cricket-captain-2025-stats-pack-password-update" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee post</a> for details.</p>
-                <p>To sign up: Subscribe to the <b>Cricket Captain 2024 Stats Pack tier</b> on <a href="https://buymeacoffee.com/leadingedgepod" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee - Leading Edge</a></p>
+                <h1 style="color: #f04f53; margin-bottom: 8px; font-size: 1.6rem;">🏏 Cricket Captain 2025 Stats Pack</h1>
+                <p style="margin-bottom: 12px; font-size: 0.95rem; color: #666;">Access your comprehensive cricket analytics below</p>
+                <div style="background: linear-gradient(135deg, #fff3cd, #ffeaa7); border-left: 4px solid #f39c12; padding: 10px 15px; border-radius: 8px; margin-bottom: 12px;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #856404;"><strong>🔐 New July Password:</strong> Check the latest <a href="https://buymeacoffee.com/leadingedgepod/cricket-captain-2025-stats-pack-password-update" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee post</a></p>
+                </div>
+                <div style="background: linear-gradient(135deg, #d1ecf1, #bee5eb); border-left: 4px solid #17a2b8; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #0c5460;"><strong>🎯 New User?</strong> Subscribe to <b>Cricket Captain 2024 Stats Pack</b> on <a href="https://buymeacoffee.com/leadingedgepod" target="_blank" style="color: #f04f53; text-decoration: none; font-weight: bold;">Buy Me A Coffee - Leading Edge</a></p>
+                </div>
             </div>
         </div>
         """,
@@ -168,6 +269,118 @@ def login():
                 st.rerun()
             else:
                 st.error("Incorrect username or password. Please check your subscription details for the correct credentials.")
+    
+    # Function to encode image to base64
+    def get_base64_image(image_path):
+        try:
+            import base64
+            with open(image_path, "rb") as img_file:
+                return base64.b64encode(img_file.read()).decode()
+        except:
+            return None
+    
+    # Get base64 encoded images
+    images = {
+        'batting': get_base64_image('assets/images/batting.png'),
+        'compare': get_base64_image('assets/images/compare.png'),
+        'records': get_base64_image('assets/images/records.png'),
+        'scorecards': get_base64_image('assets/images/scorecards.png'),
+        'rankings': get_base64_image('assets/images/rankings.png'),
+        'headtohead': get_base64_image('assets/images/headtohead.png'),
+        'headtoheadform': get_base64_image('assets/images/headtoheadform.png'),
+        'headtoheadtrends': get_base64_image('assets/images/headtoheadtrends.png'),
+        'teams': get_base64_image('assets/images/teams.png')
+    }
+    
+    # Add a quick preview section right after login
+    st.markdown(f"""
+        <div style="margin-top: 30px; padding: 20px; max-width: 800px; margin-left: auto; margin-right: auto;">
+            <h3 style="text-align: center; color: #333; margin-bottom: 20px;">🏏 What's Inside the Dashboard</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); text-align: center;">
+                    <img src="data:image/png;base64,{images['batting'] if images['batting'] else ''}" alt="Batting Stats" style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 4px 8px; border-radius: 15px; font-size: 0.7rem; font-weight: 600; margin-bottom: 8px; display: inline-block;">STATS</div>
+                    <h4 style="margin: 0; font-size: 0.9rem; color: #333;">Batting & Bowling Stats</h4>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); text-align: center;">
+                    <img src="data:image/png;base64,{images['compare'] if images['compare'] else ''}" alt="Compare Players" style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 4px 8px; border-radius: 15px; font-size: 0.7rem; font-weight: 600; margin-bottom: 8px; display: inline-block;">COMPARE</div>
+                    <h4 style="margin: 0; font-size: 0.9rem; color: #333;">Compare Players</h4>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); text-align: center;">
+                    <img src="data:image/png;base64,{images['records'] if images['records'] else ''}" alt="Records" style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 4px 8px; border-radius: 15px; font-size: 0.7rem; font-weight: 600; margin-bottom: 8px; display: inline-block;">RECORDS</div>
+                    <h4 style="margin: 0; font-size: 0.9rem; color: #333;">Records Viewer</h4>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Add the preview section below the form
+    st.markdown(f"""
+        <div class="preview-section">
+            <div class="preview-header">
+                <h2>🏏 Discover What's Inside</h2>
+                <p>Explore the comprehensive Cricket Captain 2025 stats dashboard features</p>
+            </div>
+            <div class="preview-grid">
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['batting'] if images['batting'] else ''}" alt="Batting Stats" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">STATS</div>
+                    <h3>📊 Batting, Bowling, and All-Rounder Stats</h3>
+                    <p>All the stats you need to make the key decisions in your Cricket Captain 2025 save. Detailed analysis for career, form, position, location and more.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['compare'] if images['compare'] else ''}" alt="Compare Players" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">COMPARE</div>
+                    <h3>🔍 Compare Players</h3>
+                    <p>Compare players across formats and head-to-head. Find your best XI with data.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['records'] if images['records'] else ''}" alt="Records Viewer" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">RECORDS</div>
+                    <h3>🏆 Records Viewer</h3>
+                    <p>Visualise every batting, bowling, match and innings record from your save.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['scorecards'] if images['scorecards'] else ''}" alt="Scorecard Archive" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">ARCHIVE</div>
+                    <h3>📖 Scorecard Archive</h3>
+                    <p>Relive the history of every scorecard and revisit the big moments.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['rankings'] if images['rankings'] else ''}" alt="Player Rankings" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">RANKINGS</div>
+                    <h3>🥇 Player Rankings & Elo System</h3>
+                    <p>Track player progression with our Hall of Fame system and team Elo ratings like chess.com.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['headtohead'] if images['headtohead'] else ''}" alt="Head-to-Head Overview" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">ANALYSIS</div>
+                    <h3>🧠 Head-to-Head Overview</h3>
+                    <p>Review your coaching performance and win/loss records across formats.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['headtoheadform'] if images['headtoheadform'] else ''}" alt="Head-to-Head Form Tracker" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">TRENDS</div>
+                    <h3>🔄 Head-to-Head Form Tracker</h3>
+                    <p>Monitor form trends over time and see how momentum shifts.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['headtoheadtrends'] if images['headtoheadtrends'] else ''}" alt="Performance Trends" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">GRAPHS</div>
+                    <h3>📈 Performance Trend Graphs</h3>
+                    <p>See performance ups and downs by format or opposition.</p>
+                </div>
+                <div class="preview-card">
+                    <img src="data:image/png;base64,{images['teams'] if images['teams'] else ''}" alt="Team Analytics" style="width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    <div style="background: linear-gradient(135deg, #6c24c0, #f04f53); color: white; padding: 6px 16px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; display: inline-block;">TEAM</div>
+                    <h3>⚔️ Team Match Analytics</h3>
+                    <p>Compare your team's performance year-by-year against all others. Is your batting underperforming or is your bowling carrying you?</p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # Function to check if the session is still valid
 def is_session_valid():
