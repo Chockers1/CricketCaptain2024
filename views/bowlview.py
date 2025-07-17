@@ -1479,8 +1479,8 @@ def display_bowl_view():
             # Display the dataframe first (full width)
             st.dataframe(position_summary, use_container_width=True, hide_index=True)
 
-            # Create position averages graph
-            fig = go.Figure()
+            # Create position metrics graphs (Average, Strike Rate, Economy Rate)
+            fig = make_subplots(rows=1, cols=3, subplot_titles=("Average by Bowling Position", "Strike Rate by Bowling Position", "Economy Rate by Bowling Position"))
 
             # Add 'All' trace first if selected
             if 'All' in name_choice:
@@ -1497,29 +1497,44 @@ def display_bowl_view():
                 
                 all_color = '#f84e4e' if not individual_players else 'black'
                 
-                fig.add_trace(
-                    go.Bar(
-                        y=all_position_stats['Position'],  # Switch to Y axis
-                        x=all_position_stats['Average'],   # Switch to X axis
-                        name='All Players',
-                        marker_color=all_color,
-                        text=all_position_stats['Average'].round(2),
-                        textposition='auto',
-                        orientation='h',  # Make bars horizontal
-                        customdata=np.stack((
-                            all_position_stats['Bowler_Wkts'],
-                            all_position_stats['Strike_Rate'],
-                            all_position_stats['Economy_Rate']
-                        ), axis=-1),
-                        hovertemplate=(
-                            'Position: %{y}<br>'
-                            'Average: %{x:.2f}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]:.2f}<br>'
-                            'Economy Rate: %{customdata[2]:.2f}<extra></extra>'
-                        )
-                    )
-                )
+                # Add Average trace
+                fig.add_trace(go.Bar(
+                    y=all_position_stats['Position'],
+                    x=all_position_stats['Average'],
+                    name='All Players',
+                    orientation='h',
+                    marker_color=all_color,
+                    showlegend=True,
+                    legendgroup='All Players',
+                    text=all_position_stats['Average'].round(2),
+                    textposition='auto'
+                ), row=1, col=1)
+                
+                # Add Strike Rate trace
+                fig.add_trace(go.Bar(
+                    y=all_position_stats['Position'],
+                    x=all_position_stats['Strike_Rate'],
+                    name='All Players',
+                    orientation='h',
+                    marker_color=all_color,
+                    showlegend=False,
+                    legendgroup='All Players',
+                    text=all_position_stats['Strike_Rate'].round(2),
+                    textposition='auto'
+                ), row=1, col=2)
+                
+                # Add Economy Rate trace
+                fig.add_trace(go.Bar(
+                    y=all_position_stats['Position'],
+                    x=all_position_stats['Economy_Rate'],
+                    name='All Players',
+                    orientation='h',
+                    marker_color=all_color,
+                    showlegend=False,
+                    legendgroup='All Players',
+                    text=all_position_stats['Economy_Rate'].round(2),
+                    textposition='auto'
+                ), row=1, col=3)
 
             # Add individual player traces
             for i, name in enumerate(individual_players):
@@ -1529,62 +1544,157 @@ def display_bowl_view():
                     'Bowler_Balls': 'sum'
                 }).reset_index()
                 
-                player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
-                player_data['Strike_Rate'] = (player_data['Bowler_Balls'] / player_data['Bowler_Wkts']).round(2)
-                player_data['Economy_Rate'] = (player_data['Bowler_Runs'] / (player_data['Bowler_Balls']/6)).round(2)
-                player_data['Position'] = player_data['Position'].astype(int)
-                
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                
-                fig.add_trace(
-                    go.Bar(
-                        y=player_data['Position'],  # Switch to Y axis
-                        x=player_data['Average'],   # Switch to X axis
+                if not player_data.empty:
+                    player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
+                    player_data['Strike_Rate'] = (player_data['Bowler_Balls'] / player_data['Bowler_Wkts']).round(2)
+                    player_data['Economy_Rate'] = (player_data['Bowler_Runs'] / (player_data['Bowler_Balls']/6)).round(2)
+                    player_data['Position'] = player_data['Position'].astype(int)
+                    
+                    color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                    
+                    # Add Average trace
+                    fig.add_trace(go.Bar(
+                        y=player_data['Position'],
+                        x=player_data['Average'],
                         name=name,
+                        orientation='h',
                         marker_color=color,
+                        showlegend=True,
+                        legendgroup=name,
                         text=player_data['Average'].round(2),
-                        textposition='auto',
-                        orientation='h',  # Make bars horizontal
-                        customdata=np.stack((
-                            player_data['Bowler_Wkts'],
-                            player_data['Strike_Rate'],
-                            player_data['Economy_Rate']
-                        ), axis=-1),
-                        hovertemplate=(
-                            'Position: %{y}<br>'
-                            'Average: %{x:.2f}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]:.2f}<br>'
-                            'Economy Rate: %{customdata[2]:.2f}<extra></extra>'
-                        )
-                    )
-                )
-
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Bowling Position</h3>", unsafe_allow_html=True)
+                        textposition='auto'
+                    ), row=1, col=1)
+                    
+                    # Add Strike Rate trace
+                    fig.add_trace(go.Bar(
+                        y=player_data['Position'],
+                        x=player_data['Strike_Rate'],
+                        name=name,
+                        orientation='h',
+                        marker_color=color,
+                        showlegend=False,
+                        legendgroup=name,
+                        text=player_data['Strike_Rate'].round(2),
+                        textposition='auto'
+                    ), row=1, col=2)
+                    
+                    # Add Economy Rate trace
+                    fig.add_trace(go.Bar(
+                        y=player_data['Position'],
+                        x=player_data['Economy_Rate'],
+                        name=name,
+                        orientation='h',
+                        marker_color=color,
+                        showlegend=False,
+                        legendgroup=name,
+                        text=player_data['Economy_Rate'].round(2),
+                        textposition='auto'
+                    ), row=1, col=3)
 
             # Update layout
             fig.update_layout(
                 showlegend=True,
                 height=500,
-                xaxis_title="Average",   # Switch axis titles
-                yaxis_title="Position",
                 font=dict(size=12),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                yaxis={
-                    'categoryorder':'array',
-                    'categoryarray': list(range(1,12)),  # Force positions 1-11
-                    'dtick': 1  # Show all integer positions
-                },
                 barmode='group'
             )
 
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            # Update x-axis titles for each subplot
+            fig.update_xaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
+            fig.update_xaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
+            fig.update_xaxes(title_text="Economy Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=3)
+            
+            # Update y-axis for all subplots
+            for col in range(1, 4):
+                fig.update_yaxes(
+                    title_text="Position",
+                    showgrid=True, 
+                    gridwidth=1, 
+                    gridcolor='rgba(128, 128, 128, 0.2)',
+                    categoryorder='array',
+                    categoryarray=list(range(1,12)),
+                    dtick=1,
+                    row=1, col=col
+                )
 
-            # Display the bar chart (full width)
+            # Display the bar charts (full width)
             st.plotly_chart(fig, use_container_width=True)
+
+            # Create scatter plot for Economy Rate vs Strike Rate by Position
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate by Position</h3>", unsafe_allow_html=True)
+            
+            fig_scatter = go.Figure()
+
+            # Create scatter plot data from the position_summary DataFrame
+            scatter_data = position_summary.copy()
+            
+            # Remove any rows with NaN values for the metrics we're plotting
+            scatter_data = scatter_data.dropna(subset=['Economy Rate', 'Strike Rate'])
+            
+            # Get unique players and assign colors
+            unique_players = scatter_data['Name'].unique()
+            
+            for i, player in enumerate(unique_players):
+                player_data = scatter_data[scatter_data['Name'] == player]
+                
+                # First player gets streamlit red, others get random colors
+                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                
+                fig_scatter.add_trace(go.Scatter(
+                    x=player_data['Economy Rate'],
+                    y=player_data['Strike Rate'],
+                    mode='markers+text',
+                    name=player,
+                    marker=dict(
+                        size=12,
+                        color=color,
+                        opacity=0.8,
+                        line=dict(width=2, color='white')
+                    ),
+                    text=[f"{player} ({pos})" for pos in player_data['Position']],
+                    textposition='top center',
+                    textfont=dict(
+                        size=10,
+                        color=color
+                    ),
+                    customdata=np.stack([
+                        player_data['Position'],
+                        player_data['Wickets'],
+                        player_data['Average'],
+                        player_data['Matches']
+                    ], axis=-1),
+                    hovertemplate=(
+                        '<b>%{fullData.name}</b><br>'
+                        'Position: %{customdata[0]}<br>'
+                        'Economy Rate: %{x:.2f}<br>'
+                        'Strike Rate: %{y:.2f}<br>'
+                        'Wickets: %{customdata[1]}<br>'
+                        'Average: %{customdata[2]:.2f}<br>'
+                        'Matches: %{customdata[3]}<extra></extra>'
+                    )
+                ))
+
+            # Update layout for scatter plot
+            fig_scatter.update_layout(
+                showlegend=True,
+                height=500,
+                xaxis_title="Economy Rate (Runs/Over)",
+                yaxis_title="Strike Rate (Balls/Wicket)",
+                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                hovermode='closest'
+            )
+
+            # Add gridlines
+            fig_scatter.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig_scatter.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+
+            # Display the scatter plot
+            st.plotly_chart(fig_scatter, use_container_width=True)
 
         ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
         # Cumulative Stats Tab
