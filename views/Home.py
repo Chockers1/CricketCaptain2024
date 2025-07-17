@@ -495,3 +495,4 @@ with col6:
             🌦️ Weather & Pitch Tutorial
         </a>
     """, unsafe_allow_html=True)
+ 
