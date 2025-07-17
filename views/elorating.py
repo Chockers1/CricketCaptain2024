@@ -440,55 +440,7 @@ if 'match_df' in st.session_state:
         opponent_mask = (filtered_elo_df['Opponent'].isin(opponent_choice))
         filtered_elo_df = filtered_elo_df[opponent_mask]
 
-    # Display the filtered ELO Ratings Dataset with beautiful styling
-    st.markdown("""
-        <div class="result-banner">
-            📊 ELO Ratings Match by Match
-        </div>
-    """, unsafe_allow_html=True)
-    
     filtered_elo_df['Diff'] = filtered_elo_df['Team_Elo_Start'] - filtered_elo_df['Opponent_Elo_Start']
-
-    # Sort the DataFrame first
-    sorted_filtered_elo_df = filtered_elo_df.sort_values(['Match_Format', 'Date', 'Match_Number'])
-
-    # Select the columns to display and ensure no null values in critical columns
-    display_df = sorted_filtered_elo_df[['Date', 'Match_Format', 'Team', 'Opponent', 
-                                         'Location', 'Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change',
-                                         'Team_Elo_End', 'Opponent_Elo_End', 
-                                         'Format_Number', 'Margin']].copy()
-    
-    # Fill any NaN values in numeric columns
-    numeric_cols = ['Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change', 'Team_Elo_End', 'Opponent_Elo_End', 'Format_Number']
-    for col in numeric_cols:
-        if col in display_df.columns:
-            display_df[col] = display_df[col].fillna(0)
-
-    # Apply conditional formatting with softer colors
-    def color_elo_change(val):
-        if pd.isna(val) or val is None:
-            return ''
-        try:
-            val = float(val)
-            color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else '#fff3cd'
-            return f'background-color: {color}'
-        except (ValueError, TypeError):
-            return ''
-
-    styled_display_df = display_df.style.applymap(color_elo_change, subset=['Elo_Change', 'Diff']).format({
-        'Team_Elo_Start': '{:.2f}',
-        'Opponent_Elo_Start': '{:.2f}',
-        'Diff': '{:.2f}',
-        'Elo_Change': '{:.2f}',
-        'Team_Elo_End': '{:.2f}',
-        'Opponent_Elo_End': '{:.2f}'
-    }, na_rep='')
-
-    st.dataframe(
-        styled_display_df,
-        hide_index=True,
-        use_container_width=True
-    )
 
 # Define team colors
 team_colors = {
@@ -1024,6 +976,151 @@ if 'elo_df' in st.session_state:
         st.write("Debug - Date column type:", elo_df['Date'].dtype)
         st.stop()
 
+#################### ALL TIME HIGHEST ELO RATINGS #####################
+
+if 'elo_df' in st.session_state:
+    try:
+        # Create a copy of the DataFrame
+        elo_df_highest = st.session_state['elo_df'].copy()
+        
+        # Apply filters
+        if 'All' not in format_choice:
+            elo_df_highest = elo_df_highest[elo_df_highest['Match_Format'].isin(format_choice)]
+        
+        if 'All' not in team_choice:
+            elo_df_highest = elo_df_highest[elo_df_highest['Team'].isin(team_choice)]
+        
+        if 'All' not in opponent_choice:
+            elo_df_highest = elo_df_highest[elo_df_highest['Opponent'].isin(opponent_choice)]
+        
+        # Convert Date to datetime using our parse_date function
+        elo_df_highest['Date'] = elo_df_highest['Date'].apply(parse_date)
+        
+        # Remove any invalid dates
+        elo_df_highest = elo_df_highest.dropna(subset=['Date'])
+        
+        if len(elo_df_highest) > 0:
+            # Convert dates to datetime for month formatting
+            elo_df_highest['Date_dt'] = pd.to_datetime(elo_df_highest['Date'])
+            elo_df_highest['Month_Year'] = elo_df_highest['Date_dt'].dt.strftime('%m-%Y')
+            
+            # Create a list of all ELO ratings with their details
+            highest_ratings = []
+            
+            for index, row in elo_df_highest.iterrows():
+                highest_ratings.append({
+                    'Format': row['Match_Format'],
+                    'Team': row['Team'],
+                    'Month': row['Month_Year'],
+                    'ELO': row['Team_Elo_End'],
+                    'Date': row['Date'],
+                    'Opponent': row['Opponent']
+                })
+            
+            if highest_ratings:
+                highest_ratings_df = pd.DataFrame(highest_ratings)
+                
+                # Sort by ELO (descending) to show highest ratings first
+                highest_ratings_df = highest_ratings_df.sort_values('ELO', ascending=False)
+                
+                # Format the ELO column to 2 decimal places
+                highest_ratings_df['ELO'] = highest_ratings_df['ELO'].round(2)
+                
+                # Display the all-time highest ratings
+                st.markdown("""
+                    <div class="result-banner">
+                        🏆 All-Time Highest ELO Ratings
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Apply conditional formatting for top 3 ratings
+                def highlight_top_ratings(row):
+                    # Get the top 3 ELO ratings overall
+                    top_3_ratings = highest_ratings_df.nlargest(3, 'ELO')['ELO'].tolist()
+                    if len(top_3_ratings) >= 1 and row['ELO'] == top_3_ratings[0]:
+                        return ['background-color: #FFD700; color: black;'] * len(row)  # Gold
+                    elif len(top_3_ratings) >= 2 and row['ELO'] == top_3_ratings[1]:
+                        return ['background-color: #C0C0C0; color: black;'] * len(row)  # Silver
+                    elif len(top_3_ratings) >= 3 and row['ELO'] == top_3_ratings[2]:
+                        return ['background-color: #cd7f32; color: black;'] * len(row)  # Bronze
+                    return [''] * len(row)
+                
+                # Display only the relevant columns
+                display_cols = ['Format', 'Team', 'Month', 'ELO', 'Opponent']
+                styled_highest_df = highest_ratings_df[display_cols].style.apply(highlight_top_ratings, axis=1).format({
+                    'ELO': '{:.2f}'
+                })
+                
+                st.dataframe(
+                    styled_highest_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=600
+                )
+                
+                # Create summary cards for the top 3 highest ratings overall
+                st.markdown("""
+                    <div style="margin: 30px 0;">
+                        <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Top 3 Highest ELO Ratings Ever</h3>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Get the top 3 highest ratings overall
+                top_3_peaks = highest_ratings_df.nlargest(3, 'ELO')
+                
+                # Create cards in a grid layout
+                if not top_3_peaks.empty:
+                    cols = st.columns(3)
+                    
+                    for idx, (_, peak) in enumerate(top_3_peaks.iterrows()):
+                        with cols[idx]:
+                            # Get team color for accent
+                            team_color = team_colors.get(peak['Team'], '#f04f53')
+                            
+                            # Determine medal color based on ranking
+                            if idx == 0:
+                                medal_color = '#FFD700'  # Gold
+                                medal_emoji = '🥇'
+                            elif idx == 1:
+                                medal_color = '#C0C0C0'  # Silver
+                                medal_emoji = '🥈'
+                            else:
+                                medal_color = '#cd7f32'  # Bronze
+                                medal_emoji = '🥉'
+                            
+                            st.markdown(f"""
+                                <div style="background: linear-gradient(135deg, {medal_color} 0%, #FFA500 100%); 
+                                            padding: 15px; border-radius: 12px; box-shadow: 0 6px 20px rgba(255,215,0,0.3); 
+                                            margin: 10px 0; text-align: center; border: 2px solid {medal_color}; 
+                                            min-height: 200px; max-height: 200px; position: relative;">
+                                    <div style="position: absolute; top: 8px; right: 8px; 
+                                                background: rgba(255,255,255,0.9); border-radius: 50%; 
+                                                width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                                        <span style="font-size: 1.2em;">{medal_emoji}</span>
+                                    </div>
+                                    <div style="margin-top: 8px;">
+                                        <h4 style="color: #8B4513; margin: 0 0 8px 0; font-weight: bold; font-size: 0.9em;">{peak['Format']}</h4>
+                                    </div>
+                                    <div style="background: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; 
+                                                box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 0;">
+                                        <h3 style="color: {team_color}; margin: 0 0 8px 0; font-size: 1.1em; font-weight: bold;">{peak['Team']}</h3>
+                                        <div style="text-align: center; margin-top: 8px;">
+                                            <div style="color: #666; font-weight: bold; font-size: 0.85em; margin-bottom: 4px;">Peak ELO Rating</div>
+                                            <div style="color: {team_color}; font-size: 1.6em; font-weight: bold; line-height: 1; margin-bottom: 4px;">{peak['ELO']:.2f}</div>
+                                            <div style="color: #666; font-size: 0.8em; font-weight: normal; margin-bottom: 2px;">{peak['Month']}</div>
+                                            <div style="color: #666; font-size: 0.75em; font-weight: normal;">vs {peak['Opponent']}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
+            else:
+                st.warning("No highest rating data available for the selected filters")
+        else:
+            st.warning("No valid data available for the selected filters")
+            
+    except Exception as e:
+        st.error(f"Error processing highest ratings data: {str(e)}")
+
 #################### UPDATES #####################
 
 
@@ -1065,6 +1162,54 @@ if 'elo_df' in st.session_state:
 
 
 #########################new features------------------
+
+# Display the filtered ELO Ratings Dataset with beautiful styling
+st.markdown("""
+    <div class="result-banner">
+        📊 ELO Ratings Match by Match
+    </div>
+""", unsafe_allow_html=True)
+
+# Sort the DataFrame first
+sorted_filtered_elo_df = filtered_elo_df.sort_values(['Match_Format', 'Date', 'Match_Number'])
+
+# Select the columns to display and ensure no null values in critical columns
+display_df = sorted_filtered_elo_df[['Date', 'Match_Format', 'Team', 'Opponent', 
+                                     'Location', 'Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change',
+                                     'Team_Elo_End', 'Opponent_Elo_End', 
+                                     'Format_Number', 'Margin']].copy()
+
+# Fill any NaN values in numeric columns
+numeric_cols = ['Team_Elo_Start', 'Opponent_Elo_Start', 'Diff', 'Elo_Change', 'Team_Elo_End', 'Opponent_Elo_End', 'Format_Number']
+for col in numeric_cols:
+    if col in display_df.columns:
+        display_df[col] = display_df[col].fillna(0)
+
+# Apply conditional formatting with softer colors
+def color_elo_change(val):
+    if pd.isna(val) or val is None:
+        return ''
+    try:
+        val = float(val)
+        color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else '#fff3cd'
+        return f'background-color: {color}'
+    except (ValueError, TypeError):
+        return ''
+
+styled_display_df = display_df.style.applymap(color_elo_change, subset=['Elo_Change', 'Diff']).format({
+    'Team_Elo_Start': '{:.2f}',
+    'Opponent_Elo_Start': '{:.2f}',
+    'Diff': '{:.2f}',
+    'Elo_Change': '{:.2f}',
+    'Team_Elo_End': '{:.2f}',
+    'Opponent_Elo_End': '{:.2f}'
+}, na_rep='')
+
+st.dataframe(
+    styled_display_df,
+    hide_index=True,
+    use_container_width=True
+)
 
 # Add after the Head-to-Head Analysis
 st.markdown("""
