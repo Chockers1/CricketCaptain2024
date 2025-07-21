@@ -1253,6 +1253,16 @@ def apply_advanced_filters_fast(player_stats, filters):
             <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🤝 Opponent Record</h3>
         </div>
         """, unsafe_allow_html=True)
+        # Ensure numeric columns are correct dtype for Arrow compatibility
+        numeric_cols = [
+            'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', '<25&Out',
+            'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Team Runs', 'Overs', 'Wickets', 'Team Balls',
+            'Avg', 'SR', 'BPO', 'Team Avg', 'Team SR', 'P+ Avg', 'P+ SR', 'BPB', '50+PI', '100PI', '<25&OutPI',
+            'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%'
+        ]
+        for col in numeric_cols:
+            if col in df_opponent.columns:
+                df_opponent[col] = pd.to_numeric(df_opponent[col], errors='coerce')
         st.dataframe(df_opponent, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
     # Latest Stats Tab (Polars backend)
@@ -1563,4 +1573,8 @@ def apply_advanced_filters_fast(player_stats, filters):
             df_block = pl_block.select(['Name', 'Date', 'Block Runs', 'Block Balls']).to_pandas()
             cache_dataframe(block_cache_key, df_block)
         st.markdown('<div style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); padding: 1rem; margin: 1rem 0; border-radius: 15px; box-shadow: 0 8px 32px rgba(247, 151, 30, 0.3); border: 1px solid rgba(255, 255, 255, 0.2);"><h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🧱 Block Record (5-match rolling)</h3></div>', unsafe_allow_html=True)
+        # Ensure numeric columns are correct dtype for Arrow compatibility
+        for col in ['Block Runs', 'Block Balls']:
+            if col in df_block.columns:
+                df_block[col] = pd.to_numeric(df_block[col], errors='coerce')
         st.dataframe(df_block, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
