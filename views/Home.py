@@ -58,7 +58,8 @@ def process_duplicates(bat_df):
         st.session_state['teamduplicates'] = teamduplicates
         
         return {
-            'multi_team': duplicates, 'team_duplicates': teamduplicates,
+            'multi_team': duplicates,
+            'team_duplicates': teamduplicates,
             'has_duplicates': not duplicates.empty or not teamduplicates.empty
         }
     except Exception as e:
@@ -108,7 +109,7 @@ def show_error(message, traceback_info=None):
         with st.expander("🔧 Technical Details"): st.code(traceback_info)
 
 def load_data(uploaded_files):
-    """The reliable data loading engine that uses your original scripts."""
+    """The reliable data loading engine that uses your original scripts and UI."""
     total_files = len(uploaded_files)
     start_time = time.time()
     
@@ -124,7 +125,7 @@ def load_data(uploaded_files):
     
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            status_text.text(f"📁 Preparing {total_files} files...")
+            status_text.text(f"📁 Saving {total_files} files...")
             for i, uploaded_file in enumerate(uploaded_files):
                 file_path = os.path.join(temp_dir, uploaded_file.name)
                 with open(file_path, 'wb') as f: f.write(uploaded_file.getbuffer())
@@ -132,18 +133,18 @@ def load_data(uploaded_files):
             
             status_text.text("🔄 Processing match data..."); progress_bar.progress(0.3)
             match_df = process_match_data(temp_dir)
-            if match_df is None or match_df.empty: raise ValueError("match.py failed.")
+            if match_df is None or match_df.empty: raise ValueError("match.py failed to produce data.")
 
             status_text.text("📊 Processing game statistics..."); progress_bar.progress(0.5)
             game_df = process_game_stats(temp_dir, match_df)
-            if game_df is None or game_df.empty: raise ValueError("game.py failed.")
+            if game_df is None or game_df.empty: raise ValueError("game.py failed to produce data.")
             
             status_text.text("🎯 Processing bowling statistics..."); progress_bar.progress(0.7)
             bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
             
             status_text.text("🏏 Processing batting statistics..."); progress_bar.progress(0.9)
             bat_df = process_bat_stats(temp_dir, game_df, match_df)
-            if bat_df is None or bat_df.empty: raise ValueError("bat.py failed.")
+            if bat_df is None or bat_df.empty: raise ValueError("bat.py failed to produce data.")
 
             status_text.text("🔍 Checking for duplicates..."); progress_bar.progress(0.95)
             duplicates_result = process_duplicates(bat_df)
@@ -157,18 +158,17 @@ def load_data(uploaded_files):
             progress_bar.progress(1.0)
             end_time = time.time()
             
-            progress_container.empty() 
+            progress_container.empty()
             show_processing_results(total_files, duplicates_result, end_time - start_time)
 
     except Exception as e:
         progress_container.empty()
-        show_error(f"A critical error occurred: {e}", traceback.format_exc())
+        show_error(f"A critical error occurred during processing: {e}", traceback.format_exc())
 
 # --- UI & PAGE LOGIC (YOUR FULL, ORIGINAL UI) ---
 
 st.markdown("""
 <style>
-    /* Your full CSS block */
     .main > div { padding-top: 2rem; }
     .stButton > button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; padding: 12px 24px; font-weight: bold; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
@@ -219,7 +219,7 @@ with st.expander("📋 How to Use This Dashboard", expanded=False):
     st.markdown("---")
     st.markdown("**Step 3:** Locate your scorecard files:")
     st.markdown("- **Windows:** `C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025`")
-    st.markdown("- **Mac:** `~/Library/Containers/.../`")
+    st.markdown("- **Mac:** `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`")
     st.markdown("**Step 4:** Use the file browser below to select your .txt scorecard files")
     st.caption("💡 Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)")
     st.markdown("**Step 5:** Click 'Process Scorecards' and explore your data in the various tabs")
@@ -232,7 +232,7 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    estimated_time = len(uploaded_files) * 0.1
+    estimated_time = len(uploaded_files) * 0.1 # Adjusted for sequential but reliable processing
     time_estimate = f"~{estimated_time:.0f} seconds" if estimated_time < 60 else f"~{estimated_time/60:.1f} minutes"
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
@@ -263,7 +263,6 @@ with col1:
             📺 Watch Cricket Captain Saves
         </a>
     """, unsafe_allow_html=True)
-    
     st.markdown("""
         <a href='https://youtu.be/ykn5jal7ZdY' target='_blank' 
            style='display: block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
@@ -284,7 +283,6 @@ with col2:
             📱 Real Name Fix - Mobile
         </a>
     """, unsafe_allow_html=True)  
-    
     st.markdown("""
         <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
            style='display: block; background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%); 
@@ -295,7 +293,7 @@ with col2:
         </a>
     """, unsafe_allow_html=True)
 
-# Second row of buttons
+# Additional rows of buttons
 col3, col4 = st.columns(2)
 with col3:
     st.markdown("""
@@ -307,7 +305,6 @@ with col3:
             🏏 T20 Tips and Tricks
         </a>
     """, unsafe_allow_html=True)
-
 with col4:
     st.markdown("""
         <a href='https://youtu.be/N-u7zwACAPk' target='_blank' 
@@ -319,7 +316,6 @@ with col4:
         </a>
     """, unsafe_allow_html=True)
 
-# Third row of buttons
 col5, col6 = st.columns(2)
 with col5:
     st.markdown("""
@@ -331,7 +327,6 @@ with col5:
             🎯 Coaching Tutorial
         </a>
     """, unsafe_allow_html=True)
-
 with col6:
     st.markdown("""
         <a href='https://youtu.be/GU75BvgRax0' target='_blank' 
@@ -342,4 +337,3 @@ with col6:
             🌦️ Weather & Pitch Tutorial
         </a>
     """, unsafe_allow_html=True)
- 
