@@ -1,0 +1,26 @@
+import pandas as pd
+import os
+from match import process_match_data
+from game import process_game_stats
+from bat import process_bat_stats
+from bowl import process_bowl_stats
+
+def process_directory_worker(temp_dir_path):
+    """
+    A worker that processes ALL files within a given temporary directory.
+    We will create one temporary directory per CPU core.
+    """
+    try:
+        match_df = process_match_data(temp_dir_path)
+        if match_df is None or match_df.empty: return None
+
+        game_df = process_game_stats(temp_dir_path, match_df)
+        if game_df is None or game_df.empty: return None
+
+        bat_df = process_bat_stats(temp_dir_path, game_df, match_df)
+        bowl_df = process_bowl_stats(temp_dir_path, game_df, match_df)
+
+        return (bat_df, bowl_df, match_df)
+    except Exception as e:
+        print(f"Error in worker for directory {temp_dir_path}: {e}")
+        return None
