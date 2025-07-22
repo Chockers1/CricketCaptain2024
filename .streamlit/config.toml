@@ -1,0 +1,3 @@
+[server]
+# allow up to 1 GB of total upload data per request
+maxUploadSize = 1000
