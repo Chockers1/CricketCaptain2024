@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import sys
 import traceback
 import pandas as pd
 import tempfile
@@ -7,8 +8,16 @@ import time
 import shutil
 from multiprocessing import Pool, cpu_count
 
-# Import the new, safe worker function from its own file
+# --- NEW: FIX FOR STREAMLIT CLOUD IMPORT ---
+# This block of code adds the project's root directory to Python's path,
+# allowing it to find the 'processing_worker.py' file.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# Now the import will work reliably both locally and in the cloud
 from processing_worker import process_single_file_worker
+
 
 # --- HELPER FUNCTIONS (FROM YOUR ORIGINAL FILE) ---
 def process_duplicates(bat_df):
@@ -173,7 +182,7 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    estimated_time = (len(uploaded_files) / cpu_count()) * 0.2 # Adjusted estimate
+    estimated_time = (len(uploaded_files) / cpu_count()) * 0.2
     time_estimate = f"~{estimated_time:.0f} seconds" if estimated_time < 60 else f"~{estimated_time/60:.1f} minutes"
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
@@ -235,4 +244,86 @@ st.markdown("---")
 st.markdown("### 🎥 Helpful Resources")
 
 col1, col2 = st.columns(2)
-# ... (rest of your resource links markdown)
+with col1:
+    st.markdown("""
+        <a href='https://www.youtube.com/@Robscricket' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            📺 Watch Cricket Captain Saves
+        </a>
+    """, unsafe_allow_html=True)
+    st.markdown("""
+        <a href='https://youtu.be/ykn5jal7ZdY' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🖥️ Real Name Fix - PC/Mac
+        </a>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown("""
+        <a href='https://youtu.be/MenffAx4KoQ' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            📱 Real Name Fix - Mobile
+        </a>
+    """, unsafe_allow_html=True)  
+    st.markdown("""
+        <a href='https://youtu.be/lcAozvTeezg' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            ⚾ Player Editor Tutorial
+        </a>
+    """, unsafe_allow_html=True)
+
+col3, col4 = st.columns(2)
+with col3:
+    st.markdown("""
+        <a href='https://youtu.be/PqdVAuRwx0g' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #ff7b7b 0%, #667eea 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🏏 T20 Tips and Tricks
+        </a>
+    """, unsafe_allow_html=True)
+with col4:
+    st.markdown("""
+        <a href='https://youtu.be/N-u7zwACAPk' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #a8e6cf 0%, #dcedc8 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            💼 Master Player Contracts
+        </a>
+    """, unsafe_allow_html=True)
+
+col5, col6 = st.columns(2)
+with col5:
+    st.markdown("""
+        <a href='https://youtu.be/OggYwlM_mv4' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #fd79a8 0%, #fdcb6e 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🎯 Coaching Tutorial
+        </a>
+    """, unsafe_allow_html=True)
+with col6:
+    st.markdown("""
+        <a href='https://youtu.be/GU75BvgRax0' target='_blank' 
+           style='display: block; background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%); 
+                  color: white; padding: 15px; text-decoration: none; border-radius: 10px; 
+                  font-weight: bold; text-align: center; margin: 10px 0;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.2);'>
+            🌦️ Weather & Pitch Tutorial
+        </a>
+    """, unsafe_allow_html=True)
