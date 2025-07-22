@@ -1,26 +1,45 @@
 import pandas as pd
 import os
+import tempfile
+import shutil
+
+# Import your original, working processing functions
+# This worker file must be in the same directory as these scripts to find them.
 from match import process_match_data
 from game import process_game_stats
 from bat import process_bat_stats
 from bowl import process_bowl_stats
 
-def process_directory_worker(temp_dir_path):
+def process_single_file_worker(file_path):
     """
-    A worker that processes ALL files within a given temporary directory.
-    We will create one temporary directory per CPU core.
+    This is the "job" for each CPU core. It runs your full, original pipeline
+    on a SINGLE file path. Because this function is in its own file, it is
+    guaranteed to be "pickle-safe" for multiprocessing.
     """
-    try:
-        match_df = process_match_data(temp_dir_path)
-        if match_df is None or match_df.empty: return None
+    filename = os.path.basename(file_path)
+    
+    # Create a unique, isolated temporary directory for this single file
+    # This prevents race conditions where multiple processes might interfere.
+    with tempfile.TemporaryDirectory() as worker_temp_dir:
+        worker_file_path = os.path.join(worker_temp_dir, filename)
+        # Copy the file to the isolated directory
+        shutil.copy(file_path, worker_file_path)
 
-        game_df = process_game_stats(temp_dir_path, match_df)
-        if game_df is None or game_df.empty: return None
+        try:
+            # Now, run your original functions, which are designed to process a directory.
+            # Since this directory only has one file, they will correctly process just that file.
+            match_df = process_match_data(worker_temp_dir)
+            if match_df is None or match_df.empty: return None
 
-        bat_df = process_bat_stats(temp_dir_path, game_df, match_df)
-        bowl_df = process_bowl_stats(temp_dir_path, game_df, match_df)
+            game_df = process_game_stats(worker_temp_dir, match_df)
+            if game_df is None or game_df.empty: return None
 
-        return (bat_df, bowl_df, match_df)
-    except Exception as e:
-        print(f"Error in worker for directory {temp_dir_path}: {e}")
-        return None
+            bat_df = process_bat_stats(worker_temp_dir, game_df, match_df)
+            bowl_df = process_bowl_stats(worker_temp_dir, game_df, match_df)
+            
+            # Return the complete set of dataframes for this one file
+            return (bat_df, bowl_df, match_df)
+
+        except Exception as e:
+            print(f"Error processing {filename} in worker: {e}")
+            return None # Return None if this specific file fails
