@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import tempfile
 import shutil
+import traceback
 
 # Import your original, working processing functions
 # This worker file must be in the same directory as these scripts to find them.
@@ -41,5 +42,8 @@ def process_single_file_worker(file_path):
             return (bat_df, bowl_df, match_df)
 
         except Exception as e:
-            print(f"Error processing {filename} in worker: {e}")
+            # Print a detailed error for the specific file that failed
+            print(f"--- Error processing file: {filename} in worker ---")
+            print(traceback.format_exc())
+            print("----------------------------------------------------")
             return None # Return None if this specific file fails
