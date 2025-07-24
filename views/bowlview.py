@@ -850,10 +850,14 @@ def display_bowl_view():
                             plot_bgcolor='rgba(0,0,0,0)',
                             showlegend=False
                         )
-                        st.markdown(
-                            "<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate Analysis</h3>",
-                            unsafe_allow_html=True
-                        )
+                        st.markdown("""
+                        <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                                    padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                    box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
+                                    border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Economy Rate vs Strike Rate Analysis</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
                         st.plotly_chart(scatter_fig, use_container_width=True)
                     else:
                         st.info("No players with wickets to display in the Economy Rate vs Strike Rate Analysis.")
@@ -1062,13 +1066,26 @@ def display_bowl_view():
         # Latest Innings Tab
         with tabs[3]:
             latest_innings = compute_bowl_latest_innings(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Latest 20 Bowling Innings</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Latest 20 Bowling Innings</h3>
+            </div>
+            """, unsafe_allow_html=True)
             if latest_innings.empty:
                 st.info("No latest innings to display for the current selection.")
             else:
                 st.dataframe(latest_innings, use_container_width=True, hide_index=True)
-                # Summary metrics
-                st.markdown("### 📊 Summary Statistics")
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Summary Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
                 with col1:
                     st.metric("Matches", latest_innings['File Name'].nunique())
@@ -1090,8 +1107,14 @@ def display_bowl_view():
         # Opponent Stats Tab  
         with tabs[4]:
             opponent_summary = compute_bowl_opponent_stats(filtered_df)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Opposition Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
             if opponent_summary.empty:
                 st.info("No opponent statistics to display for the current selection.")
@@ -1099,7 +1122,14 @@ def display_bowl_view():
                 st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
 
                 # --- Plotting Logic ---
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Opponent Team</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Opponent Team</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 fig = go.Figure()
                 for name in opponent_summary['Name'].unique():
@@ -1116,12 +1146,26 @@ def display_bowl_view():
         # Location Stats Tab
         with tabs[5]:
             location_summary = compute_bowl_location_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Location Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             if location_summary.empty:
                 st.info("No location statistics to display for the current selection.")
             else:
                 st.dataframe(location_summary, use_container_width=True, hide_index=True)
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Location</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(71, 118, 230, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Location</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 fig = go.Figure()
                 for name in location_summary['Name'].unique():
                     player_data = location_summary[location_summary['Name'] == name]
@@ -1137,12 +1181,26 @@ def display_bowl_view():
         # Innings Stats Tab
         with tabs[6]:
             innings_summary = compute_bowl_innings_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(54, 209, 220, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Innings Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             if innings_summary.empty:
                 st.info("No innings statistics to display for the current selection.")
             else:
                 st.dataframe(innings_summary, use_container_width=True, hide_index=True)
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Innings</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Innings</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 fig = go.Figure()
                 for name in innings_summary['Name'].unique():
                     player_data = innings_summary[innings_summary['Name'] == name]
@@ -1158,12 +1216,26 @@ def display_bowl_view():
         # Position Stats Tab
         with tabs[7]:
             position_summary = compute_bowl_position_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Position Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             if position_summary.empty:
                 st.info("No position statistics to display for the current selection.")
             else:
                 st.dataframe(position_summary, use_container_width=True, hide_index=True)
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Position</h3>", unsafe_allow_html=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Position</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 fig = go.Figure()
                 for name in position_summary['Name'].unique():
                     player_data = position_summary[position_summary['Name'] == name]
@@ -1180,7 +1252,12 @@ def display_bowl_view():
         with tabs[8]:
             homeaway_stats_df = compute_bowl_homeaway_stats(filtered_df)
             st.markdown("""
-            <h3 style='color:#f04f53; text-align: center;'>Home/Away Bowling Statistics</h3>
+            <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(255, 126, 95, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Home/Away Bowling Statistics</h3>
+            </div>
             """, unsafe_allow_html=True)
             if homeaway_stats_df.empty:
                 st.info("No Home/Away statistics to display for the current selection.")
@@ -1289,7 +1366,14 @@ def display_bowl_view():
         # Cumulative Stats Tab
         with tabs[9]:
             cumulative_stats = compute_bowl_cumulative_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Bowling Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Cumulative Bowling Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
             if cumulative_stats.empty:
                 st.info("No cumulative statistics to display for the current selection.")
             else:
@@ -1324,9 +1408,23 @@ def display_bowl_view():
         # Block Stats Tab
         with tabs[10]:
             block_stats_df = compute_bowl_block_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Block Statistics (Groups of 20 Innings)</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(block_stats_df, use_container_width=True, hide_index=True)
-            st.subheader("Bowling Average by Innings Block")
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Bowling Average by Innings Block</h3>
+            </div>
+            """, unsafe_allow_html=True)
             fig = go.Figure()
             # Handle 'All' selection
             if 'All' in name_choice:
@@ -1371,7 +1469,6 @@ def display_bowl_view():
             )
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
             st.plotly_chart(fig, use_container_width=True)
 
     else:
