@@ -190,8 +190,8 @@ st.markdown("""
 
 st.markdown("""
     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
-        <span style="color: white; font-weight: bold; font-size: 18px;">🎉 NEW UPDATE v1.22</span><br>
-        <span style="color: white; font-size: 16px;">All-Time Elo ratings, enhanced player comparisons & new performance charts for batting and bowling positions</span>
+        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.23</span><br>
+        <span style="color: white; font-size: 16px;">25% faster scorecard loading and up to 75% speed boost for data-heavy tabs with smart caching for batting and bowling tabs</span>
     </div>
 """, unsafe_allow_html=True)
 
