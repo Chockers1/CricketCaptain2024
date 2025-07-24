@@ -11,6 +11,14 @@ from game import process_game_stats
 from bat import process_bat_stats
 from bowl import process_bowl_stats
 
+# --- CONFIGURATION (NEW) ---
+# Calibrated based on user feedback (1664 files took ~112s).
+# This value represents the average processing time per scorecard in seconds.
+# You can adjust this value if you find the estimate is consistently off
+# on your machine. A lower value (e.g., 0.06) means a faster estimate.
+PROCESSING_TIME_PER_FILE = 0.065
+
+
 # --- HELPER FUNCTIONS (FROM YOUR ORIGINAL FILE) ---
 def process_duplicates(bat_df):
     """Process duplicate player detection."""
@@ -189,11 +197,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
-    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
+    <div style="background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
         <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.23</span><br>
         <span style="color: white; font-size: 16px;">25% faster scorecard loading and up to 75% speed boost for data-heavy tabs with smart caching for batting and bowling tabs</span>
     </div>
 """, unsafe_allow_html=True)
+
 
 st.markdown("""
     <div style="text-align: center; max-width: 1000px; margin: 40px auto;">
@@ -232,12 +241,22 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    estimated_time = len(uploaded_files) * 0.1
-    time_estimate = f"~{estimated_time:.0f} seconds" if estimated_time < 60 else f"~{estimated_time/60:.1f} minutes"
+    # --- UPDATED CALCULATION ---
+    # Use the more accurate constant defined at the top of the file
+    estimated_time = len(uploaded_files) * PROCESSING_TIME_PER_FILE
+    
+    # Improved display logic for the time estimate
+    if estimated_time < 60:
+        time_estimate_str = f"~{max(1, round(estimated_time))} seconds" # Show at least 1 second
+    else:
+        minutes = int(estimated_time // 60)
+        seconds = int(estimated_time % 60)
+        time_estimate_str = f"~{minutes}m {seconds}s" if minutes > 0 else f"~{seconds}s"
+
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
             <strong>📊 Files Selected:</strong> {len(uploaded_files)} scorecard files ready for processing<br>
-            <strong>⏱️ Estimated Time:</strong> {time_estimate}
+            <strong>⏱️ Estimated Time:</strong> {time_estimate_str}
         </div>
     """, unsafe_allow_html=True)
 
