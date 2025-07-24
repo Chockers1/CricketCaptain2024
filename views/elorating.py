@@ -19,6 +19,90 @@ def parse_date(date_str):
         return pd.NaT
 
 
+@st.cache_data
+def calculate_elo_ratings(match_df):
+    df = match_df.copy()
+    df['Date_Sort'] = df['Date'].apply(parse_date)
+    df_sorted = df.sort_values('Date_Sort')
+
+    initial_elo = 1000
+    elo_ratings = {}
+    k_factor = 32
+
+    def expected_score(elo_a, elo_b):
+        return 1 / (1 + 10 ** ((elo_b - elo_a) / 400))
+
+    def update_elo(winner_elo, loser_elo, k_factor, result):
+        expected_win = expected_score(winner_elo, loser_elo)
+        new_winner_elo = winner_elo + k_factor * (result - expected_win)
+        new_loser_elo = loser_elo + k_factor * ((1 - result) - (1 - expected_win))
+        return round(new_winner_elo, 2), round(new_loser_elo, 2)
+
+    df_sorted['Home_Elo_Start'] = 0.0
+    df_sorted['Away_Elo_Start'] = 0.0
+    df_sorted['Home_Elo_End'] = 0.0
+    df_sorted['Away_Elo_End'] = 0.0
+    df_sorted['Match_Number'] = range(1, len(df_sorted) + 1)
+    df_sorted['Format_Number'] = df_sorted.groupby('Match_Format').cumcount() + 1
+
+    for index, row in df_sorted.iterrows():
+        home_team = row['Home_Team']
+        away_team = row['Away_Team']
+        match_format = row['Match_Format']
+
+        if match_format not in elo_ratings:
+            elo_ratings[match_format] = {}
+
+        elo_ratings[match_format].setdefault(home_team, initial_elo)
+        elo_ratings[match_format].setdefault(away_team, initial_elo)
+
+        home_elo_start = elo_ratings[match_format][home_team]
+        away_elo_start = elo_ratings[match_format][away_team]
+
+        df_sorted.at[index, 'Home_Elo_Start'] = home_elo_start
+        df_sorted.at[index, 'Away_Elo_Start'] = away_elo_start
+
+        if row['Home_Win']:
+            result = 1
+        elif row['Home_Lost']:
+            result = 0
+        else:
+            result = 0.5
+
+        new_home_elo, new_away_elo = update_elo(home_elo_start, away_elo_start, k_factor, result)
+
+        df_sorted.at[index, 'Home_Elo_End'] = new_home_elo
+        df_sorted.at[index, 'Away_Elo_End'] = new_away_elo
+
+        elo_ratings[match_format][home_team] = new_home_elo
+        elo_ratings[match_format][away_team] = new_away_elo
+
+    # Create home and away views
+    home_df = df_sorted.rename(columns={
+        'Home_Team': 'Team',
+        'Away_Team': 'Opponent',
+        'Home_Elo_Start': 'Team_Elo_Start',
+        'Home_Elo_End': 'Team_Elo_End',
+        'Away_Elo_Start': 'Opponent_Elo_Start',
+        'Away_Elo_End': 'Opponent_Elo_End'
+    })
+    home_df['Location'] = 'Home'
+    home_df['Elo_Change'] = home_df['Team_Elo_End'] - home_df['Team_Elo_Start']
+
+    away_df = df_sorted.rename(columns={
+        'Away_Team': 'Team',
+        'Home_Team': 'Opponent',
+        'Away_Elo_Start': 'Team_Elo_Start',
+        'Away_Elo_End': 'Team_Elo_End',
+        'Home_Elo_Start': 'Opponent_Elo_Start',
+        'Home_Elo_End': 'Opponent_Elo_End'
+    })
+    away_df['Location'] = 'Away'
+    away_df['Elo_Change'] = away_df['Team_Elo_End'] - away_df['Team_Elo_Start']
+
+    elo_combined_df = pd.concat([home_df, away_df], ignore_index=True)
+    return elo_combined_df, elo_ratings
+
 
 # Modern CSS for beautiful UI - Full styling with enhanced elements
 st.markdown("""
@@ -300,147 +384,22 @@ filtered_teams = sorted(
 
 #########====================CREATE HEAD TO HEAD TABLE===================######################
 if 'match_df' in st.session_state:
-    match_df = st.session_state['match_df'].copy()
-    
-    # Convert to datetime for proper sorting
-    match_df['Date_Sort'] = match_df['Date'].apply(parse_date)
-    # Sort DataFrame by date
-    match_df_sorted = match_df.sort_values('Date_Sort')
-    
-    # Initialize ELO ratings - now a nested dictionary {format: {team: rating}}
-    initial_elo = 1000
-    elo_ratings = {}
-    k_factor = 32
+    with st.spinner("Calculating ELO ratings for all matches..."):
+        elo_combined_df, elo_ratings = calculate_elo_ratings(st.session_state['match_df'])
 
-    def expected_score(elo_a, elo_b):
-        return 1 / (1 + 10 ** ((elo_b - elo_a) / 400))
-
-    def update_elo(winner_elo, loser_elo, k_factor, result):
-        expected_win = expected_score(winner_elo, loser_elo)
-        new_winner_elo = winner_elo + k_factor * (result - expected_win)
-        new_loser_elo = loser_elo + k_factor * ((1 - result) - (1 - expected_win))
-        return round(new_winner_elo, 2), round(new_loser_elo, 2)
-
-    # Add ELO columns
-    match_df_sorted['Home_Elo_Start'] = 0
-    match_df_sorted['Away_Elo_Start'] = 0
-    match_df_sorted['Home_Elo_End'] = 0
-    match_df_sorted['Away_Elo_End'] = 0
-    
-    # Add match number per format and overall match number
-    match_df_sorted['Match_Number'] = range(1, len(match_df_sorted) + 1)
-    match_df_sorted['Format_Number'] = match_df_sorted.groupby('Match_Format').cumcount() + 1
-
-    # Calculate ELO ratings for each match
-    for index, row in match_df_sorted.iterrows():
-        home_team = row['Home_Team']
-        away_team = row['Away_Team']
-        match_format = row['Match_Format']
-        
-        # Initialize format dictionary if new
-        if match_format not in elo_ratings:
-            elo_ratings[match_format] = {}
-        
-        # Initialize ELO ratings if team is new in this format
-        if home_team not in elo_ratings[match_format]:
-            elo_ratings[match_format][home_team] = initial_elo
-        if away_team not in elo_ratings[match_format]:
-            elo_ratings[match_format][away_team] = initial_elo
-        
-        # Get starting ELO ratings for this format
-        home_elo_start = elo_ratings[match_format][home_team]
-        away_elo_start = elo_ratings[match_format][away_team]
-        
-        # Record starting ELO ratings
-        match_df_sorted.at[index, 'Home_Elo_Start'] = home_elo_start
-        match_df_sorted.at[index, 'Away_Elo_Start'] = away_elo_start
-        
-        # Determine match result
-        if row['Home_Win']:
-            home_result = 1
-            away_result = 0
-        elif row['Home_Lost']:
-            home_result = 0
-            away_result = 1
-        elif row['Home_Drawn']:
-            home_result = 0.5
-            away_result = 0.5
-        else:
-            # In case of any other result
-            home_result = 0.5
-            away_result = 0.5
-        
-        # Update ELO ratings
-        new_home_elo, new_away_elo = update_elo(home_elo_start, away_elo_start, k_factor, home_result)
-        
-        # Record updated ELO ratings
-        match_df_sorted.at[index, 'Home_Elo_End'] = new_home_elo
-        match_df_sorted.at[index, 'Away_Elo_End'] = new_away_elo
-        
-        # Update ELO ratings in dictionary for this format
-        elo_ratings[match_format][home_team] = new_home_elo
-        elo_ratings[match_format][away_team] = new_away_elo
-    
-    # Create separate home and away dataframes with ELO information
-    home_df = match_df_sorted[['Date', 'Home_Team', 'Away_Team', 'Home_Elo_Start', 'Home_Elo_End', 
-                              'Away_Elo_Start', 'Away_Elo_End', 'Match_Format', 'Match_Number', 
-                              'Format_Number', 'Margin']].copy()
-    home_df.rename(columns={
-        'Home_Team': 'Team',
-        'Away_Team': 'Opponent',
-        'Home_Elo_Start': 'Team_Elo_Start',
-        'Home_Elo_End': 'Team_Elo_End',
-        'Away_Elo_Start': 'Opponent_Elo_Start',
-        'Away_Elo_End': 'Opponent_Elo_End'
-    }, inplace=True)
-    home_df['Location'] = 'Home'
-    home_df['Elo_Change'] = home_df['Team_Elo_End'] - home_df['Team_Elo_Start']
-
-    away_df = match_df_sorted[['Date', 'Home_Team', 'Away_Team', 'Home_Elo_Start', 'Home_Elo_End', 
-                              'Away_Elo_Start', 'Away_Elo_End', 'Match_Format', 'Match_Number', 
-                              'Format_Number', 'Margin']].copy()
-    away_df.rename(columns={
-        'Away_Team': 'Team',
-        'Home_Team': 'Opponent',
-        'Away_Elo_Start': 'Team_Elo_Start',
-        'Away_Elo_End': 'Team_Elo_End',
-        'Home_Elo_Start': 'Opponent_Elo_Start',
-        'Home_Elo_End': 'Opponent_Elo_End'
-    }, inplace=True)
-    # For away games, we need to adjust the margin to be from the away team's perspective
-    away_df['Margin'] = away_df['Margin'].apply(lambda x: x if pd.isna(x) else str(x).replace('runs', 'runs').replace('wickets', 'wickets') if 'wickets' in str(x) else 
-                                               (('-' + str(x)) if not str(x).startswith('-') else str(x)[1:]))
-    away_df['Location'] = 'Away'
-    away_df['Elo_Change'] = away_df['Team_Elo_End'] - away_df['Team_Elo_Start']
-
-    # When creating elo_combined_df, ensure dates are properly parsed
-    home_df['Date'] = home_df['Date'].apply(parse_date)
-    away_df['Date'] = away_df['Date'].apply(parse_date)
-    elo_combined_df = pd.concat([home_df, away_df], ignore_index=True)
-    
-    # Store the combined dataframe in session state
-    st.session_state['elo_df'] = elo_combined_df
-    st.session_state['match_df_with_elo'] = match_df_sorted
-    st.session_state['current_elo_ratings'] = elo_ratings
-
-    # Apply filters to elo_combined_df
+    # Now, apply the interactive filters to the FAST, in-memory DataFrame
     filtered_elo_df = elo_combined_df.copy()
-    
-    # Format filter
     if 'All' not in format_choice:
         filtered_elo_df = filtered_elo_df[filtered_elo_df['Match_Format'].isin(format_choice)]
-    
-    # Team filter
     if 'All' not in team_choice:
-        team_mask = (filtered_elo_df['Team'].isin(team_choice))
-        filtered_elo_df = filtered_elo_df[team_mask]
-    
-    # Opponent filter
+        filtered_elo_df = filtered_elo_df[filtered_elo_df['Team'].isin(team_choice)]
     if 'All' not in opponent_choice:
-        opponent_mask = (filtered_elo_df['Opponent'].isin(opponent_choice))
-        filtered_elo_df = filtered_elo_df[opponent_mask]
-
+        filtered_elo_df = filtered_elo_df[filtered_elo_df['Opponent'].isin(opponent_choice)]
     filtered_elo_df['Diff'] = filtered_elo_df['Team_Elo_Start'] - filtered_elo_df['Opponent_Elo_Start']
+
+    # Store in session state for downstream use
+    st.session_state['elo_df'] = filtered_elo_df
+    st.session_state['current_elo_ratings'] = elo_ratings
 
 # Define team colors
 team_colors = {
@@ -670,7 +629,7 @@ st.markdown("""
 graph_df = filtered_elo_df.copy()
 
 # Convert Date to datetime
-graph_df['Date'] = pd.to_datetime(graph_df['Date'])
+graph_df['Date'] = pd.to_datetime(graph_df['Date'], format='mixed', dayfirst=True, errors='coerce')
 
 # Create a complete timeline for all format/team combinations
 min_date = graph_df['Date'].min()
