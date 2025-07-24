@@ -1178,14 +1178,112 @@ def display_bowl_view():
         ###-------------------------------------HOME/AWAY STATS-------------------------------------###
         # Home/Away Stats Tab
         with tabs[8]:
-            # Home/Away stats
             homeaway_stats_df = compute_bowl_homeaway_stats(filtered_df)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Bowling Statistics</h3>", unsafe_allow_html=True)
+            st.markdown("""
+            <h3 style='color:#f04f53; text-align: center;'>Home/Away Bowling Statistics</h3>
+            """, unsafe_allow_html=True)
             if homeaway_stats_df.empty:
                 st.info("No Home/Away statistics to display for the current selection.")
             else:
                 st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True)
-                # (Optional: add a Home/Away plot here if you wish)
+                # --- Modern UI Section Header for Graphs ---
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Home/Away Performance Trends by Year</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                col1, col2, col3 = st.columns(3)
+                # Prepare yearly stats by Home/Away
+                yearly_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Wkts': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                yearly_ha['Average'] = (yearly_ha['Bowler_Runs'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                yearly_ha['Economy Rate'] = (yearly_ha['Bowler_Runs'] / (yearly_ha['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+                yearly_ha['Strike Rate'] = (yearly_ha['Bowler_Balls'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                ha_colors = {'Home': '#1f77b4', 'Away': '#d62728', 'Neutral': '#2ca02c'}
+                # Average by Year
+                with col1:
+                    st.subheader("Average by Year")
+                    fig_avg = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_avg.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Average'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_avg.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Average",
+                        font=dict(size=12)
+                    )
+                    fig_avg.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_avg, use_container_width=True)
+                # Economy Rate by Year
+                with col2:
+                    st.subheader("Economy Rate by Year")
+                    fig_econ = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_econ.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Economy Rate'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_econ.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Economy Rate",
+                        font=dict(size=12)
+                    )
+                    fig_econ.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_econ, use_container_width=True)
+                # Strike Rate by Year
+                with col3:
+                    st.subheader("Strike Rate by Year")
+                    fig_sr = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_sr.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Strike Rate'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_sr.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Strike Rate",
+                        font=dict(size=12)
+                    )
+                    fig_sr.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_sr, use_container_width=True)
 
         ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
         # Cumulative Stats Tab
