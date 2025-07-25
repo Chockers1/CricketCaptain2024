@@ -6,7 +6,7 @@ import numpy as np
 import plotly.graph_objects as go
 import gc
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- MODULE-LEVEL CONSTANTS ---------------------------------------
 # common columns to drop for batting‐based tables
@@ -1763,76 +1763,58 @@ with tabs[4]:
     
     # Compute series information from match dataframe
     def compute_series_info(match_df):
-        potential_series = [
-            '1st Test Match','2nd Test Match','3rd Test Match','4th Test Match','5th Test Match',
-            '1st One Day International','2nd One Day International','3rd One Day International',
-            '4th One Day International','5th One Day International',
-            '1st 20 Over International','2nd 20 Over International','3rd 20 Over International',
-            '4th 20 Over International','5th 20 Over International',
-            'Only One Day International','Only 20 Over International','Only Test Match',
-            'Test Championship Final'
-        ]
-        s_df = match_df[match_df['Competition'].isin(potential_series)].copy()
-        s_df = s_df.sort_values('Date', ascending=True)
-        series_list = []
-        for _, match in s_df.iterrows():
-            comp = match['Competition']
-            match_date = pd.to_datetime(match['Date'])
-            if is_part_of_series(comp):
-                subset = s_df[
-                    (s_df['Home_Team'] == match['Home_Team']) &
-                    (s_df['Away_Team'] == match['Away_Team']) &
-                    (s_df['Match_Format'] == match['Match_Format']) &
-                    (abs(pd.to_datetime(s_df['Date']) - match_date).dt.days <= 60)
-                ]
-                if not subset.empty:
-                    info = {
-                        'Start_Date': min(pd.to_datetime(subset['Date'])).date(),
-                        'End_Date': max(pd.to_datetime(subset['Date'])).date(),
-                        'Home_Team': match['Home_Team'],
-                        'Away_Team': match['Away_Team'],
-                        'Match_Format': match['Match_Format'],
-                        'Games_Played': len(subset),
-                        'Total_Home_Wins': subset['Home_Win'].sum(),
-                        'Total_Away_Wins': subset['Home_Lost'].sum(),
-                        'Total_Draws': subset['Home_Drawn'].sum(),
-                    }
-                    key = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
-                    if not any(x.get('key') == key for x in series_list):
-                        info['key'] = key
-                        series_list.append(info)
-            elif comp in ['Only One Day International','Only 20 Over International','Only Test Match','Test Championship Final']:
-                info = {
-                    'Start_Date': match_date.date(),
-                    'End_Date': match_date.date(),
-                    'Home_Team': match['Home_Team'],
-                    'Away_Team': match['Away_Team'],
-                    'Match_Format': match['Match_Format'],
-                    'Games_Played': 1,
-                    'Total_Home_Wins': match['Home_Win'],
-                    'Total_Away_Wins': match['Home_Lost'],
-                    'Total_Draws': match['Home_Drawn'],
-                }
-                info['key'] = f"{info['Home_Team']}_{info['Away_Team']}_{info['Match_Format']}_{info['Start_Date']}"
-                series_list.append(info)
-        if series_list:
-            s_grouped = pd.DataFrame(series_list).drop_duplicates('key').drop('key', axis=1)
-            s_grouped = s_grouped.sort_values('Start_Date')
-            s_grouped['Series'] = range(1, len(s_grouped) + 1)
-            def determine_series_winner(row):
-                if row['Total_Home_Wins'] > row['Total_Away_Wins']:
-                    return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
-                    return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
-                else:
-                    if row['Total_Draws'] > 0:
-                        return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-                    return f"Series Tied {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
-            s_grouped['Series_Result'] = s_grouped.apply(determine_series_winner, axis=1)
-            return s_grouped
-        return pd.DataFrame(columns=['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 
-                                    'Match_Format', 'Games_Played', 'Total_Home_Wins', 
-                                    'Total_Away_Wins', 'Total_Draws', 'Series'])
+        """Identifies series based on teams, format, and time gaps between matches."""
+        if match_df is None or match_df.empty:
+            return pd.DataFrame()
+
+        # Create a canonical team-pair to group matches regardless of who is home/away
+        # e.g., (England, Australia) is the same as (Australia, England)
+        match_df['Team_Pair'] = match_df.apply(
+            lambda row: tuple(sorted((row['Home_Team'], row['Away_Team']))), axis=1
+        )
+        
+        # Sort matches chronologically for gap calculation
+        s_df = match_df.sort_values(['Team_Pair', 'Match_Format', 'Date'])
+        
+        # Calculate the time difference between consecutive matches within each group
+        s_df['Time_Gap'] = s_df.groupby(['Team_Pair', 'Match_Format'])['Date'].diff()
+
+        # A new series starts if the gap is more than 90 days (approx. 3 months)
+        # The .cumsum() creates a unique ID for each continuous block of games (a series)
+        s_df['Series_ID'] = (s_df['Time_Gap'] > timedelta(days=90)).cumsum()
+        
+        # Group by the new Series_ID to aggregate stats for each series
+        series_groups = s_df.groupby('Series_ID').agg(
+            Start_Date=('Date', 'min'),
+            End_Date=('Date', 'max'),
+            Home_Team=('Home_Team', 'first'), # This assumes home team is consistent
+            Away_Team=('Away_Team', 'first'), # This assumes away team is consistent
+            Match_Format=('Match_Format', 'first'),
+            Games_Played=('File Name', 'count'),
+            Total_Home_Wins=('Home_Win', 'sum'),
+            Total_Away_Wins=('Home_Lost', 'sum'),
+            Total_Draws=('Home_Drawn', 'sum')
+        ).reset_index()
+
+        if series_groups.empty:
+            return pd.DataFrame()
+            
+        # Determine the series winner
+        def determine_series_winner(row):
+            if row['Total_Home_Wins'] > row['Total_Away_Wins']:
+                return f"{row['Home_Team']} won {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+            elif row['Total_Away_Wins'] > row['Total_Home_Wins']:
+                return f"{row['Away_Team']} won {row['Total_Away_Wins']}-{row['Total_Home_Wins']}"
+            else:
+                return f"Series Drawn {row['Total_Home_Wins']}-{row['Total_Away_Wins']}"
+                
+        series_groups['Series_Result'] = series_groups.apply(determine_series_winner, axis=1)
+        
+        # Rename the Series_ID to be a simple 1, 2, 3...
+        series_groups = series_groups.rename(columns={'Series_ID': 'Series'})
+        series_groups['Series'] = range(1, len(series_groups) + 1)
+        
+        return series_groups
     
     # Initialize empty series_info_df with proper columns to avoid KeyErrors
     series_info_df = pd.DataFrame(columns=['Series', 'Start_Date', 'End_Date', 'Home_Team', 
@@ -1885,75 +1867,56 @@ with tabs[4]:
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        
-        # Create a copy of batting dataframe
+
+        # Prepare data for merging
         series_batting = filtered_bat_df.copy()
+        series_batting['Date'] = pd.to_datetime(series_batting['Date'])
+        series_batting = series_batting.sort_values('Date')
+        series_dates = series_info_df[['Series', 'Start_Date', 'End_Date']].copy()
+        series_dates['Start_Date'] = pd.to_datetime(series_dates['Start_Date'], format='%d/%m/%Y')
+        series_dates = series_dates.sort_values('Start_Date')
         
-        # Remove unwanted columns
-        series_batting = series_batting.drop(['Bat_Team_x', 'Bowl_Team_x'], axis=1, errors='ignore')
+        # Use merge_asof for a fast, efficient join based on dates
+        # This finds which series each batting performance belongs to
+        series_batting = pd.merge_asof(
+            series_batting, 
+            series_dates, 
+            left_on='Date', 
+            right_on='Start_Date', 
+            direction='backward'
+        )
         
-        # Add Series column by matching date ranges
-        def find_series(row):
-            try:
-                match_date = pd.to_datetime(row['Date']).date()
-                # Check if necessary columns exist in series_info_df
-                if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    # Convert date strings to datetime.date objects for comparison
-                    start_dates = pd.to_datetime(series_info_df['Start_Date'], errors='coerce').dt.date
-                    end_dates = pd.to_datetime(series_info_df['End_Date'], errors='coerce').dt.date
-                    
-                    # Filter rows where match_date is within range and teams match
-                    mask = (
-                        (start_dates <= match_date) & 
-                        (end_dates >= match_date) & 
-                        ((series_info_df['Home_Team'] == row['Bat_Team_y']) | 
-                        (series_info_df['Home_Team'] == row['Bowl_Team_y']) |
-                        (series_info_df['Away_Team'] == row['Bat_Team_y']) |
-                        (series_info_df['Away_Team'] == row['Bowl_Team_y']))
-                    )
-                    matches = series_info_df[mask]
-                    
-                    if not matches.empty:
-                        return matches['Series'].iloc[0]
-                return None
-            except Exception as e:
-                # Log error but don't crash
-                #st.write(f"Error in find_series: {e}")
-                return None
-        
-        # Add Series column
-        series_batting['Series'] = series_batting.apply(find_series, axis=1)
-        
-        # Filter out rows with no series match
-        series_batting = series_batting[series_batting['Series'].notna()]
+        # Filter out records that don't fall within a series's start/end date
+        series_batting = series_batting.dropna(subset=['Series'])
+        series_batting['End_Date'] = pd.to_datetime(series_batting['End_Date'], format='%d/%m/%Y')
+        series_batting = series_batting[series_batting['Date'] <= series_batting['End_Date']]
         
         if series_batting.empty:
             st.info("No batting data matches available series.")
         else:
             # Create series batting statistics
-            series_stats = series_batting.groupby(['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team']).agg({
-                'File Name': 'nunique',
-                'Batted': 'sum', 
-                'Out': 'sum',
-                'Not Out': 'sum',
-                'Runs': 'sum',
-                'Balls': 'sum',
-                '4s': 'sum',
-                '6s': 'sum',
-                '50s': 'sum',
-                '100s': 'sum'
-            }).reset_index()
+            series_stats = series_batting.groupby(['Series', 'Name', 'Bat_Team_y']).agg(
+                Matches=('File Name', 'nunique'),
+                Innings=('Batted', 'sum'),
+                Not_Out=('Not Out', 'sum'),
+                Runs=('Runs', 'sum'),
+                Highest_Score=('Runs', 'max'),
+                Balls=('Balls', 'sum'),
+                Fours=('4s', 'sum'),
+                Sixes=('6s', 'sum'),
+                Fifties=('50s', 'sum'),
+                Hundreds=('100s', 'sum')
+            ).reset_index()
+
+            series_stats['Out'] = series_stats['Innings'] - series_stats['Not_Out']
+            series_stats['Average'] = (series_stats['Runs'] / series_stats['Out']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
             
-            # Rename columns for display
-            series_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
-                                  'Matches', 'Batted', 'Out', 'Not Out', 'Runs', 
-                                  'Balls', '4s', '6s', '50s', '100s']
-            
+            # Reorder and rename columns for display
+            series_stats = series_stats[['Series', 'Name', 'Bat_Team_y', 'Matches', 'Innings', 'Not_Out', 'Runs', 'Highest_Score', 'Average', 'Balls', 'Fours', 'Sixes', 'Fifties', 'Hundreds']]
+            series_stats.columns = ['Series', 'Name', 'Team', 'Matches', 'Innings', 'NO', 'Runs', 'HS', 'Avg', 'Balls', '4s', '6s', '50s', '100s']
+
             # Display series batting statistics
-            if not series_stats.empty:
-                st.dataframe(series_stats, use_container_width=True, hide_index=True)
-            else:
-                st.info("No series batting statistics available.")
+            st.dataframe(series_stats.sort_values(['Series', 'Runs'], ascending=[True, False]), use_container_width=True, hide_index=True)
     else:
         st.info("No batting data available for series analysis or no series found")
 
@@ -1972,86 +1935,54 @@ with tabs[4]:
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        
-        # Create a copy of bowling dataframe
+
+        # Prepare data for merging
         series_bowling = filtered_bowl_df.copy()
-        
-        # Add Series column by matching date ranges
-        def find_bowling_series(row):
-            try:
-                match_date = pd.to_datetime(row['Date']).date()
-                # Check if necessary columns exist in series_info_df
-                if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    # Convert date strings to datetime.date objects for comparison
-                    start_dates = pd.to_datetime(series_info_df['Start_Date'], errors='coerce').dt.date
-                    end_dates = pd.to_datetime(series_info_df['End_Date'], errors='coerce').dt.date
-                    
-                    # Filter rows where match_date is within range and teams match
-                    mask = (
-                        (start_dates <= match_date) & 
-                        (end_dates >= match_date) & 
-                        ((series_info_df['Home_Team'] == row['Bat_Team']) | 
-                        (series_info_df['Home_Team'] == row['Bowl_Team']) |
-                        (series_info_df['Away_Team'] == row['Bat_Team']) |
-                        (series_info_df['Away_Team'] == row['Bowl_Team']))
-                    )
-                    matches = series_info_df[mask]
-                    
-                    if not matches.empty:
-                        return matches['Series'].iloc[0]
-                return None
-            except Exception as e:
-                return None
-        
-        # Add Series column
-        series_bowling['Series'] = series_bowling.apply(find_bowling_series, axis=1)
-        
-        # Filter out rows with no series match
-        series_bowling = series_bowling[series_bowling['Series'].notna()]
-        
+        series_bowling['Date'] = pd.to_datetime(series_bowling['Date'])
+        series_bowling = series_bowling.sort_values('Date')
+        series_dates = series_info_df[['Series', 'Start_Date', 'End_Date']].copy()
+        series_dates['Start_Date'] = pd.to_datetime(series_dates['Start_Date'], format='%d/%m/%Y')
+        series_dates = series_dates.sort_values('Start_Date')
+
+        # Use merge_asof for a fast, efficient join based on dates
+        series_bowling = pd.merge_asof(
+            series_bowling, 
+            series_dates, 
+            left_on='Date', 
+            right_on='Start_Date', 
+            direction='backward'
+        )
+
+        # Filter out records that don't fall within a series's start/end date
+        series_bowling = series_bowling.dropna(subset=['Series'])
+        series_bowling['End_Date'] = pd.to_datetime(series_bowling['End_Date'], format='%d/%m/%Y')
+        series_bowling = series_bowling[series_bowling['Date'] <= series_bowling['End_Date']]
+
         if series_bowling.empty:
-            st.info("No bowling data matches available series. ")
+            st.info("No bowling data matches available series.")
         else:
-            # Create series bowling statistics
-            series_bowl_stats = series_bowling.groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).agg({
-                'File Name': 'nunique',
-                'Bowler_Overs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'Bowler_Runs': 'sum'
-            }).reset_index()
+            # Aggregate main bowling stats
+            series_bowl_stats = series_bowling.groupby(['Series', 'Name', 'Bowl_Team']).agg(
+                Matches=('File Name', 'nunique'),
+                Overs=('Bowler_Overs', 'sum'),
+                Runs=('Bowler_Runs', 'sum'),
+                Wickets=('Bowler_Wkts', 'sum')
+            ).reset_index()
+
+            # Calculate 5-wicket hauls
+            five_wickets = series_bowling[series_bowling['Bowler_Wkts'] >= 5].groupby(['Series', 'Name']).size().reset_index(name='5w')
+            series_bowl_stats = series_bowl_stats.merge(five_wickets, on=['Series', 'Name'], how='left').fillna({'5w': 0})
             
-            # Calculate 5-wicket and 10-wicket hauls from individual match data
-            five_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 5].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='5w_hauls')
-            ten_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 10].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='10w_hauls')
-            
-            # Merge the hauls data
-            series_bowl_stats = series_bowl_stats.merge(five_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
-            series_bowl_stats = series_bowl_stats.merge(ten_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
-            
-            # Fill NaN values with 0
-            series_bowl_stats['5w_hauls'] = series_bowl_stats['5w_hauls'].fillna(0).astype(int)
-            series_bowl_stats['10w_hauls'] = series_bowl_stats['10w_hauls'].fillna(0).astype(int)
-            
-            # Calculate bowling averages and economy rates
-            series_bowl_stats['Bowling_Average'] = series_bowl_stats.apply(
-                lambda row: round(row['Bowler_Runs'] / row['Bowler_Wkts'], 2) if row['Bowler_Wkts'] > 0 else 0, axis=1
-            )
-            series_bowl_stats['Economy_Rate'] = series_bowl_stats.apply(
-                lambda row: round(row['Bowler_Runs'] / row['Bowler_Overs'], 2) if row['Bowler_Overs'] > 0 else 0, axis=1
-            )
-            
-            # Rename columns for display 
-            series_bowl_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
-                                       'Matches', 'Overs', 'Wickets', 'Runs', '5w', '10w', 
-                                       'Average', 'Economy']
-            
-            # Sort by most wickets first
-            series_bowl_stats = series_bowl_stats.sort_values(['Wickets', 'Average'], ascending=[False, True])
-            
+            # Calculate stats
+            series_bowl_stats['Average'] = (series_bowl_stats['Runs'] / series_bowl_stats['Wickets']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+            series_bowl_stats['Economy'] = (series_bowl_stats['Runs'] / series_bowl_stats['Overs']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+
+            # Reorder and rename
+            series_bowl_stats = series_bowl_stats[['Series', 'Name', 'Bowl_Team', 'Matches', 'Overs', 'Runs', 'Wickets', 'Average', 'Economy', '5w']]
+            series_bowl_stats.columns = ['Series', 'Name', 'Team', 'Matches', 'Overs', 'Runs', 'Wkts', 'Avg', 'Econ', '5w']
+            series_bowl_stats['5w'] = series_bowl_stats['5w'].astype(int)
+
             # Display series bowling statistics
-            if not series_bowl_stats.empty: 
-                st.dataframe(series_bowl_stats, use_container_width=True, hide_index=True)
-            else:
-                st.info("No series bowling statistics available.")
+            st.dataframe(series_bowl_stats.sort_values(['Series', 'Wkts'], ascending=[True, False]), use_container_width=True, hide_index=True)
     else:
         st.info("No bowling data available for series analysis or no series found")  
