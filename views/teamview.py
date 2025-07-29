@@ -1068,6 +1068,12 @@ def display_team_view():
         # Call the cached functions directly instead of recalculating
         bat_team_season_df = compute_team_batting_season(filtered_bat_df)
         bowl_team_season_df = compute_team_bowling_season(filtered_bowl_df)
+
+        # --- Apply Format Filter for All Years & Teams plots ---
+        # Only filter for the All Years & Teams section, not the main tab's year filter
+        # Use selected_formats from the All Years & Teams filter
+        # Ensure selected_formats is always defined
+        selected_formats = ['All']
         
         # Check if the necessary dataframes are available
         if bat_team_season_df.empty or bowl_team_season_df.empty:
@@ -1351,6 +1357,179 @@ def display_team_view():
                 - **Top-Left**: Good batting teams, weaker bowling (lower performance index, positive avg difference)
                 - **Bottom-Left**: Struggling teams (lower performance index, negative avg difference)
                 - **Vertical line at 200**: Balanced team at format average
+                """)
+
+                # --- Add: Performance Index vs Average Difference (All Years & Teams) ---
+                st.markdown('<div class="chart-header">📊 Performance Index vs Average Difference (All Years & Teams)</div>', unsafe_allow_html=True)
+                # Team filter just above the plot
+                all_teams = ['All'] + sorted(combined_df['Team'].dropna().unique())
+                # Use the same logic as the main 🏆 Format filter at the top
+                match_formats_main = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
+                # Only show Team filter (remove Format filter)
+                selected_teams = st.multiselect(
+                    'Filter Teams',
+                    options=all_teams,
+                    default=['All'],
+                    key='perf_index_all_team_filter',
+                    help='Select which teams to show in the plot.'
+                )
+                # Use the already filtered combined_df from Performance Visualizations
+                # Recompute the combined_df for All Years & Teams using the selected format filter
+                bat_season_all = bat_team_season_df.copy()
+                bowl_season_all = bowl_team_season_df.copy()
+                if 'All' not in selected_formats:
+                    # Use the correct column name for format filtering
+                    bat_format_col = 'Match_Format' if 'Match_Format' in bat_season_all.columns else ('Format' if 'Format' in bat_season_all.columns else None)
+                    bowl_format_col = 'Match_Format' if 'Match_Format' in bowl_season_all.columns else ('Format' if 'Format' in bowl_season_all.columns else None)
+                    if bat_format_col:
+                        bat_season_all = bat_season_all[bat_season_all[bat_format_col].isin(selected_formats)]
+                    if bowl_format_col:
+                        bowl_season_all = bowl_season_all[bowl_season_all[bowl_format_col].isin(selected_formats)]
+                combined_all_df = compute_team_rankings(bat_season_all, bowl_season_all)
+                filtered_all_df = combined_all_df.copy()
+                # Apply Team filter to the All Years & Teams plots
+                if 'All' not in selected_teams:
+                    filtered_all_df = filtered_all_df[filtered_all_df['Team'].isin(selected_teams)]
+                # --- Performance Index vs Average Difference (All Years & Teams) SCATTER ---
+                perf_index_all_fig = go.Figure()
+                for _, row in filtered_all_df.iterrows():
+                    team = row['Team']
+                    year = row['Year']
+                    perf_index = row['Performance Index']
+                    avg_diff = row['Avg Difference']
+                    bat_avg = row['Batting Avg']
+                    bowl_avg = row['Bowling Avg']
+                    # Determine marker color based on performance index
+                    if perf_index > 200:
+                        marker_color = '#32CD32'  # Bright green for good performance
+                    elif perf_index > 180:
+                        marker_color = '#FFA500'  # Orange for average performance
+                    else:
+                        marker_color = '#DC143C'  # Crimson for below average performance
+                    perf_index_all_fig.add_trace(go.Scatter(
+                        x=[perf_index],
+                        y=[avg_diff],
+                        mode='markers+text',
+                        text=[f"{team} {year}"],
+                        textposition='top center',
+                        marker=dict(
+                            size=10,
+                            color=marker_color,
+                            opacity=0.6
+                        ),
+                        name=f"{team} {year}",
+                        hovertemplate=(
+                            f"<b>{team} {year}</b><br><br>"
+                            f"Performance Index: {perf_index:.2f}<br>"
+                            f"Avg Difference: {avg_diff:.2f}<br>"
+                            f"Batting Avg: {bat_avg:.2f}<br>"
+                            f"Bowling Avg: {bowl_avg:.2f}<br>"
+                            "<extra></extra>"
+                        )
+                    ))
+                # Add a horizontal reference line at y=0
+                perf_index_all_fig.add_shape(
+                    type="line",
+                    x0=min(filtered_all_df['Performance Index'].min() - 10, 160) if not filtered_all_df.empty else 160,
+                    x1=max(filtered_all_df['Performance Index'].max() + 10, 240) if not filtered_all_df.empty else 240,
+                    y0=0,
+                    y1=0,
+                    line=dict(color="gray", dash="dash")
+                )
+                # Add a vertical reference line at x=200 (balanced performance)
+                perf_index_all_fig.add_shape(
+                    type="line",
+                    x0=200,
+                    x1=200,
+                    y0=min(filtered_all_df['Avg Difference'].min() - 5, -10) if not filtered_all_df.empty else -10,
+                    y1=max(filtered_all_df['Avg Difference'].max() + 5, 10) if not filtered_all_df.empty else 10,
+                    line=dict(color="gray", dash="dash")
+                )
+                perf_index_all_fig.update_layout(
+                    title="Team Performance Index vs Average Difference (All Years & Teams)",
+                    xaxis_title="Performance Index",
+                    yaxis_title="Average Difference",
+                    height=600,
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False,
+                    xaxis=dict(
+                        range=[min(filtered_all_df['Performance Index'].min() - 10, 160) if not filtered_all_df.empty else 160, 
+                              max(filtered_all_df['Performance Index'].max() + 10, 240) if not filtered_all_df.empty else 240]
+                    ),
+                    yaxis=dict(
+                        range=[min(filtered_all_df['Avg Difference'].min() - 5, -10) if not filtered_all_df.empty else -10,
+                              max(filtered_all_df['Avg Difference'].max() + 5, 10) if not filtered_all_df.empty else 10]
+                    ),
+                    xaxis_gridcolor='rgba(200, 200, 200, 0.2)',
+                    yaxis_gridcolor='rgba(200, 200, 200, 0.2)',
+                )
+                st.plotly_chart(perf_index_all_fig, use_container_width=True)
+                st.markdown("""
+                **Interpreting the All Years & Teams Chart:**
+                - Each dot represents a team in a specific year.
+                - Use this to spot trends, outliers, and historical performance shifts.
+                """)
+                # --- Add: Average Difference Bar Graph (All Years & Teams) ---
+                st.markdown('<div class="chart-header">⚖️ Average Difference (All Years & Teams)</div>', unsafe_allow_html=True)
+                # Use the same filtered_all_df for the bar graph
+                avg_diff_all_df = filtered_all_df.copy()
+                avg_diff_all_df['TeamYear'] = avg_diff_all_df['Team'].astype(str) + ' ' + avg_diff_all_df['Year'].astype(str)
+                # Sort by Avg Difference high to low
+                avg_diff_all_df = avg_diff_all_df.sort_values('Avg Difference', ascending=False)
+                # Color logic: green for high, amber for mid, red for low
+                def avg_diff_color(val):
+                    if val > 3:
+                        return '#32CD32'  # Green
+                    elif val > -2:
+                        return '#FFA500'  # Amber
+                    else:
+                        return '#DC143C'  # Red
+                colors = [avg_diff_color(x) for x in avg_diff_all_df['Avg Difference']]
+                fig_avg_all = go.Figure()
+                fig_avg_all.add_trace(go.Bar(
+                    x=avg_diff_all_df['TeamYear'],
+                    y=avg_diff_all_df['Avg Difference'],
+                    marker_color=colors,
+                    text=avg_diff_all_df['Avg Difference'].round(2),
+                    textposition='auto',
+                    hovertemplate=(
+                        'Team & Year: %{x}<br>'
+                        'Average Difference: %{y:.2f}<br>'
+                        'Batting Avg: %{customdata[0]:.2f}<br>'
+                        'Bowling Avg: %{customdata[1]:.2f}<br>'
+                        '<extra></extra>'
+                    ),
+                    customdata=np.stack((avg_diff_all_df['Batting Avg'], avg_diff_all_df['Bowling Avg']), axis=-1)
+                ))
+                fig_avg_all.update_layout(
+                    title='Average Difference (Batting Avg - Bowling Avg) for All Years & Teams',
+                    showlegend=False,
+                    height=500,
+                    xaxis_title='Team & Year',
+                    yaxis_title='Average Difference',
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                )
+                fig_avg_all.add_shape(
+                    type='line',
+                    x0=-0.5,
+                    x1=len(avg_diff_all_df) - 0.5,
+                    y0=0,
+                    y1=0,
+                    line=dict(color='gray', width=1, dash='dash')
+                )
+                fig_avg_all.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', tickangle=45)
+                fig_avg_all.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                st.plotly_chart(fig_avg_all, use_container_width=True)
+                st.markdown("""
+                **Note on Average Difference (All Years & Teams):**
+                - **Green bars**: Dominant teams (Avg Difference > 20)
+                - **Amber bars**: Competitive teams (Avg Difference > 0)
+                - **Red bars**: Struggling teams (Avg Difference ≤ 0)
+                - X axis shows Team and Year for each bar
                 """)
         # --- END OF OPTIMIZED CODE ---
 
