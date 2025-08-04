@@ -198,8 +198,8 @@ st.markdown("""
 
 st.markdown("""
     <div style="background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
-        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.23</span><br>
-        <span style="color: white; font-size: 16px;">25% faster scorecard loading and up to 75% speed boost for data-heavy tabs with smart caching for batting and bowling tabs</span>
+        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.24</span><br>
+        <span style="color: white; font-size: 16px;">New Team Rankings scatter charts + Match Impact breakdown by win/loss/draw for batting performance insights</span>
     </div>
 """, unsafe_allow_html=True)
 
