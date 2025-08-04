@@ -362,6 +362,11 @@ def compute_career_stats(filtered_df):
     bat_career_df['Boundary%'] = (((bat_career_df['4s'] * 4) + (bat_career_df['6s'] * 6))   / (bat_career_df['Runs'].replace(0, 1))* 100 ).round(2)
     bat_career_df['RPM'] = (bat_career_df['Runs'] / bat_career_df['Matches'].replace(0, 1)).round(2)
 
+    # Calculate Contribution Percentage (average percentage of team's total runs)
+    bat_career_df['Avg Contribution %'] = (
+        (bat_career_df['Runs'] / bat_career_df['Team Runs'].replace(0, np.nan)) * 100
+    ).round(2).fillna(0)
+
     # Calculate new statistics
     inns = bat_career_df['Inns'].replace(0, np.nan)
     bat_career_df['50+PI'] = (((bat_career_df['50s'] + bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / inns) * 100).round(2).fillna(0)
@@ -388,13 +393,212 @@ def compute_career_stats(filtered_df):
     # Reorder columns and drop Team Avg and Team SR
     bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
                                    'Runs', 'HS', 'Avg', 'BPO', 'SR', '4s', '6s', 'BPB',
-                                   'Boundary%', 'RPM', '<25&Out', '50s', '100s', '150s', '200s',
+                                   'Boundary%', 'RPM', 'Avg Contribution %', '<25&Out', '50s', '100s', '150s', '200s',
                                    'Conversion Rate', '<25&OutPI', '50+PI', '100PI', '150PI', '200PI',
                                    'Match+ Avg', 'Match+ SR', 'Team+ Avg', 'Team+ SR', 'Caught%', 'Bowled%', 'LBW%', 
                                    'Run Out%', 'Stumped%', 'Not Out%', 'POM', 'POM Per Match']]
     # Sort the DataFrame by 'Runs' in descending order
     bat_career_df = bat_career_df.sort_values(by='Runs', ascending=False)
     return bat_career_df
+
+@st.cache_data
+@st.cache_data
+def compute_match_impact_stats(filtered_df, match_df):
+    """
+    Compute comprehensive batting statistics broken down by match results (Won/Lost/Draw).
+    Returns data in long format with separate rows for Career, Won, Lost, Draw.
+    """
+    if match_df.empty or filtered_df.empty:
+        return pd.DataFrame()
+    
+    try:
+        # Check required columns
+        required_columns = ['File Name', 'Home_Win', 'Away_Won', 'Home_Lost', 'Away_Lost', 'Home_Drawn', 'Away_Drawn', 'Tie']
+        if not all(col in match_df.columns for col in required_columns):
+            return pd.DataFrame()
+        
+        # Merge batting data with match results
+        merged_df = filtered_df.merge(
+            match_df[required_columns],
+            on='File Name', 
+            how='left'
+        )
+        
+        if merged_df.empty:
+            return pd.DataFrame()
+        
+        # Function to determine match result
+        def determine_result(row):
+            bat_team = row.get('Bat_Team_y', '')
+            home_team = row.get('Home Team', '')
+            away_team = row.get('Away Team', '')
+            
+            if bat_team == home_team:
+                if row.get('Home_Win', 0) == 1:
+                    return 'Won'
+                elif row.get('Home_Lost', 0) == 1:
+                    return 'Lost'
+                elif row.get('Home_Drawn', 0) == 1:
+                    return 'Draw'
+                elif row.get('Tie', 0) == 1:
+                    return 'Tie'
+            elif bat_team == away_team:
+                if row.get('Away_Won', 0) == 1:
+                    return 'Won'
+                elif row.get('Away_Lost', 0) == 1:
+                    return 'Lost'
+                elif row.get('Away_Drawn', 0) == 1:
+                    return 'Draw'
+                elif row.get('Tie', 0) == 1:
+                    return 'Tie'
+            return 'Unknown'
+        
+        # Apply result determination
+        merged_df['Match_Result'] = merged_df.apply(determine_result, axis=1)
+        merged_df = merged_df[merged_df['Match_Result'] != 'Unknown']
+        
+        if merged_df.empty:
+            return pd.DataFrame()
+        
+        # First calculate career stats for each player
+        career_stats = filtered_df.groupby('Name').agg({
+            'File Name': 'nunique',     # Matches
+            'Batted': 'sum',            # Innings  
+            'Out': 'sum',               # Times Out
+            'Not Out': 'sum',           # Not Outs
+            'Balls': 'sum',             # Balls Faced
+            'Runs': ['sum', 'max'],     # Runs and High Score
+            '4s': 'sum',                # Fours
+            '6s': 'sum',                # Sixes  
+            '50s': 'sum',               # Fifties
+            '100s': 'sum',              # Hundreds
+            '150s': 'sum',              # 150s
+            '200s': 'sum',              # 200s
+            'Total_Runs': 'sum',        # Team Total Runs
+            'Wickets': 'sum',           # Team Wickets
+            'Team Balls': 'sum'         # Team Balls
+        }).round(2)
+        
+        # Flatten column names for career stats
+        career_stats.columns = [
+            'Matches', 'Inns', 'Out', 'Not_Out', 'Balls', 'Runs', 'HS', 
+            '4s', '6s', '50s', '100s', '150s', '200s', 'Total_Runs', 'Wickets', 'Team_Balls'
+        ]
+        career_stats = career_stats.reset_index()
+        career_stats['Result'] = 'Career'
+        
+        # Calculate derived metrics for career
+        career_stats['Avg'] = (career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['SR'] = ((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['BPO'] = (career_stats['Balls'] / career_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['50+PI'] = (((career_stats['50s'] + career_stats['100s'] + career_stats['150s'] + career_stats['200s']) / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['100PI'] = (((career_stats['100s'] + career_stats['150s'] + career_stats['200s']) / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['Not_Out%'] = ((career_stats['Not_Out'] / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['Boundary%'] = (((career_stats['4s'] * 4 + career_stats['6s'] * 6) / career_stats['Runs'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        
+        # Calculate P+ metrics for career
+        career_stats['P+Avg'] = ((career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)) / (career_stats['Total_Runs'] / career_stats['Wickets'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        career_stats['P+SR'] = (((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) / (career_stats['Total_Runs'] / career_stats['Team_Balls'].replace(0, np.inf))) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        
+        # Now calculate stats by match result
+        result_stats = merged_df.groupby(['Name', 'Match_Result']).agg({
+            'File Name': 'nunique',     # Matches
+            'Batted': 'sum',            # Innings  
+            'Out': 'sum',               # Times Out
+            'Not Out': 'sum',           # Not Outs
+            'Balls': 'sum',             # Balls Faced
+            'Runs': ['sum', 'max'],     # Runs and High Score
+            '4s': 'sum',                # Fours
+            '6s': 'sum',                # Sixes  
+            '50s': 'sum',               # Fifties
+            '100s': 'sum',              # Hundreds
+            '150s': 'sum',              # 150s
+            '200s': 'sum',              # 200s
+            'Total_Runs': 'sum',        # Team Total Runs
+            'Wickets': 'sum',           # Team Wickets
+            'Team Balls': 'sum'         # Team Balls
+        }).round(2)
+        
+        # Flatten column names for result stats
+        result_stats.columns = [
+            'Matches', 'Inns', 'Out', 'Not_Out', 'Balls', 'Runs', 'HS', 
+            '4s', '6s', '50s', '100s', '150s', '200s', 'Total_Runs', 'Wickets', 'Team_Balls'
+        ]
+        result_stats = result_stats.reset_index()
+        result_stats = result_stats.rename(columns={'Match_Result': 'Result'})
+        
+        # Calculate derived metrics for result stats
+        result_stats['Avg'] = (result_stats['Runs'] / result_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['SR'] = ((result_stats['Runs'] / result_stats['Balls'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['BPO'] = (result_stats['Balls'] / result_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['50+PI'] = (((result_stats['50s'] + result_stats['100s'] + result_stats['150s'] + result_stats['200s']) / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['100PI'] = (((result_stats['100s'] + result_stats['150s'] + result_stats['200s']) / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['Not_Out%'] = ((result_stats['Not_Out'] / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['Boundary%'] = (((result_stats['4s'] * 4 + result_stats['6s'] * 6) / result_stats['Runs'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        
+        # Calculate P+ metrics for result stats
+        result_stats['P+Avg'] = ((result_stats['Runs'] / result_stats['Out'].replace(0, np.inf)) / (result_stats['Total_Runs'] / result_stats['Wickets'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        result_stats['P+SR'] = (((result_stats['Runs'] / result_stats['Balls'].replace(0, np.inf)) / (result_stats['Total_Runs'] / result_stats['Team_Balls'].replace(0, np.inf))) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
+        
+        # Combine career stats and result stats
+        all_stats = pd.concat([career_stats, result_stats], ignore_index=True)
+        
+        # Ensure we have the right order: Career, Won, Lost, Draw for each player
+        result_order = ['Career', 'Won', 'Lost', 'Draw']
+        all_stats['Result'] = pd.Categorical(all_stats['Result'], categories=result_order, ordered=True)
+        
+        # Sort by Name and then by Result to get the desired order
+        all_stats = all_stats.sort_values(['Name', 'Result']).reset_index(drop=True)
+        
+        # Fill missing values with 0 for players who don't have all result types
+        all_players = all_stats['Name'].unique()
+        complete_data = []
+        
+        for player in all_players:
+            player_data = all_stats[all_stats['Name'] == player]
+            
+            # Ensure we have all result types for each player
+            for result_type in result_order:
+                existing_row = player_data[player_data['Result'] == result_type]
+                
+                if not existing_row.empty:
+                    complete_data.append(existing_row.iloc[0].to_dict())
+                else:
+                    # Create a row with zeros if this result type doesn't exist for the player
+                    zero_row = {
+                        'Name': player,
+                        'Result': result_type,
+                        'Matches': 0, 'Inns': 0, 'Out': 0, 'Not_Out': 0, 'Balls': 0,
+                        'Runs': 0, 'HS': 0, '4s': 0, '6s': 0, '50s': 0, '100s': 0,
+                        '150s': 0, '200s': 0, 'Avg': 0, 'SR': 0, 'BPO': 0,
+                        '50+PI': 0, '100PI': 0, 'Not_Out%': 0, 'Boundary%': 0,
+                        'P+Avg': 0, 'P+SR': 0, 'Total_Runs': 0, 'Wickets': 0, 'Team_Balls': 0
+                    }
+                    complete_data.append(zero_row)
+        
+        # Convert back to DataFrame
+        final_df = pd.DataFrame(complete_data)
+        
+        # Sort by total career runs (descending) and then by result type
+        career_runs = final_df[final_df['Result'] == 'Career'].set_index('Name')['Runs'].to_dict()
+        final_df['Career_Runs_Sort'] = final_df['Name'].map(career_runs)
+        final_df = final_df.sort_values(['Career_Runs_Sort', 'Name', 'Result'], ascending=[False, True, True])
+        final_df = final_df.drop('Career_Runs_Sort', axis=1).reset_index(drop=True)
+        
+        # Select and order columns for display
+        display_columns = [
+            'Name', 'Result', 'Matches', 'Inns', 'Out', 'Not_Out', 'Runs', 'HS', 
+            'Avg', 'SR', 'BPO', '4s', '6s', '50s', '100s', '50+PI', '100PI', 
+            'Not_Out%', 'Boundary%'
+        ]
+        
+        final_df = final_df[display_columns]
+        
+        return final_df
+        
+    except Exception as e:
+        st.error(f"Error in compute_match_impact_stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_format_stats(filtered_df):
@@ -445,6 +649,11 @@ def compute_format_stats(filtered_df):
     # Calculate BPB (Balls Per Boundary)
     df_format['BPB'] = (df_format['Balls'] / (df_format['4s'] + df_format['6s']).replace(0, 1)).round(2)
 
+    # Calculate Contribution Percentage
+    df_format['Avg Contribution %'] = (
+        (df_format['Runs'] / df_format['Team Runs'].replace(0, np.nan)) * 100
+    ).round(2).fillna(0)
+
     # Calculate new statistics
     df_format['50+PI'] = (((df_format['50s'] + df_format['100s']) / df_format['Inns']) * 100).round(2).fillna(0)
     df_format['100PI'] = ((df_format['100s'] / df_format['Inns']) * 100).round(2).fillna(0)
@@ -460,7 +669,7 @@ def compute_format_stats(filtered_df):
 
     # Reorder columns and drop Team Avg and Team SR
     df_format = df_format[['Name', 'Match_Format', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
-                        'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', 
+                        'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', 'Avg Contribution %', '<25&Out', '50s', '100s', 
                         '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
                         'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
     
@@ -517,6 +726,11 @@ def compute_season_stats(filtered_df):
     # Calculate BPB (Balls Per Boundary)
     season_stats_df['BPB'] = (season_stats_df['Balls'] / (season_stats_df['4s'] + season_stats_df['6s']).replace(0, 1)).round(2)
 
+    # Calculate Contribution Percentage
+    season_stats_df['Avg Contribution %'] = (
+        (season_stats_df['Runs'] / season_stats_df['Team Runs'].replace(0, np.nan)) * 100
+    ).round(2).fillna(0)
+
     # Calculate new statistics
     season_stats_df['50+PI'] = (((season_stats_df['50s'] + season_stats_df['100s']) / season_stats_df['Inns']) * 100).round(2).fillna(0)
     season_stats_df['100PI'] = ((season_stats_df['100s'] / season_stats_df['Inns']) * 100).round(2).fillna(0)
@@ -532,7 +746,7 @@ def compute_season_stats(filtered_df):
 
     # Reorder columns
     season_stats_df = season_stats_df[['Name', 'Year', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'HS', 
-                                   'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', '<25&Out', '50s', '100s', 
+                                   'Avg', 'BPO', 'SR', '4s', '6s', 'BPB', 'Avg Contribution %', '<25&Out', '50s', '100s', 
                                    '<25&OutPI', '50+PI', '100PI', 'P+ Avg', 'P+ SR', 
                                    'Caught%', 'Bowled%', 'LBW%', 'Run Out%', 'Stumped%', 'Not Out%']]
     season_stats_df = season_stats_df.sort_values(by='Runs', ascending=False)
@@ -1212,7 +1426,7 @@ def display_bat_view():
 # Create tabs for different views
         tabs = main_container.tabs([
             "Career", "Format", "Season", "Latest", "Opponent", 
-            "Location", "Innings", "Position", "Home/Away",
+            "Location", "Innings", "Position", "Home/Away", "Match Impact",
             "Cumulative", "Block"
         ])
         
@@ -1336,6 +1550,445 @@ def display_bat_view():
                 """, unsafe_allow_html=True)
                 # Show second plot
                 st.plotly_chart(sr_bpo_fig, use_container_width=True, key="career_sr_bpo")
+
+        # Match Impact / Clutch Performance Tab
+        with tabs[9]:
+            # Try to get match impact stats
+            match_impact_df = compute_match_impact_stats(filtered_df, match_df)
+            
+            if not match_impact_df.empty:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎯 Match Impact / Clutch Performance</h3>
+                    <p style="color: white !important; margin: 0.5rem 0 0 0; text-align: center; font-size: 0.9rem;">
+                        Complete batting statistics broken down by match results - Career vs Won vs Lost vs Draw performance
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Add explanatory guide
+                st.markdown("""
+                <div style="background: rgba(102, 126, 234, 0.1); 
+                            padding: 0.8rem; margin: 0.5rem 0; border-radius: 10px; 
+                            border-left: 4px solid #667eea;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: #667eea;">📊 Statistics Breakdown:</h4>
+                    <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
+                        <li><strong>Career:</strong> Overall statistics across all matches</li>
+                        <li><strong>Won:</strong> Performance in matches where player's team won</li>
+                        <li><strong>Lost:</strong> Performance in matches where player's team lost</li>
+                        <li><strong>Draw:</strong> Performance in matches that ended in draws</li>
+                        <li><strong>Key Metrics:</strong> Matches, Innings, Runs, Average, Strike Rate, High Score, Milestones, etc.</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Configure column display with proper formatting
+                column_config = {
+                    "Name": st.column_config.Column("Name", pinned=True, width=120),
+                    "Result": st.column_config.Column("Result", width=80),
+                    "Runs": st.column_config.NumberColumn("Runs", format="%d"),
+                    "Avg": st.column_config.NumberColumn("Avg", format="%.2f"),
+                    "SR": st.column_config.NumberColumn("SR", format="%.2f"),
+                    "Matches": st.column_config.NumberColumn("Matches", format="%d"),
+                    "Inns": st.column_config.NumberColumn("Inns", format="%d"),
+                    "HS": st.column_config.NumberColumn("HS", format="%d"),
+                    "BPO": st.column_config.NumberColumn("BPO", format="%.2f")
+                }
+                
+                st.dataframe(
+                    match_impact_df, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    column_config=column_config
+                )
+                
+                # Create comprehensive bar chart showing all averages first
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 0.8rem; margin: 1.5rem 0 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(102, 126, 234, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Complete Average Comparison: Career vs Match Results</h3>
+                    <p style="color: white !important; margin: 0.3rem 0 0 0; text-align: center; font-size: 0.8rem;">
+                        Compare batting averages across all match outcomes
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Prepare data for the comprehensive bar chart
+                career_data = match_impact_df[match_impact_df['Result'] == 'Career'][['Name', 'Avg', 'Runs']].rename(columns={'Avg': 'Career_Avg'})
+                won_data_chart = match_impact_df[match_impact_df['Result'] == 'Won'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Won_Avg'})
+                lost_data_chart = match_impact_df[match_impact_df['Result'] == 'Lost'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Lost_Avg'})
+                draw_data_chart = match_impact_df[match_impact_df['Result'] == 'Draw'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Draw_Avg'})
+                
+                # Merge all data
+                complete_data = career_data.merge(won_data_chart, on='Name', how='left')
+                complete_data = complete_data.merge(lost_data_chart, on='Name', how='left', suffixes=('', '_lost'))
+                complete_data = complete_data.merge(draw_data_chart, on='Name', how='left', suffixes=('', '_draw'))
+                
+                # Fill NaN values with 0 for players without certain results
+                complete_data = complete_data.fillna(0)
+                
+                # Sort by career runs (descending) and take top players for readability
+                complete_data = complete_data.sort_values('Runs', ascending=False)
+                
+                # Limit to top 20 players for better visualization
+                top_players = complete_data.head(20) if len(complete_data) > 20 else complete_data
+                
+                if not top_players.empty:
+                    # Create grouped bar chart
+                    bar_fig = go.Figure()
+                    
+                    # Add bars for each category
+                    bar_fig.add_trace(go.Bar(
+                        name='Career Average',
+                        x=top_players['Name'],
+                        y=top_players['Career_Avg'],
+                        marker_color='#36d1dc',
+                        hovertemplate='<b>%{x}</b><br>Career Avg: %{y:.2f}<extra></extra>'
+                    ))
+                    
+                    bar_fig.add_trace(go.Bar(
+                        name='Won Average',
+                        x=top_players['Name'],
+                        y=top_players['Won_Avg'],
+                        marker_color='#28a745',
+                        hovertemplate='<b>%{x}</b><br>Won Avg: %{y:.2f}<extra></extra>'
+                    ))
+                    
+                    bar_fig.add_trace(go.Bar(
+                        name='Lost Average',
+                        x=top_players['Name'],
+                        y=top_players['Lost_Avg'],
+                        marker_color='#dc3545',
+                        hovertemplate='<b>%{x}</b><br>Lost Avg: %{y:.2f}<extra></extra>'
+                    ))
+                    
+                    bar_fig.add_trace(go.Bar(
+                        name='Draw Average',
+                        x=top_players['Name'],
+                        y=top_players['Draw_Avg'],
+                        marker_color='#ffc107',
+                        hovertemplate='<b>%{x}</b><br>Draw Avg: %{y:.2f}<extra></extra>'
+                    ))
+                    
+                    # Update layout
+                    bar_fig.update_layout(
+                        xaxis_title="Players",
+                        yaxis_title="Batting Average",
+                        height=600,
+                        barmode='group',
+                        font=dict(size=12),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.02,
+                            xanchor="right",
+                            x=1
+                        ),
+                        xaxis=dict(
+                            tickangle=45,
+                            tickmode='linear'
+                        )
+                    )
+                    
+                    st.plotly_chart(bar_fig, use_container_width=True, key="comprehensive_avg_comparison")
+                    
+                    # Add insights below the chart
+                    st.markdown("#### 🔍 Key Insights:")
+                    
+                    # Calculate some interesting statistics
+                    clutch_performers = top_players[top_players['Won_Avg'] > top_players['Career_Avg']]
+                    pressure_performers = top_players[top_players['Lost_Avg'] > top_players['Career_Avg']]
+                    consistent_performers = top_players[
+                        (abs(top_players['Won_Avg'] - top_players['Career_Avg']) <= 5) & 
+                        (abs(top_players['Lost_Avg'] - top_players['Career_Avg']) <= 5)
+                    ]
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div style="background: rgba(40, 167, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
+                            <h4 style="color: #28a745; margin: 0;">🎯 Big Game Players</h4>
+                            <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{len(clutch_performers)}</p>
+                            <p style="font-size: 0.9rem; margin: 0;">Better when winning</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown(f"""
+                        <div style="background: rgba(220, 53, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #dc3545;">
+                            <h4 style="color: #dc3545; margin: 0;">⚡ Pressure Players</h4>
+                            <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{len(pressure_performers)}</p>
+                            <p style="font-size: 0.9rem; margin: 0;">Better when losing</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        st.markdown(f"""
+                        <div style="background: rgba(54, 209, 220, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #36d1dc;">
+                            <h4 style="color: #36d1dc; margin: 0;">🔄 Consistent Players</h4>
+                            <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{len(consistent_performers)}</p>
+                            <p style="font-size: 0.9rem; margin: 0;">Similar across results</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Create clutch performance visualization using the long format data
+                # First, we need to pivot the data to get Won vs Lost averages
+                won_data = match_impact_df[match_impact_df['Result'] == 'Won'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Avg_Won', 'Matches': 'Matches_Won'})
+                lost_data = match_impact_df[match_impact_df['Result'] == 'Lost'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Avg_Lost', 'Matches': 'Matches_Lost'})
+                
+                # Merge Won and Lost data for comparison
+                clutch_data = won_data.merge(lost_data, on='Name', how='inner')
+                
+                # Remove the duplicate bar chart section - this was duplicated by mistake
+                
+                # Original scatter plot for Won vs Lost comparison
+                if not clutch_data.empty and 'Avg_Won' in clutch_data.columns and 'Avg_Lost' in clutch_data.columns:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                padding: 0.8rem; margin: 1.5rem 0 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(102, 126, 234, 0.25);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Clutch Performance Analysis: Average in Won vs Lost Matches</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Filter players with sufficient data for meaningful analysis
+                    sufficient_data = clutch_data[
+                        (clutch_data.get('Matches_Won', 0) >= 2) & 
+                        (clutch_data.get('Matches_Lost', 0) >= 2) &
+                        (clutch_data.get('Avg_Won', 0) > 0) & 
+                        (clutch_data.get('Avg_Lost', 0) > 0)
+                    ]
+                    
+                    if not sufficient_data.empty:
+                        # Create clutch performance scatter plot using the same logic as summary cards
+                        clutch_fig = go.Figure()
+                        
+                        # Use the top_players data directly to ensure consistency with summary cards
+                        for _, player_top in top_players.iterrows():
+                            player_name = player_top['Name']
+                            
+                            # Check if this player has sufficient scatter plot data
+                            if player_name in sufficient_data['Name'].values:
+                                # Get the scatter plot coordinates from sufficient_data
+                                player_scatter = sufficient_data[sufficient_data['Name'] == player_name].iloc[0]
+                                won_avg = player_scatter.get('Avg_Won', 0)
+                                lost_avg = player_scatter.get('Avg_Lost', 0)
+                                
+                                # Use the top_players data for categorization (same as summary cards)
+                                career_avg = player_top['Career_Avg']
+                                won_avg_top = player_top['Won_Avg']
+                                lost_avg_top = player_top['Lost_Avg']
+                                
+                                # Apply the exact same logic as summary cards
+                                is_big_game = won_avg_top > career_avg
+                                is_pressure = lost_avg_top > career_avg
+                                is_consistent = (abs(won_avg_top - career_avg) <= 5) and (abs(lost_avg_top - career_avg) <= 5)
+                                
+                                # Priority order: Consistent > Big Game > Pressure > Other
+                                # This ensures consistent players are shown as cyan even if they're also big game or pressure
+                                if is_consistent:
+                                    color = '#36d1dc'  # Cyan for Consistent Players
+                                    category = 'Consistent Player'
+                                elif is_big_game:
+                                    color = '#28a745'  # Green for Big Game Players
+                                    category = 'Big Game Player'
+                                elif is_pressure:
+                                    color = '#dc3545'  # Red for Pressure Players
+                                    category = 'Pressure Player'
+                                else:
+                                    color = '#6c757d'  # Gray for others
+                                    category = 'Other'
+                                
+                                clutch_fig.add_trace(go.Scatter(
+                                    x=[lost_avg],
+                                    y=[won_avg], 
+                                    mode='markers+text',
+                                    text=[player_name],
+                                    textposition='top center',
+                                    marker=dict(
+                                        size=12,
+                                        color=color,
+                                        line=dict(width=2, color='white')
+                                    ),
+                                    name=player_name,
+                                    hovertemplate=(
+                                        f"<b>{player_name}</b><br><br>"
+                                        f"Category: {category}<br>"
+                                        f"Career Average: {career_avg:.2f}<br>"
+                                        f"Average in Won Matches: {won_avg:.2f}<br>"
+                                        f"Average in Lost Matches: {lost_avg:.2f}<br>"
+                                        f"Won vs Career Diff: {won_avg_top - career_avg:+.2f}<br>"
+                                        f"Lost vs Career Diff: {lost_avg_top - career_avg:+.2f}<br>"
+                                        f"Won Matches: {player_scatter.get('Matches_Won', 0)}<br>"
+                                        f"Lost Matches: {player_scatter.get('Matches_Lost', 0)}<br>"
+                                        "<extra></extra>"
+                                    ),
+                                    showlegend=False
+                                ))
+                        
+                        # Add diagonal line (x=y) for equal performance
+                        max_val = max(sufficient_data['Avg_Won'].max(), sufficient_data['Avg_Lost'].max())
+                        min_val = min(sufficient_data['Avg_Won'].min(), sufficient_data['Avg_Lost'].min())
+                        
+                        clutch_fig.add_trace(go.Scatter(
+                            x=[min_val, max_val],
+                            y=[min_val, max_val],
+                            mode='lines',
+                            line=dict(dash='dash', color='gray', width=2),
+                            name='Equal Performance Line',
+                            hoverinfo='skip',
+                            showlegend=False
+                        ))
+                        
+                        # Calculate dynamic axis ranges with some padding
+                        x_min, x_max = sufficient_data['Avg_Lost'].min(), sufficient_data['Avg_Lost'].max()
+                        y_min, y_max = sufficient_data['Avg_Won'].min(), sufficient_data['Avg_Won'].max()
+                        
+                        # Add 10% padding to the ranges for better visualization
+                        x_padding = (x_max - x_min) * 0.1 if x_max > x_min else 5
+                        y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 5
+                        
+                        clutch_fig.update_layout(
+                            xaxis_title="Average in Lost Matches",
+                            yaxis_title="Average in Won Matches",
+                            height=500,
+                            font=dict(size=12),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            xaxis=dict(
+                                range=[x_min - x_padding, x_max + x_padding],
+                                showgrid=True,
+                                gridwidth=1,
+                                gridcolor='rgba(128, 128, 128, 0.2)'
+                            ),
+                            yaxis=dict(
+                                range=[y_min - y_padding, y_max + y_padding],
+                                showgrid=True,
+                                gridwidth=1,
+                                gridcolor='rgba(128, 128, 128, 0.2)'
+                            ),
+                            annotations=[
+                                dict(
+                                    x=0.02, y=0.98,
+                                    xref='paper', yref='paper',
+                                    text="<b>Color Legend:</b><br><span style='color: #28a745;'>■</span> Big Game Players<br><span style='color: #dc3545;'>■</span> Pressure Players<br><span style='color: #36d1dc;'>■</span> Consistent Players",
+                                    showarrow=False,
+                                    font=dict(size=10),
+                                    bgcolor='rgba(255,255,255,0.9)',
+                                    bordercolor='gray',
+                                    borderwidth=1
+                                )
+                            ]
+                        )
+                        
+                        st.plotly_chart(clutch_fig, use_container_width=True, key="clutch_performance")
+                        
+                    # Add detailed explanation section
+                    st.markdown("---")
+                    st.markdown("#### 📚 Understanding Clutch Performance Analysis")
+                    
+                    # Main container with styling
+                    st.markdown("""
+                    <div style="background: rgba(102, 126, 234, 0.05); 
+                                padding: 1.5rem; margin: 1rem 0; border-radius: 15px; 
+                                border-left: 5px solid #667eea;">
+                        <h4 style="color: #667eea; margin-top: 0;">🎯 What These Metrics Tell Us:</h4>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Big Game Players section
+                    st.markdown("""
+                    <div style="margin-bottom: 1rem;">
+                        <h5 style="color: #28a745; margin-bottom: 0.5rem;">🎯 Big Game Players / Clutch Performers</h5>
+                        <p style="margin: 0; font-size: 0.9rem; line-height: 1.4;">
+                            These players <strong>raise their game when it matters most</strong>. They perform better in winning matches, 
+                            suggesting they contribute significantly to team victories. These are the players you want batting in crucial 
+                            situations - they thrive under pressure and help secure wins.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Pressure Players section
+                    st.markdown("""
+                    <div style="margin-bottom: 1rem;">
+                        <h5 style="color: #dc3545; margin-bottom: 0.5rem;">⚡ Pressure Players / Flat-Track Bullies</h5>
+                        <p style="margin: 0; font-size: 0.9rem; line-height: 1.4;">
+                            These players actually perform <strong>better in losing matches</strong>. This might indicate they score runs 
+                            when the pressure is off or when the match situation is already difficult. While still valuable, 
+                            they may struggle to convert good starts into match-winning performances.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Consistent Players section
+                    st.markdown("""
+                    <div style="margin-bottom: 1rem;">
+                        <h5 style="color: #36d1dc; margin-bottom: 0.5rem;">🔄 Consistent Players</h5>
+                        <p style="margin: 0; font-size: 0.9rem; line-height: 1.4;">
+                            These players maintain <strong>similar performance levels regardless of match outcome</strong>. 
+                            They're reliable and steady, providing consistent contributions whether the team wins or loses. 
+                            These players form the backbone of any batting lineup.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Average Difference section
+                    st.markdown("""
+                    <div style="margin-bottom: 1rem;">
+                        <h5 style="color: #667eea; margin-bottom: 0.5rem;">📈 Average Difference</h5>
+                        <p style="margin: 0; font-size: 0.9rem; line-height: 1.4;">
+                            Shows the overall trend across all players. A <strong>positive value</strong> indicates that collectively, 
+                            players perform better in winning matches. A negative value would suggest better performance in losses. 
+                            The magnitude shows how significant this difference is.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Strategic Insights section
+                    st.markdown("""
+                    <div style="background: rgba(255, 193, 7, 0.1); padding: 1rem; border-radius: 10px; margin-top: 1rem; border-left: 4px solid #ffc107;">
+                        <h5 style="color: #856404; margin-top: 0;">💡 Strategic Insights:</h5>
+                        <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem; line-height: 1.4;">
+                            <li><strong>Team Selection:</strong> Clutch performers are ideal for crucial matches and pressure situations</li>
+                            <li><strong>Batting Order:</strong> Position clutch players where they can influence close games</li>
+                            <li><strong>Match Strategy:</strong> Consistent players provide stability, while clutch players can change game momentum</li>
+                            <li><strong>Player Development:</strong> Help pressure players work on converting starts into match-winning contributions</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                else:
+                    st.info("📊 Not enough data for clutch performance analysis. Players need at least 2 matches in both won and lost categories.")
+            else:
+                st.warning("⚠️ Match impact analysis requires match result data. Please ensure match data is loaded.")
+                
+                # Provide troubleshooting info
+                if match_df.empty:
+                    st.error("**Issue:** Match data is empty. Please re-upload your scorecard files from the Home page.")
+                elif filtered_df.empty:
+                    st.error("**Issue:** No batting data available with current filters.")
+                else:
+                    st.markdown("### 🔧 Troubleshooting:")
+                    common_files = 0
+                    if 'File Name' in filtered_df.columns and 'File Name' in match_df.columns:
+                        bat_files = set(filtered_df['File Name'].unique())
+                        match_files = set(match_df['File Name'].unique())
+                        common_files = len(bat_files.intersection(match_files))
+                    
+                    st.info(f"**Common files between batting and match data:** {common_files}")
+                    if common_files == 0:
+                        st.error("**Issue:** No matching files between batting and match data")
+                    else:
+                        st.success(f"Found {common_files} matching files - function should work!")
 
         # Format Stats Tab  
         with tabs[1]:
@@ -1840,7 +2493,7 @@ def display_bat_view():
             st.plotly_chart(fig, use_container_width=True, key="homeaway_trend")
 
         # Cumulative Stats Tab
-        with tabs[9]:
+        with tabs[10]:
             cumulative_stats_df = compute_cumulative_stats(filtered_df)
             
             st.markdown("""
@@ -1878,7 +2531,7 @@ def display_bat_view():
                 st.plotly_chart(fig3, use_container_width=True, key="cumulative_runs")
 
         # Block Stats Tab
-        with tabs[10]:
+        with tabs[11]:
             block_stats_df = compute_block_stats(filtered_df)
 
             st.markdown("""
