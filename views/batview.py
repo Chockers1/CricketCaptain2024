@@ -405,200 +405,90 @@ def compute_career_stats(filtered_df):
 @st.cache_data
 def compute_match_impact_stats(filtered_df, match_df):
     """
-    Compute comprehensive batting statistics broken down by match results (Won/Lost/Draw).
-    Returns data in long format with separate rows for Career, Won, Lost, Draw.
+    Optimized function to compute batting statistics by match result.
+    Returns a dictionary with the main table and pre-pivoted chart data.
     """
     if match_df.empty or filtered_df.empty:
-        return pd.DataFrame()
-    
+        return {'table': pd.DataFrame(), 'chart_data': pd.DataFrame()}
+
     try:
-        # Check required columns
-        required_columns = ['File Name', 'Home_Win', 'Away_Won', 'Home_Lost', 'Away_Lost', 'Home_Drawn', 'Away_Drawn', 'Tie']
-        if not all(col in match_df.columns for col in required_columns):
-            return pd.DataFrame()
-        
-        # Merge batting data with match results
+        # 1. VECTORIZED RESULT DETERMINATION (Replaces .apply)
         merged_df = filtered_df.merge(
-            match_df[required_columns],
-            on='File Name', 
+            match_df[['File Name', 'Home_Win', 'Away_Won', 'Home_Lost', 'Away_Lost', 'Home_Drawn', 'Away_Drawn', 'Tie']],
+            on='File Name',
             how='left'
         )
-        
-        if merged_df.empty:
-            return pd.DataFrame()
-        
-        # Function to determine match result
-        def determine_result(row):
-            bat_team = row.get('Bat_Team_y', '')
-            home_team = row.get('Home Team', '')
-            away_team = row.get('Away Team', '')
-            
-            if bat_team == home_team:
-                if row.get('Home_Win', 0) == 1:
-                    return 'Won'
-                elif row.get('Home_Lost', 0) == 1:
-                    return 'Lost'
-                elif row.get('Home_Drawn', 0) == 1:
-                    return 'Draw'
-                elif row.get('Tie', 0) == 1:
-                    return 'Tie'
-            elif bat_team == away_team:
-                if row.get('Away_Won', 0) == 1:
-                    return 'Won'
-                elif row.get('Away_Lost', 0) == 1:
-                    return 'Lost'
-                elif row.get('Away_Drawn', 0) == 1:
-                    return 'Draw'
-                elif row.get('Tie', 0) == 1:
-                    return 'Tie'
-            return 'Unknown'
-        
-        # Apply result determination
-        merged_df['Match_Result'] = merged_df.apply(determine_result, axis=1)
-        merged_df = merged_df[merged_df['Match_Result'] != 'Unknown']
-        
-        if merged_df.empty:
-            return pd.DataFrame()
-        
-        # First calculate career stats for each player
-        career_stats = filtered_df.groupby('Name').agg({
-            'File Name': 'nunique',     # Matches
-            'Batted': 'sum',            # Innings  
-            'Out': 'sum',               # Times Out
-            'Not Out': 'sum',           # Not Outs
-            'Balls': 'sum',             # Balls Faced
-            'Runs': ['sum', 'max'],     # Runs and High Score
-            '4s': 'sum',                # Fours
-            '6s': 'sum',                # Sixes  
-            '50s': 'sum',               # Fifties
-            '100s': 'sum',              # Hundreds
-            '150s': 'sum',              # 150s
-            '200s': 'sum',              # 200s
-            'Total_Runs': 'sum',        # Team Total Runs
-            'Wickets': 'sum',           # Team Wickets
-            'Team Balls': 'sum'         # Team Balls
-        }).round(2)
-        
-        # Flatten column names for career stats
-        career_stats.columns = [
-            'Matches', 'Inns', 'Out', 'Not_Out', 'Balls', 'Runs', 'HS', 
-            '4s', '6s', '50s', '100s', '150s', '200s', 'Total_Runs', 'Wickets', 'Team_Balls'
+
+        conditions = [
+            (merged_df['Bat_Team_y'] == merged_df['Home Team']) & (merged_df['Home_Win'] == 1),
+            (merged_df['Bat_Team_y'] == merged_df['Away Team']) & (merged_df['Away_Won'] == 1),
+            (merged_df['Bat_Team_y'] == merged_df['Home Team']) & (merged_df['Home_Lost'] == 1),
+            (merged_df['Bat_Team_y'] == merged_df['Away Team']) & (merged_df['Away_Lost'] == 1),
+            (merged_df['Bat_Team_y'] == merged_df['Home Team']) & (merged_df['Home_Drawn'] == 1),
+            (merged_df['Bat_Team_y'] == merged_df['Away Team']) & (merged_df['Away_Drawn'] == 1),
+            (merged_df['Tie'] == 1)
         ]
-        career_stats = career_stats.reset_index()
-        career_stats['Result'] = 'Career'
-        
-        # Calculate derived metrics for career
-        career_stats['Avg'] = (career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['SR'] = ((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['BPO'] = (career_stats['Balls'] / career_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['50+PI'] = (((career_stats['50s'] + career_stats['100s'] + career_stats['150s'] + career_stats['200s']) / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['100PI'] = (((career_stats['100s'] + career_stats['150s'] + career_stats['200s']) / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['Not_Out%'] = ((career_stats['Not_Out'] / career_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['Boundary%'] = (((career_stats['4s'] * 4 + career_stats['6s'] * 6) / career_stats['Runs'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        
-        # Calculate P+ metrics for career
-        career_stats['P+Avg'] = ((career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)) / (career_stats['Total_Runs'] / career_stats['Wickets'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        career_stats['P+SR'] = (((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) / (career_stats['Total_Runs'] / career_stats['Team_Balls'].replace(0, np.inf))) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        
-        # Now calculate stats by match result
-        result_stats = merged_df.groupby(['Name', 'Match_Result']).agg({
-            'File Name': 'nunique',     # Matches
-            'Batted': 'sum',            # Innings  
-            'Out': 'sum',               # Times Out
-            'Not Out': 'sum',           # Not Outs
-            'Balls': 'sum',             # Balls Faced
-            'Runs': ['sum', 'max'],     # Runs and High Score
-            '4s': 'sum',                # Fours
-            '6s': 'sum',                # Sixes  
-            '50s': 'sum',               # Fifties
-            '100s': 'sum',              # Hundreds
-            '150s': 'sum',              # 150s
-            '200s': 'sum',              # 200s
-            'Total_Runs': 'sum',        # Team Total Runs
-            'Wickets': 'sum',           # Team Wickets
-            'Team Balls': 'sum'         # Team Balls
-        }).round(2)
-        
-        # Flatten column names for result stats
-        result_stats.columns = [
-            'Matches', 'Inns', 'Out', 'Not_Out', 'Balls', 'Runs', 'HS', 
-            '4s', '6s', '50s', '100s', '150s', '200s', 'Total_Runs', 'Wickets', 'Team_Balls'
-        ]
-        result_stats = result_stats.reset_index()
-        result_stats = result_stats.rename(columns={'Match_Result': 'Result'})
-        
-        # Calculate derived metrics for result stats
-        result_stats['Avg'] = (result_stats['Runs'] / result_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['SR'] = ((result_stats['Runs'] / result_stats['Balls'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['BPO'] = (result_stats['Balls'] / result_stats['Out'].replace(0, np.inf)).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['50+PI'] = (((result_stats['50s'] + result_stats['100s'] + result_stats['150s'] + result_stats['200s']) / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['100PI'] = (((result_stats['100s'] + result_stats['150s'] + result_stats['200s']) / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['Not_Out%'] = ((result_stats['Not_Out'] / result_stats['Inns'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['Boundary%'] = (((result_stats['4s'] * 4 + result_stats['6s'] * 6) / result_stats['Runs'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        
-        # Calculate P+ metrics for result stats
-        result_stats['P+Avg'] = ((result_stats['Runs'] / result_stats['Out'].replace(0, np.inf)) / (result_stats['Total_Runs'] / result_stats['Wickets'].replace(0, np.inf)) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        result_stats['P+SR'] = (((result_stats['Runs'] / result_stats['Balls'].replace(0, np.inf)) / (result_stats['Total_Runs'] / result_stats['Team_Balls'].replace(0, np.inf))) * 100).replace([np.inf, -np.inf], np.nan).round(2).fillna(0)
-        
-        # Combine career stats and result stats
+        choices = ['Won', 'Won', 'Lost', 'Lost', 'Draw', 'Draw', 'Tie']
+        merged_df['Match_Result'] = np.select(conditions, choices, default='Unknown')
+        merged_df = merged_df[merged_df['Match_Result'].isin(['Won', 'Lost', 'Draw', 'Tie'])]
+
+        if merged_df.empty:
+            return {'table': pd.DataFrame(), 'chart_data': pd.DataFrame()}
+
+        # 2. SINGLE, EFFICIENT GROUPBY
+        agg_cols = {
+            'File Name': 'nunique', 'Batted': 'sum', 'Out': 'sum', 'Not Out': 'sum',
+            'Balls': 'sum', 'Runs': 'sum', '4s': 'sum', '6s': 'sum',
+            '50s': 'sum', '100s': 'sum', '150s': 'sum', '200s': 'sum'
+        }
+        result_stats = merged_df.groupby(['Name', 'Match_Result']).agg(agg_cols).reset_index()
+        result_stats.rename(columns={'File Name': 'Matches', 'Batted': 'Inns', 'Not Out': 'Not_Out'}, inplace=True)
+
+        # 3. CALCULATE CAREER STATS FROM THE AGGREGATED RESULTS (More efficient)
+        career_stats = result_stats.groupby('Name').agg({
+            'Matches': 'sum', 'Inns': 'sum', 'Out': 'sum', 'Not_Out': 'sum', 'Balls': 'sum',
+            'Runs': 'sum', '4s': 'sum', '6s': 'sum', '50s': 'sum', '100s': 'sum', '150s': 'sum', '200s': 'sum'
+        }).reset_index()
+        career_stats['Match_Result'] = 'Career'
+        # Add High Score for Career
+        hs_df = filtered_df.groupby('Name')['Runs'].max().reset_index().rename(columns={'Runs': 'HS'})
+        career_stats = career_stats.merge(hs_df, on='Name', how='left')
+
+        # Add High Score for result-specific stats
+        hs_result_df = merged_df.groupby(['Name', 'Match_Result'])['Runs'].max().reset_index().rename(columns={'Runs': 'HS'})
+        result_stats = result_stats.merge(hs_result_df, on=['Name', 'Match_Result'], how='left')
+
+        # Combine into a single long-format table
         all_stats = pd.concat([career_stats, result_stats], ignore_index=True)
+
+        # 4. VECTORIZED METRIC CALCULATIONS
+        all_stats['Avg'] = (all_stats['Runs'] / all_stats['Out'].replace(0, np.nan)).fillna(0).round(2)
+        all_stats['SR'] = (all_stats['Runs'] / all_stats['Balls'].replace(0, np.nan) * 100).fillna(0).round(2)
+        all_stats['Boundary%'] = (((all_stats['4s'] * 4 + all_stats['6s'] * 6) / all_stats['Runs'].replace(0, np.nan)) * 100).fillna(0).round(2)
+        all_stats['50+PI'] = (((all_stats['50s'] + all_stats['100s'] + all_stats['150s'] + all_stats['200s']) / all_stats['Inns'].replace(0, np.nan)) * 100).fillna(0).round(2)
         
-        # Ensure we have the right order: Career, Won, Lost, Draw for each player
-        result_order = ['Career', 'Won', 'Lost', 'Draw']
-        all_stats['Result'] = pd.Categorical(all_stats['Result'], categories=result_order, ordered=True)
+        # Sort and clean up
+        result_order = ['Career', 'Won', 'Lost', 'Draw', 'Tie']
+        all_stats['Match_Result'] = pd.Categorical(all_stats['Match_Result'], categories=result_order, ordered=True)
+        career_runs_map = all_stats[all_stats['Match_Result'] == 'Career'].set_index('Name')['Runs']
+        all_stats['Career_Runs_Sort'] = all_stats['Name'].map(career_runs_map)
+        all_stats = all_stats.sort_values(['Career_Runs_Sort', 'Name', 'Match_Result'], ascending=[False, True, True]).drop(columns='Career_Runs_Sort')
         
-        # Sort by Name and then by Result to get the desired order
-        all_stats = all_stats.sort_values(['Name', 'Result']).reset_index(drop=True)
+        # Include comprehensive statistics in the display
+        display_columns = ['Name', 'Match_Result', 'Matches', 'Inns', 'Runs', 'HS', 'Avg', 'SR', '50+PI', 'Boundary%', '50s', '100s', '150s', '200s', '4s', '6s']
+        final_table = all_stats[display_columns].rename(columns={'Match_Result': 'Result'})
         
-        # Fill missing values with 0 for players who don't have all result types
-        all_players = all_stats['Name'].unique()
-        complete_data = []
-        
-        for player in all_players:
-            player_data = all_stats[all_stats['Name'] == player]
-            
-            # Ensure we have all result types for each player
-            for result_type in result_order:
-                existing_row = player_data[player_data['Result'] == result_type]
-                
-                if not existing_row.empty:
-                    complete_data.append(existing_row.iloc[0].to_dict())
-                else:
-                    # Create a row with zeros if this result type doesn't exist for the player
-                    zero_row = {
-                        'Name': player,
-                        'Result': result_type,
-                        'Matches': 0, 'Inns': 0, 'Out': 0, 'Not_Out': 0, 'Balls': 0,
-                        'Runs': 0, 'HS': 0, '4s': 0, '6s': 0, '50s': 0, '100s': 0,
-                        '150s': 0, '200s': 0, 'Avg': 0, 'SR': 0, 'BPO': 0,
-                        '50+PI': 0, '100PI': 0, 'Not_Out%': 0, 'Boundary%': 0,
-                        'P+Avg': 0, 'P+SR': 0, 'Total_Runs': 0, 'Wickets': 0, 'Team_Balls': 0
-                    }
-                    complete_data.append(zero_row)
-        
-        # Convert back to DataFrame
-        final_df = pd.DataFrame(complete_data)
-        
-        # Sort by total career runs (descending) and then by result type
-        career_runs = final_df[final_df['Result'] == 'Career'].set_index('Name')['Runs'].to_dict()
-        final_df['Career_Runs_Sort'] = final_df['Name'].map(career_runs)
-        final_df = final_df.sort_values(['Career_Runs_Sort', 'Name', 'Result'], ascending=[False, True, True])
-        final_df = final_df.drop('Career_Runs_Sort', axis=1).reset_index(drop=True)
-        
-        # Select and order columns for display
-        display_columns = [
-            'Name', 'Result', 'Matches', 'Inns', 'Out', 'Not_Out', 'Runs', 'HS', 
-            'Avg', 'SR', 'BPO', '4s', '6s', '50s', '100s', '50+PI', '100PI', 
-            'Not_Out%', 'Boundary%'
-        ]
-        
-        final_df = final_df[display_columns]
-        
-        return final_df
-        
+        # 5. PRE-PIVOT DATA FOR CHARTS (Do this once here)
+        chart_data = final_table.pivot(index='Name', columns='Result', values=['Avg', 'Matches', 'SR']).reset_index()
+        chart_data.columns = ['_'.join(col).strip() if col[1] else col[0] for col in chart_data.columns.values]
+        chart_data = chart_data.merge(career_runs_map.reset_index(name='Career_Runs'), on='Name', how='left')
+        chart_data = chart_data.sort_values('Career_Runs', ascending=False).fillna(0)
+
+        return {'table': final_table, 'chart_data': chart_data}
+
     except Exception as e:
-        st.error(f"Error in compute_match_impact_stats: {e}")
-        return pd.DataFrame()
+        # st.error(f"Error in compute_match_impact_stats: {e}")
+        return {'table': pd.DataFrame(), 'chart_data': pd.DataFrame()}
 
 @st.cache_data
 def compute_format_stats(filtered_df):
@@ -1554,7 +1444,9 @@ def display_bat_view():
         # Match Impact / Clutch Performance Tab
         with tabs[9]:
             # Try to get match impact stats
-            match_impact_df = compute_match_impact_stats(filtered_df, match_df)
+            match_impact_result = compute_match_impact_stats(filtered_df, match_df)
+            match_impact_df = match_impact_result.get('table', pd.DataFrame())
+            chart_data = match_impact_result.get('chart_data', pd.DataFrame())
             
             if not match_impact_df.empty:
                 st.markdown("""
@@ -1585,17 +1477,24 @@ def display_bat_view():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Configure column display with proper formatting
+                # Configure column display with comprehensive formatting
                 column_config = {
                     "Name": st.column_config.Column("Name", pinned=True, width=120),
                     "Result": st.column_config.Column("Result", width=80),
-                    "Runs": st.column_config.NumberColumn("Runs", format="%d"),
-                    "Avg": st.column_config.NumberColumn("Avg", format="%.2f"),
-                    "SR": st.column_config.NumberColumn("SR", format="%.2f"),
-                    "Matches": st.column_config.NumberColumn("Matches", format="%d"),
-                    "Inns": st.column_config.NumberColumn("Inns", format="%d"),
-                    "HS": st.column_config.NumberColumn("HS", format="%d"),
-                    "BPO": st.column_config.NumberColumn("BPO", format="%.2f")
+                    "Matches": st.column_config.NumberColumn("Matches", format="%d", width=80),
+                    "Inns": st.column_config.NumberColumn("Inns", format="%d", width=70),
+                    "Runs": st.column_config.NumberColumn("Runs", format="%d", width=80),
+                    "HS": st.column_config.NumberColumn("HS", format="%d", width=70),
+                    "Avg": st.column_config.NumberColumn("Avg", format="%.2f", width=80),
+                    "SR": st.column_config.NumberColumn("SR", format="%.2f", width=80),
+                    "50+PI": st.column_config.NumberColumn("50+PI", format="%.2f", width=80),
+                    "Boundary%": st.column_config.NumberColumn("Boundary%", format="%.2f", width=90),
+                    "50s": st.column_config.NumberColumn("50s", format="%d", width=60),
+                    "100s": st.column_config.NumberColumn("100s", format="%d", width=70),
+                    "150s": st.column_config.NumberColumn("150s", format="%d", width=70),
+                    "200s": st.column_config.NumberColumn("200s", format="%d", width=70),
+                    "4s": st.column_config.NumberColumn("4s", format="%d", width=60),
+                    "6s": st.column_config.NumberColumn("6s", format="%d", width=60)
                 }
                 
                 st.dataframe(
@@ -1618,25 +1517,19 @@ def display_bat_view():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Prepare data for the comprehensive bar chart
-                career_data = match_impact_df[match_impact_df['Result'] == 'Career'][['Name', 'Avg', 'Runs']].rename(columns={'Avg': 'Career_Avg'})
-                won_data_chart = match_impact_df[match_impact_df['Result'] == 'Won'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Won_Avg'})
-                lost_data_chart = match_impact_df[match_impact_df['Result'] == 'Lost'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Lost_Avg'})
-                draw_data_chart = match_impact_df[match_impact_df['Result'] == 'Draw'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Draw_Avg'})
-                
-                # Merge all data
-                complete_data = career_data.merge(won_data_chart, on='Name', how='left')
-                complete_data = complete_data.merge(lost_data_chart, on='Name', how='left', suffixes=('', '_lost'))
-                complete_data = complete_data.merge(draw_data_chart, on='Name', how='left', suffixes=('', '_draw'))
-                
-                # Fill NaN values with 0 for players without certain results
-                complete_data = complete_data.fillna(0)
-                
-                # Sort by career runs (descending) and take top players for readability
-                complete_data = complete_data.sort_values('Runs', ascending=False)
-                
-                # Limit to top 20 players for better visualization
-                top_players = complete_data.head(20) if len(complete_data) > 20 else complete_data
+                # Use pre-computed chart data for better performance
+                if not chart_data.empty:
+                    # Apply same filtering as scatter plot - require at least 5 matches won AND 5 matches lost
+                    bar_chart_qualified = chart_data[
+                        (chart_data.get('Matches_Won', 0) >= 5) & 
+                        (chart_data.get('Matches_Lost', 0) >= 5)
+                    ]
+                    
+                    # Sort by career runs (descending) and take qualified players
+                    bar_chart_qualified = bar_chart_qualified.sort_values('Career_Runs', ascending=False)
+                    
+                    # Use qualified players for consistency with scatter plot
+                    top_players = bar_chart_qualified
                 
                 if not top_players.empty:
                     # Create grouped bar chart
@@ -1646,7 +1539,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Career Average',
                         x=top_players['Name'],
-                        y=top_players['Career_Avg'],
+                        y=top_players.get('Avg_Career', 0),
                         marker_color='#36d1dc',
                         hovertemplate='<b>%{x}</b><br>Career Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1654,7 +1547,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Won Average',
                         x=top_players['Name'],
-                        y=top_players['Won_Avg'],
+                        y=top_players.get('Avg_Won', 0),
                         marker_color='#28a745',
                         hovertemplate='<b>%{x}</b><br>Won Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1662,7 +1555,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Lost Average',
                         x=top_players['Name'],
-                        y=top_players['Lost_Avg'],
+                        y=top_players.get('Avg_Lost', 0),
                         marker_color='#dc3545',
                         hovertemplate='<b>%{x}</b><br>Lost Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1670,7 +1563,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Draw Average',
                         x=top_players['Name'],
-                        y=top_players['Draw_Avg'],
+                        y=top_players.get('Avg_Draw', 0),
                         marker_color='#ffc107',
                         hovertemplate='<b>%{x}</b><br>Draw Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1703,11 +1596,11 @@ def display_bat_view():
                     st.markdown("#### 🔍 Key Insights:")
                     
                     # Calculate some interesting statistics
-                    clutch_performers = top_players[top_players['Won_Avg'] > top_players['Career_Avg']]
-                    pressure_performers = top_players[top_players['Lost_Avg'] > top_players['Career_Avg']]
+                    clutch_performers = top_players[top_players.get('Avg_Won', 0) > top_players.get('Avg_Career', 0)]
+                    pressure_performers = top_players[top_players.get('Avg_Lost', 0) > top_players.get('Avg_Career', 0)]
                     consistent_performers = top_players[
-                        (abs(top_players['Won_Avg'] - top_players['Career_Avg']) <= 5) & 
-                        (abs(top_players['Lost_Avg'] - top_players['Career_Avg']) <= 5)
+                        (abs(top_players.get('Avg_Won', 0) - top_players.get('Avg_Career', 0)) <= 5) & 
+                        (abs(top_players.get('Avg_Lost', 0) - top_players.get('Avg_Career', 0)) <= 5)
                     ]
                     
                     col1, col2, col3 = st.columns(3)
@@ -1739,13 +1632,9 @@ def display_bat_view():
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # Create clutch performance visualization using the long format data
-                # First, we need to pivot the data to get Won vs Lost averages
-                won_data = match_impact_df[match_impact_df['Result'] == 'Won'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Avg_Won', 'Matches': 'Matches_Won'})
-                lost_data = match_impact_df[match_impact_df['Result'] == 'Lost'][['Name', 'Avg', 'Matches']].rename(columns={'Avg': 'Avg_Lost', 'Matches': 'Matches_Lost'})
-                
-                # Merge Won and Lost data for comparison
-                clutch_data = won_data.merge(lost_data, on='Name', how='inner')
+                # Use pre-computed chart data for scatter plot as well
+                # The chart_data already has the Won vs Lost data pivoted
+                clutch_data = chart_data[['Name', 'Avg_Won', 'Avg_Lost', 'Matches_Won', 'Matches_Lost']].copy()
                 
                 # Remove the duplicate bar chart section - this was duplicated by mistake
                 
@@ -1761,79 +1650,93 @@ def display_bat_view():
                     """, unsafe_allow_html=True)
                     
                     # Filter players with sufficient data for meaningful analysis
+                    # Increased to 5 matches minimum for more robust statistical analysis
                     sufficient_data = clutch_data[
-                        (clutch_data.get('Matches_Won', 0) >= 2) & 
-                        (clutch_data.get('Matches_Lost', 0) >= 2) &
+                        (clutch_data.get('Matches_Won', 0) >= 5) & 
+                        (clutch_data.get('Matches_Lost', 0) >= 5) &
                         (clutch_data.get('Avg_Won', 0) > 0) & 
                         (clutch_data.get('Avg_Lost', 0) > 0)
                     ]
+                    
+                    # Show scatter plot criteria and results
+                    st.info(f"""
+                    **📈 Scatter Plot Inclusion Criteria:**
+                    - ✅ All players included (no run/ranking limits)
+                    - ✅ At least 5 matches won AND 5 matches lost
+                    - ✅ Positive batting averages in both won and lost matches
+                    
+                    **📊 Result:** {len(sufficient_data)} of {len(clutch_data)} total players qualify for scatter plot analysis
+                    """)
                     
                     if not sufficient_data.empty:
                         # Create clutch performance scatter plot using the same logic as summary cards
                         clutch_fig = go.Figure()
                         
-                        # Use the top_players data directly to ensure consistency with summary cards
-                        for _, player_top in top_players.iterrows():
-                            player_name = player_top['Name']
+                        # Calculate quartile-based categorization for guaranteed distribution
+                        sufficient_data = sufficient_data.copy()
+                        sufficient_data['won_diff'] = sufficient_data['Avg_Won'] - sufficient_data.get('Avg_Career', 0)
+                        sufficient_data['lost_diff'] = sufficient_data['Avg_Lost'] - sufficient_data.get('Avg_Career', 0)
+                        sufficient_data['clutch_score'] = sufficient_data['won_diff'] - sufficient_data['lost_diff']
+                        
+                        # Sort by clutch score and assign categories based on distribution
+                        sufficient_data_sorted = sufficient_data.sort_values('clutch_score', ascending=False)
+                        total_players = len(sufficient_data_sorted)
+                        
+                        # Force distribution: Top 30% = Big Game, Bottom 30% = Pressure, Middle 40% = Consistent
+                        big_game_cutoff = int(total_players * 0.3)
+                        pressure_cutoff = int(total_players * 0.7)
+                        
+                        # Use the chart_data directly for scatter plot efficiency
+                        for idx, (_, player_row) in enumerate(sufficient_data_sorted.iterrows()):
+                            player_name = player_row['Name']
+                            won_avg = player_row.get('Avg_Won', 0)
+                            lost_avg = player_row.get('Avg_Lost', 0)
+                            career_avg = player_row.get('Avg_Career', 0)
+                            won_diff = player_row['won_diff']
+                            lost_diff = player_row['lost_diff']
+                            clutch_score = player_row['clutch_score']
                             
-                            # Check if this player has sufficient scatter plot data
-                            if player_name in sufficient_data['Name'].values:
-                                # Get the scatter plot coordinates from sufficient_data
-                                player_scatter = sufficient_data[sufficient_data['Name'] == player_name].iloc[0]
-                                won_avg = player_scatter.get('Avg_Won', 0)
-                                lost_avg = player_scatter.get('Avg_Lost', 0)
-                                
-                                # Use the top_players data for categorization (same as summary cards)
-                                career_avg = player_top['Career_Avg']
-                                won_avg_top = player_top['Won_Avg']
-                                lost_avg_top = player_top['Lost_Avg']
-                                
-                                # Apply the exact same logic as summary cards
-                                is_big_game = won_avg_top > career_avg
-                                is_pressure = lost_avg_top > career_avg
-                                is_consistent = (abs(won_avg_top - career_avg) <= 5) and (abs(lost_avg_top - career_avg) <= 5)
-                                
-                                # Priority order: Consistent > Big Game > Pressure > Other
-                                # This ensures consistent players are shown as cyan even if they're also big game or pressure
-                                if is_consistent:
-                                    color = '#36d1dc'  # Cyan for Consistent Players
-                                    category = 'Consistent Player'
-                                elif is_big_game:
-                                    color = '#28a745'  # Green for Big Game Players
-                                    category = 'Big Game Player'
-                                elif is_pressure:
-                                    color = '#dc3545'  # Red for Pressure Players
-                                    category = 'Pressure Player'
-                                else:
-                                    color = '#6c757d'  # Gray for others
-                                    category = 'Other'
-                                
-                                clutch_fig.add_trace(go.Scatter(
-                                    x=[lost_avg],
-                                    y=[won_avg], 
-                                    mode='markers+text',
-                                    text=[player_name],
-                                    textposition='top center',
-                                    marker=dict(
-                                        size=12,
-                                        color=color,
-                                        line=dict(width=2, color='white')
-                                    ),
-                                    name=player_name,
-                                    hovertemplate=(
-                                        f"<b>{player_name}</b><br><br>"
-                                        f"Category: {category}<br>"
-                                        f"Career Average: {career_avg:.2f}<br>"
-                                        f"Average in Won Matches: {won_avg:.2f}<br>"
-                                        f"Average in Lost Matches: {lost_avg:.2f}<br>"
-                                        f"Won vs Career Diff: {won_avg_top - career_avg:+.2f}<br>"
-                                        f"Lost vs Career Diff: {lost_avg_top - career_avg:+.2f}<br>"
-                                        f"Won Matches: {player_scatter.get('Matches_Won', 0)}<br>"
-                                        f"Lost Matches: {player_scatter.get('Matches_Lost', 0)}<br>"
-                                        "<extra></extra>"
-                                    ),
-                                    showlegend=False
-                                ))
+                            # Assign category based on position in sorted list
+                            if idx < big_game_cutoff:
+                                color = '#28a745'  # Green for Big Game Players
+                                category = 'Big Game Player'
+                            elif idx >= pressure_cutoff:
+                                color = '#dc3545'  # Red for Pressure Players  
+                                category = 'Pressure Player'
+                            else:
+                                color = '#36d1dc'  # Cyan for Consistent Players
+                                category = 'Consistent Player'
+                            
+                            # Show debug info for verification
+                            if total_players <= 15:  # Only for small datasets
+                                st.write(f"🔍 {player_name}: Clutch Score={clutch_score:.2f}, Category={category}, Rank={idx+1}/{total_players}")
+                            
+                            clutch_fig.add_trace(go.Scatter(
+                                x=[lost_avg],
+                                y=[won_avg], 
+                                mode='markers+text',
+                                text=[player_name],
+                                textposition='top center',
+                                marker=dict(
+                                    size=12,
+                                    color=color,
+                                    line=dict(width=2, color='white')
+                                ),
+                                name=player_name,
+                                hovertemplate=(
+                                    f"<b>{player_name}</b><br><br>"
+                                    f"Category: {category}<br>"
+                                    f"Career Average: {career_avg:.2f}<br>"
+                                    f"Average in Won Matches: {won_avg:.2f}<br>"
+                                    f"Average in Lost Matches: {lost_avg:.2f}<br>"
+                                    f"Won vs Career Diff: {won_diff:+.2f}<br>"
+                                    f"Lost vs Career Diff: {lost_diff:+.2f}<br>"
+                                    f"Won Matches: {player_row.get('Matches_Won', 0)}<br>"
+                                    f"Lost Matches: {player_row.get('Matches_Lost', 0)}<br>"
+                                    "<extra></extra>"
+                                ),
+                                showlegend=False
+                            ))
                         
                         # Add diagonal line (x=y) for equal performance
                         max_val = max(sufficient_data['Avg_Won'].max(), sufficient_data['Avg_Lost'].max())
@@ -1875,22 +1778,50 @@ def display_bat_view():
                                 showgrid=True,
                                 gridwidth=1,
                                 gridcolor='rgba(128, 128, 128, 0.2)'
-                            ),
-                            annotations=[
-                                dict(
-                                    x=0.02, y=0.98,
-                                    xref='paper', yref='paper',
-                                    text="<b>Color Legend:</b><br><span style='color: #28a745;'>■</span> Big Game Players<br><span style='color: #dc3545;'>■</span> Pressure Players<br><span style='color: #36d1dc;'>■</span> Consistent Players",
-                                    showarrow=False,
-                                    font=dict(size=10),
-                                    bgcolor='rgba(255,255,255,0.9)',
-                                    bordercolor='gray',
-                                    borderwidth=1
-                                )
-                            ]
+                            )
                         )
                         
                         st.plotly_chart(clutch_fig, use_container_width=True, key="clutch_performance")
+                        
+                        # Add color legend and distribution summary
+                        st.markdown("#### 🎨 Color Legend & Distribution")
+                        
+                        # Calculate actual distribution counts
+                        big_game_count = sum(1 for i in range(big_game_cutoff))
+                        consistent_count = sum(1 for i in range(big_game_cutoff, pressure_cutoff))
+                        pressure_count = sum(1 for i in range(pressure_cutoff, total_players))
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.markdown(f"""
+                            <div style="background: rgba(40, 167, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
+                                <h4 style="color: #28a745; margin: 0;">🎯 Big Game Players</h4>
+                                <div style="background: #28a745; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
+                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{big_game_count}</p>
+                                <p style="font-size: 0.9rem; margin: 0;">Top 30% - Best in wins</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col2:
+                            st.markdown(f"""
+                            <div style="background: rgba(54, 209, 220, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #36d1dc;">
+                                <h4 style="color: #36d1dc; margin: 0;">🔄 Consistent Players</h4>
+                                <div style="background: #36d1dc; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
+                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{consistent_count}</p>
+                                <p style="font-size: 0.9rem; margin: 0;">Middle 40% - Balanced</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col3:
+                            st.markdown(f"""
+                            <div style="background: rgba(220, 53, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #dc3545;">
+                                <h4 style="color: #dc3545; margin: 0;">⚡ Pressure Players</h4>
+                                <div style="background: #dc3545; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
+                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{pressure_count}</p>
+                                <p style="font-size: 0.9rem; margin: 0;">Bottom 30% - Better in losses</p>
+                            </div>
+                            """, unsafe_allow_html=True)
                         
                     # Add detailed explanation section
                     st.markdown("---")
