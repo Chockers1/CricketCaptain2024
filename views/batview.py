@@ -941,6 +941,70 @@ def compute_block_stats(filtered_df):
 
     return block_stats_df.sort_values(by=['Name', 'Match_Format', 'Match_Block'])
 
+@st.cache_data
+def compute_recent_form(df, by='innings', num_recent=20):
+    """
+    Computes recent form statistics for each player, per format.
+
+    Args:
+        df (pd.DataFrame): The filtered dataframe of batting stats.
+        by (str): 'innings' or 'matches'. Determines how to slice recent data.
+        num_recent (int): The number of recent innings or matches to consider.
+
+    Returns:
+        pd.DataFrame: A dataframe with recent form stats.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    # Ensure date is in datetime format for sorting
+    df_copy = df.copy()
+    df_copy['Date'] = pd.to_datetime(df_copy['Date'], format='%d %b %Y', errors='coerce')
+    
+    # Sort by date to get the most recent entries first
+    df_sorted = df_copy.sort_values(by=['Name', 'Match_Format', 'Date', 'Innings'], ascending=[True, True, False, False])
+    
+    # Use groupby to get the top N for each player-format combination
+    if by == 'innings':
+        # Slicing by innings is direct
+        recent_df = df_sorted.groupby(['Name', 'Match_Format']).head(num_recent)
+    elif by == 'matches':
+        # Slicing by matches is more complex
+        def get_top_matches(group):
+            unique_matches = group.drop_duplicates(subset='File Name')['File Name'].head(num_recent)
+            return group[group['File Name'].isin(unique_matches)]
+        recent_df = df_sorted.groupby(['Name', 'Match_Format']).apply(get_top_matches).reset_index(drop=True)
+    else:
+        raise ValueError("Argument 'by' must be 'innings' or 'matches'")
+
+    # Now, aggregate the stats from these recent innings/matches
+    recent_stats = recent_df.groupby(['Name', 'Match_Format']).agg(
+        Matches=('File Name', 'nunique'),
+        Innings=('Innings', 'count'),
+        Runs=('Runs', 'sum'),
+        Out=('Out', 'sum'),
+        Balls=('Balls', 'sum'),
+        Fours=('4s', 'sum'),
+        Sixes=('6s', 'sum'),
+        Fifties=pd.NamedAgg(column='Runs', aggfunc=lambda x: ((x >= 50) & (x < 100)).sum()),
+        Hundreds=pd.NamedAgg(column='Runs', aggfunc=lambda x: (x >= 100).sum())
+    ).reset_index()
+
+    # Calculate derived stats
+    recent_stats['Avg'] = (recent_stats['Runs'] / recent_stats['Out'].replace(0, np.nan)).fillna(0).round(2)
+    recent_stats['SR'] = (recent_stats['Runs'] / recent_stats['Balls'].replace(0, np.nan) * 100).fillna(0).round(2)
+    recent_stats['BPO'] = (recent_stats['Balls'] / recent_stats['Out'].replace(0, np.nan)).fillna(0).round(2)
+    
+    # Reorder and rename columns
+    final_cols = {
+        'Name': 'Name', 'Match_Format': 'Format', 'Matches': 'Matches', 'Innings': 'Innings',
+        'Runs': 'Runs', 'Avg': 'Avg', 'SR': 'Strike Rate', 'BPO': 'Balls Per Out',
+        'Fifties': '50s', 'Hundreds': '100s', 'Fours': '4s', 'Sixes': '6s'
+    }
+    recent_stats = recent_stats.rename(columns=final_cols)[final_cols.values()]
+    
+    return recent_stats.sort_values(['Name', 'Format'])
+
 def display_bat_view():
     # Force clear any cached content that might be causing issues
     if 'force_clear_cache' not in st.session_state:
@@ -1518,28 +1582,42 @@ def display_bat_view():
                 """, unsafe_allow_html=True)
                 
                 # Use pre-computed chart data for better performance
+                top_players = pd.DataFrame()  # Initialize to empty DataFrame
+                
                 if not chart_data.empty:
                     # Apply same filtering as scatter plot - require at least 5 matches won AND 5 matches lost
-                    bar_chart_qualified = chart_data[
-                        (chart_data.get('Matches_Won', 0) >= 5) & 
-                        (chart_data.get('Matches_Lost', 0) >= 5)
-                    ]
+                    # Check if required columns exist first
+                    has_required_cols = all(col in chart_data.columns for col in ['Matches_Won', 'Matches_Lost'])
                     
-                    # Sort by career runs (descending) and take qualified players
-                    bar_chart_qualified = bar_chart_qualified.sort_values('Career_Runs', ascending=False)
-                    
-                    # Use qualified players for consistency with scatter plot
-                    top_players = bar_chart_qualified
+                    if has_required_cols:
+                        bar_chart_qualified = chart_data[
+                            (chart_data['Matches_Won'] >= 5) & 
+                            (chart_data['Matches_Lost'] >= 5)
+                        ]
+                        
+                        # Sort by career runs (descending) and take qualified players
+                        if 'Career_Runs' in bar_chart_qualified.columns:
+                            bar_chart_qualified = bar_chart_qualified.sort_values('Career_Runs', ascending=False)
+                        
+                        # Use qualified players for consistency with scatter plot
+                        top_players = bar_chart_qualified
+                    else:
+                        top_players = pd.DataFrame()  # Empty if required columns don't exist
                 
                 if not top_players.empty:
                     # Create grouped bar chart
                     bar_fig = go.Figure()
                     
-                    # Add bars for each category
+                    # Add bars for each category - use proper column access with fallback
+                    career_avg = top_players['Avg_Career'] if 'Avg_Career' in top_players.columns else [0] * len(top_players)
+                    won_avg = top_players['Avg_Won'] if 'Avg_Won' in top_players.columns else [0] * len(top_players)
+                    lost_avg = top_players['Avg_Lost'] if 'Avg_Lost' in top_players.columns else [0] * len(top_players)
+                    draw_avg = top_players['Avg_Draw'] if 'Avg_Draw' in top_players.columns else [0] * len(top_players)
+                    
                     bar_fig.add_trace(go.Bar(
                         name='Career Average',
                         x=top_players['Name'],
-                        y=top_players.get('Avg_Career', 0),
+                        y=career_avg,
                         marker_color='#36d1dc',
                         hovertemplate='<b>%{x}</b><br>Career Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1547,7 +1625,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Won Average',
                         x=top_players['Name'],
-                        y=top_players.get('Avg_Won', 0),
+                        y=won_avg,
                         marker_color='#28a745',
                         hovertemplate='<b>%{x}</b><br>Won Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1555,7 +1633,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Lost Average',
                         x=top_players['Name'],
-                        y=top_players.get('Avg_Lost', 0),
+                        y=lost_avg,
                         marker_color='#dc3545',
                         hovertemplate='<b>%{x}</b><br>Lost Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1563,7 +1641,7 @@ def display_bat_view():
                     bar_fig.add_trace(go.Bar(
                         name='Draw Average',
                         x=top_players['Name'],
-                        y=top_players.get('Avg_Draw', 0),
+                        y=draw_avg,
                         marker_color='#ffc107',
                         hovertemplate='<b>%{x}</b><br>Draw Avg: %{y:.2f}<extra></extra>'
                     ))
@@ -1596,12 +1674,23 @@ def display_bat_view():
                     st.markdown("#### 🔍 Key Insights:")
                     
                     # Calculate some interesting statistics
-                    clutch_performers = top_players[top_players.get('Avg_Won', 0) > top_players.get('Avg_Career', 0)]
-                    pressure_performers = top_players[top_players.get('Avg_Lost', 0) > top_players.get('Avg_Career', 0)]
-                    consistent_performers = top_players[
-                        (abs(top_players.get('Avg_Won', 0) - top_players.get('Avg_Career', 0)) <= 5) & 
-                        (abs(top_players.get('Avg_Lost', 0) - top_players.get('Avg_Career', 0)) <= 5)
-                    ]
+                    if 'Avg_Won' in top_players.columns and 'Avg_Career' in top_players.columns:
+                        clutch_performers = top_players[top_players['Avg_Won'] > top_players['Avg_Career']]
+                    else:
+                        clutch_performers = pd.DataFrame()
+                        
+                    if 'Avg_Lost' in top_players.columns and 'Avg_Career' in top_players.columns:
+                        pressure_performers = top_players[top_players['Avg_Lost'] > top_players['Avg_Career']]
+                    else:
+                        pressure_performers = pd.DataFrame()
+                        
+                    if all(col in top_players.columns for col in ['Avg_Won', 'Avg_Lost', 'Avg_Career']):
+                        consistent_performers = top_players[
+                            (abs(top_players['Avg_Won'] - top_players['Avg_Career']) <= 5) & 
+                            (abs(top_players['Avg_Lost'] - top_players['Avg_Career']) <= 5)
+                        ]
+                    else:
+                        consistent_performers = pd.DataFrame()
                     
                     col1, col2, col3 = st.columns(3)
                     
@@ -1634,7 +1723,11 @@ def display_bat_view():
                 
                 # Use pre-computed chart data for scatter plot as well
                 # The chart_data already has the Won vs Lost data pivoted
-                clutch_data = chart_data[['Name', 'Avg_Won', 'Avg_Lost', 'Matches_Won', 'Matches_Lost']].copy()
+                required_clutch_cols = ['Name', 'Avg_Won', 'Avg_Lost', 'Matches_Won', 'Matches_Lost']
+                if not chart_data.empty and all(col in chart_data.columns for col in required_clutch_cols):
+                    clutch_data = chart_data[required_clutch_cols].copy()
+                else:
+                    clutch_data = pd.DataFrame()  # Empty if required columns don't exist
                 
                 # Remove the duplicate bar chart section - this was duplicated by mistake
                 
@@ -2125,98 +2218,182 @@ def display_bat_view():
 
             st.plotly_chart(fig)
 
-        # Latest Innings Tab
+        # Latest Form Analysis Tab
         with tabs[3]:
-            # Create latest innings dataframe
-            fresh_latest_df = filtered_df.copy()
-            
-            # Process the latest innings data
-            latest_innings_raw = fresh_latest_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
-                'Bat_Team_y': 'first',
-                'Bowl_Team_y': 'first', 
-                'How Out': 'first',
-                'Balls': 'sum',
-                'Runs': 'sum',
-                '4s': 'sum',
-                '6s': 'sum'
-            }).reset_index()
-            
-            # Rename columns
-            latest_innings_raw.columns = ['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 'How Out', 'Balls', 'Runs', '4s', '6s']
-            
-            # Convert and sort dates
-            latest_innings_raw['Date'] = pd.to_datetime(latest_innings_raw['Date'], format='%d %b %Y')
-            latest_innings_raw = latest_innings_raw.sort_values(by='Date', ascending=False).head(20)
-            latest_innings_raw['Date'] = latest_innings_raw['Date'].dt.strftime('%d/%m/%Y')
-            
-            # Reorder columns
-            final_latest_df = latest_innings_raw[['Name', 'Match_Format', 'Date', 'Innings', 'Bat Team', 'Bowl Team', 'How Out', 'Runs', 'Balls', '4s', '6s']]
-            
-            # Calculate stats
-            final_latest_df['Out'] = final_latest_df['How Out'].apply(lambda x: 1 if x not in ['not out', 'did not bat', ''] else 0)
-            
-            total_runs = final_latest_df['Runs'].sum()
-            total_balls = final_latest_df['Balls'].sum()
-            total_outs = final_latest_df['Out'].sum()
-            total_innings = len(final_latest_df)
-            total_matches = final_latest_df['Date'].nunique()
-            total_50s = len(final_latest_df[(final_latest_df['Runs'] >= 50) & (final_latest_df['Runs'] < 100)])
-            total_100s = len(final_latest_df[final_latest_df['Runs'] >= 100])
-            
-            calculated_avg = total_runs / total_outs if total_outs > 0 else 0
-            calculated_sr = (total_runs / total_balls * 100) if total_balls > 0 else 0
-            
-            # Title section
+            # --- Part 1: Overall Last 20 Innings ---
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">⚡ Last 20 Innings</h3>
+            <div class="section-header">
+                <h3>⚡ Recent Form (Last 20 Innings Overall)</h3>
             </div>
             """, unsafe_allow_html=True)
             
-            # Metrics section
-            st.markdown("### 📊 Summary Statistics")
-            col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
+            # Correctly get the last 20 innings across all formats from the full filtered_df
+            latest_innings_df = (filtered_df.sort_values('Date', ascending=False)
+                                 .head(20)
+                                 .reset_index(drop=True))
             
-            with col1:
-                st.metric("Matches", total_matches, border=True)
-            with col2:
-                st.metric("Innings", total_innings, border=True)
-            with col3:
-                st.metric("Outs", total_outs, border=True)
-            with col4:
-                st.metric("Runs", total_runs, border=True)
-            with col5:
-                st.metric("Balls", total_balls, border=True)
-            with col6:
-                st.metric("50s", total_50s, border=True)
-            with col7:
-                st.metric("100s", total_100s, border=True)
-            with col8:
-                st.metric("Average", f"{calculated_avg:.2f}", border=True)
-            with col9:
-                st.metric("Strike Rate", f"{calculated_sr:.2f}", border=True)
-            
-            # Dataframe section
-            st.markdown("### 📋 Recent Innings Details")
-            
-            # Simple styling function for runs
-            def style_runs_column(val):
-                if val <= 20:
-                    return 'background-color: #ffebee; color: #c62828;'
-                elif 21 <= val <= 49:
-                    return 'background-color: #fff3e0; color: #ef6c00;'
-                elif 50 <= val < 100:
-                    return 'background-color: #e8f5e8; color: #2e7d32;'
-                elif val >= 100:
-                    return 'background-color: #e3f2fd; color: #1565c0;'
-                return ''
-            
-            # Apply styling and display
-            styled_latest_df = final_latest_df.style.applymap(style_runs_column, subset=['Runs'])
-            st.dataframe(styled_latest_df, height=735, use_container_width=True, hide_index=True)
+            if not latest_innings_df.empty:
+                # --- Summary Metrics for Overall Recent Form ---
+                # --- START OF THE FIX ---
+                total_runs = latest_innings_df['Runs'].sum()
+                total_balls = latest_innings_df['Balls'].sum()
+                total_outs = latest_innings_df['Out'].sum()
+                total_innings = len(latest_innings_df)
+                total_matches = latest_innings_df['File Name'].nunique()
+                total_50s = latest_innings_df['50s'].sum()
+                total_100s = latest_innings_df['100s'].sum()
+                
+                calculated_avg = total_runs / total_outs if total_outs > 0 else 0
+                calculated_sr = (total_runs / total_balls * 100) if total_balls > 0 else 0
+                # --- END OF THE FIX ---
+
+                st.markdown("<h5>📊 Summary Statistics</h5>", unsafe_allow_html=True)
+
+                # Define custom CSS for the metric grid
+                st.markdown("""
+                <style>
+                .metric-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                    gap: 1rem;
+                }
+                .metric-box {
+                    border: 1px solid #444;
+                    border-radius: 8px;
+                    padding: 1rem;
+                    text-align: center;
+                }
+                .metric-label {
+                    font-size: 0.9rem;
+                    color: black;
+                    margin-bottom: 0.5rem;
+                }
+                .metric-value {
+                    font-size: 1.75rem;
+                    font-weight: bold;
+                    color: black;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                # Create the grid using HTML
+                metrics_html = f"""
+                <div class="metric-grid">
+                    <div class="metric-box">
+                        <div class="metric-label">Matches</div>
+                        <div class="metric-value">{total_matches}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Innings</div>
+                        <div class="metric-value">{total_innings}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Outs</div>
+                        <div class="metric-value">{total_outs}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Runs</div>
+                        <div class="metric-value">{total_runs}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Balls</div>
+                        <div class="metric-value">{total_balls}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">50s</div>
+                        <div class="metric-value">{total_50s}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">100s</div>
+                        <div class="metric-value">{total_100s}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Average</div>
+                        <div class="metric-value">{calculated_avg:.2f}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Strike Rate</div>
+                        <div class="metric-value">{calculated_sr:.2f}</div>
+                    </div>
+                </div>
+                """
+                st.markdown(metrics_html, unsafe_allow_html=True)
+                
+                # --- Dataframe of Recent Innings ---
+                st.markdown("<h5 style='margin-top: 1.5rem;'>📋 Recent Innings Details</h5>", unsafe_allow_html=True)
+                display_latest = latest_innings_df[['Name', 'Match_Format', 'Date', 'Bat_Team_y', 'Bowl_Team_y', 'How Out', 'Runs', 'Balls', '4s', '6s']].copy()
+                display_latest['Date'] = display_latest['Date'].dt.strftime('%d/%m/%Y')
+                
+                def style_runs_column(val):
+                    if val <= 20: return 'background-color: #ffebee; color: #c62828;'
+                    elif 21 <= val <= 49: return 'background-color: #fff3e0; color: #ef6c00;'
+                    elif 50 <= val < 100: return 'background-color: #e8f5e8; color: #2e7d32;'
+                    elif val >= 100: return 'background-color: #e3f2fd; color: #1565c0;'
+                    return ''
+                    
+                st.dataframe(
+                    display_latest.style.applymap(style_runs_column, subset=['Runs']),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.info("Not enough data to show recent innings.")
+
+            # --- Part 2: Recent Form by Format ---
+            st.markdown("""
+            <div class="section-header" style='margin-top: 2rem;'>
+                <h3>📊 Recent Form Breakdown by Format</h3>
+            </div>
+            """, unsafe_allow_html=True)
+
+            sub_tabs = st.tabs(["Last 20 Innings", "Last 40 Innings", "Last 20 Matches"])
+
+            with sub_tabs[0]:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Last 20 Innings by Format</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                recent_innings_20 = compute_recent_form(filtered_df, by='innings', num_recent=20)
+                if not recent_innings_20.empty:
+                    st.dataframe(recent_innings_20, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No data available for this breakdown.")
+
+            with sub_tabs[1]:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Last 40 Innings by Format</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+                recent_innings_40 = compute_recent_form(filtered_df, by='innings', num_recent=40)
+                if not recent_innings_40.empty:
+                    st.dataframe(recent_innings_40, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No data available for this breakdown.")
+
+            with sub_tabs[2]:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Last 20 Matches by Format</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+                recent_matches_20 = compute_recent_form(filtered_df, by='matches', num_recent=20)
+                if not recent_matches_20.empty:
+                    st.dataframe(recent_matches_20, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No data available for this breakdown.")
 
         # Opponent Stats Tab  
         with tabs[4]:
