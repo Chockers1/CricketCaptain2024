@@ -1783,46 +1783,6 @@ def display_bat_view():
                         
                         st.plotly_chart(clutch_fig, use_container_width=True, key="clutch_performance")
                         
-                        # Add color legend and distribution summary
-                        st.markdown("#### 🎨 Color Legend & Distribution")
-                        
-                        # Calculate actual distribution counts
-                        big_game_count = sum(1 for i in range(big_game_cutoff))
-                        consistent_count = sum(1 for i in range(big_game_cutoff, pressure_cutoff))
-                        pressure_count = sum(1 for i in range(pressure_cutoff, total_players))
-                        
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            st.markdown(f"""
-                            <div style="background: rgba(40, 167, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
-                                <h4 style="color: #28a745; margin: 0;">🎯 Big Game Players</h4>
-                                <div style="background: #28a745; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
-                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{big_game_count}</p>
-                                <p style="font-size: 0.9rem; margin: 0;">Top 30% - Best in wins</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        
-                        with col2:
-                            st.markdown(f"""
-                            <div style="background: rgba(54, 209, 220, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #36d1dc;">
-                                <h4 style="color: #36d1dc; margin: 0;">🔄 Consistent Players</h4>
-                                <div style="background: #36d1dc; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
-                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{consistent_count}</p>
-                                <p style="font-size: 0.9rem; margin: 0;">Middle 40% - Balanced</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        
-                        with col3:
-                            st.markdown(f"""
-                            <div style="background: rgba(220, 53, 69, 0.1); padding: 1rem; border-radius: 10px; text-align: center; border: 2px solid #dc3545;">
-                                <h4 style="color: #dc3545; margin: 0;">⚡ Pressure Players</h4>
-                                <div style="background: #dc3545; width: 20px; height: 20px; margin: 0.5rem auto; border-radius: 50%;"></div>
-                                <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{pressure_count}</p>
-                                <p style="font-size: 0.9rem; margin: 0;">Bottom 30% - Better in losses</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        
                     # Add detailed explanation section
                     st.markdown("---")
                     st.markdown("#### 📚 Understanding Clutch Performance Analysis")
