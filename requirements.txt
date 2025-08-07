@@ -7,3 +7,12 @@ requests
 matplotlib
 seaborn
 redis
+polars
+
+polars
+
+polars
+
+polars
+
+polars

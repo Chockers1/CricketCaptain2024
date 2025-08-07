@@ -4,22 +4,19 @@ import traceback
 import pandas as pd
 import tempfile
 import time
+import zipfile  ### <-- CHANGE: Import zipfile
+import io       ### <-- CHANGE: Import io
 
-# Import your original, working processing functions
+# Import your original, working processing functions (NO CHANGES NEEDED HERE)
 from match import process_match_data
 from game import process_game_stats
 from bat import process_bat_stats
 from bowl import process_bowl_stats
 
-# --- CONFIGURATION (NEW) ---
-# Calibrated based on user feedback (1664 files took ~112s).
-# This value represents the average processing time per scorecard in seconds.
-# You can adjust this value if you find the estimate is consistently off
-# on your machine. A lower value (e.g., 0.06) means a faster estimate.
+# --- CONFIGURATION (NO CHANGE) ---
 PROCESSING_TIME_PER_FILE = 0.065
 
-
-# --- HELPER FUNCTIONS (FROM YOUR ORIGINAL FILE) ---
+# --- HELPER FUNCTIONS (NO CHANGES NEEDED IN THESE) ---
 def process_duplicates(bat_df):
     """Process duplicate player detection."""
     try:
@@ -115,29 +112,44 @@ def show_error(message, traceback_info=None):
     if traceback_info:
         with st.expander("🔧 Technical Details"): st.code(traceback_info)
 
-def load_data(uploaded_files):
-    """The reliable data loading engine that uses your original scripts and UI."""
-    total_files = len(uploaded_files)
+
+### --- CHANGE: ADAPTED THE LOADING FUNCTION FOR ZIP FILES ---
+def load_data_from_zip(uploaded_zip_file):
+    """The reliable data loading engine that now handles ZIP files."""
     start_time = time.time()
-    
     progress_container = st.container()
-    with progress_container:
-        st.markdown("""
-            <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px; margin: 20px 0;">
-                <h3 style="color: white; margin: 0; text-align: center;">🏏 Processing Cricket Data</h3>
-            </div>
-        """, unsafe_allow_html=True)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-    
+
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            status_text.text(f"📁 Preparing {total_files} files...")
-            for i, uploaded_file in enumerate(uploaded_files):
-                file_path = os.path.join(temp_dir, uploaded_file.name)
-                with open(file_path, 'wb') as f: f.write(uploaded_file.getbuffer())
-                progress_bar.progress((i + 1) / total_files * 0.2)
             
+            # --- THIS IS THE CORE CHANGE ---
+            # 1. Open the uploaded ZIP file from memory
+            with zipfile.ZipFile(io.BytesIO(uploaded_zip_file.getvalue())) as z:
+                # 2. Get a list of valid .txt files to count for the progress bar
+                scorecard_files = [f for f in z.namelist() if f.endswith('.txt') and not f.startswith('__MACOSX/')]
+                total_files = len(scorecard_files)
+
+                if total_files == 0:
+                    show_error("The uploaded ZIP file does not contain any .txt scorecards.")
+                    return
+
+                # 3. Setup the progress UI (moved inside the `try` block)
+                with progress_container:
+                    st.markdown("""
+                        <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px; margin: 20px 0;">
+                            <h3 style="color: white; margin: 0; text-align: center;">🏏 Processing Cricket Data</h3>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                
+                # 4. Extract all files to the temporary directory
+                status_text.text(f"📁 Unzipping {total_files} files...")
+                z.extractall(temp_dir)
+                progress_bar.progress(0.2)
+            # --- END OF CORE CHANGE ---
+            
+            # The rest of your processing logic remains THE SAME, as it operates on the temp_dir
             status_text.text("🔄 Processing match data..."); progress_bar.progress(0.3)
             match_df = process_match_data(temp_dir)
             if match_df is None or match_df.empty: raise ValueError("match.py failed to produce data.")
@@ -169,11 +181,14 @@ def load_data(uploaded_files):
             show_processing_results(total_files, duplicates_result, end_time - start_time)
             st.info("Navigate to other views from the sidebar to see your stats.")
 
+    except zipfile.BadZipFile:
+        progress_container.empty()
+        show_error("The uploaded file is not a valid ZIP archive. Please create a new one and try again.")
     except Exception as e:
         progress_container.empty()
         show_error(f"A critical error occurred during processing: {e}", traceback.format_exc())
 
-# --- UI & PAGE LOGIC (YOUR FULL, ORIGINAL UI) ---
+# --- UI & PAGE LOGIC (WITH MINOR TEXT CHANGES) ---
 
 st.markdown("""
 <style>
@@ -213,62 +228,48 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+### --- CHANGE: UPDATED INSTRUCTIONS FOR ZIP FILES ---
 with st.expander("📋 How to Use This Dashboard", expanded=False):
     st.markdown("### Quick Start Guide")
-    st.info("📋 **Choose Your Method:**")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.success("🔄 **Option 1: Auto-Save (Recommended)**")
-        st.write("**Step 1:** In Cricket Captain 2025, go to Options and enable 'Auto Save Scorecards'")
-        st.write("**Step 2:** Scorecards will now automatically save after each match to the locations below")
-    with col2:
-        st.warning("📋 **Option 2: Manual Save**")
-        st.write("**Step 1:** After each match, open the scorecard")
-        st.write("**Step 2:** Click 'Save' to save the scorecard file")
-    st.markdown("---")
-    st.markdown("**Step 3:** Locate your scorecard files:")
+    st.info("📋 **Follow these steps to upload your data:**")
+    st.markdown("**Step 1:** Locate your Cricket Captain saves folder.")
     st.markdown("- **Windows:** `C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025`")
     st.markdown("- **Mac:** `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`")
-    st.markdown("**Step 4:** Use the file browser below to select your .txt scorecard files")
-    st.caption("💡 Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)")
-    st.markdown("**Step 5:** Click 'Process Scorecards' and explore your data in the various tabs")
+    st.markdown("**Step 2:** Select all your `.txt` scorecard files inside that folder, right-click, and choose **'Send to' -> 'Compressed (zipped) folder'** (on Windows) or **'Compress'** (on Mac). This will create a single `.zip` file.")
+    st.markdown("**Step 3:** Use the file browser below to upload that single `.zip` file.")
+    st.markdown("**Step 4:** Click 'Process Scorecards' and explore your data in the sidebar tabs.")
 
-st.markdown("### 📁 Upload Your Scorecard Files")
-uploaded_files = st.file_uploader(
-    "Select your Cricket Captain 2025 scorecard files (.txt)",
-    type=['txt'], accept_multiple_files=True,
-    help="Browse and select multiple .txt files from your Cricket Captain saves folder"
+
+st.markdown("### 📁 Upload Your Scorecard ZIP File")
+### --- CHANGE: UPDATED THE FILE UPLOADER WIDGET ---
+uploaded_zip_file = st.file_uploader(
+    "Select a ZIP file containing your Cricket Captain 2025 scorecards",
+    type=['zip'], 
+    accept_multiple_files=False,
+    help="Create a ZIP archive of all your .txt files and upload it here."
 )
 
-if uploaded_files:
-    # --- UPDATED CALCULATION ---
-    # Use the more accurate constant defined at the top of the file
-    estimated_time = len(uploaded_files) * PROCESSING_TIME_PER_FILE
-    
-    # Improved display logic for the time estimate
-    if estimated_time < 60:
-        time_estimate_str = f"~{max(1, round(estimated_time))} seconds" # Show at least 1 second
-    else:
-        minutes = int(estimated_time // 60)
-        seconds = int(estimated_time % 60)
-        time_estimate_str = f"~{minutes}m {seconds}s" if minutes > 0 else f"~{seconds}s"
-
+### --- CHANGE: UPDATED THE UI FEEDBACK ---
+if uploaded_zip_file:
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
-            <strong>📊 Files Selected:</strong> {len(uploaded_files)} scorecard files ready for processing<br>
-            <strong>⏱️ Estimated Time:</strong> {time_estimate_str}
+            <strong>📦 ZIP File Selected:</strong> {uploaded_zip_file.name}<br>
+            <strong>Ready to process!</strong>
         </div>
     """, unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
+    ### --- CHANGE: UPDATED THE BUTTON LOGIC ---
     if st.button("🚀 Process Scorecards", use_container_width=True):
-        if uploaded_files:
-            load_data(uploaded_files)
+        if uploaded_zip_file:
+            # Call the new function
+            load_data_from_zip(uploaded_zip_file)
         else:
-            st.warning("⚠️ Please select your scorecard files first")
+            st.warning("⚠️ Please select your ZIP file first")
 
 st.markdown("---")
+# The rest of your UI (Helpful Resources, etc.) remains unchanged.
 st.markdown("### 🎥 Helpful Resources")
 
 col1, col2 = st.columns(2)

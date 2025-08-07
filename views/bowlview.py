@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
+import polars as pl
 
 # Add this CSS styling after imports
 st.markdown("""
@@ -112,351 +113,639 @@ def get_filtered_options(df, column, selected_filters=None):
 def compute_bowl_career_stats(df):
     if df.empty:
         return pd.DataFrame()
-
-    match_wickets = df.groupby(['Name', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby('Name').size().reset_index(name='10W')
-
-    bowlcareer_df = df.groupby('Name').agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-
-    bowlcareer_df.columns = ['Name', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-    # --- Safe Calculations ---
-    overs_series = (bowlcareer_df['Balls'] // 6) + (bowlcareer_df['Balls'] % 6) / 10
-    bowlcareer_df['Overs'] = overs_series.round(1)
     
-    wickets_safe = bowlcareer_df['Wickets'].replace(0, np.nan)
-    matches_safe = bowlcareer_df['Matches'].replace(0, np.nan)
-    overs_safe = bowlcareer_df['Overs'].replace(0, np.nan)
-    
-    bowlcareer_df['Strike Rate'] = (bowlcareer_df['Balls'] / wickets_safe).round(2).fillna(0)
-    bowlcareer_df['Economy Rate'] = (bowlcareer_df['Runs'] / overs_safe).round(2).fillna(0)
-    bowlcareer_df['Avg'] = (bowlcareer_df['Runs'] / wickets_safe).round(2).fillna(0)
-    bowlcareer_df['WPM'] = (bowlcareer_df['Wickets'] / matches_safe).round(2).fillna(0)
-    
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby('Name').size().reset_index(name='5W')
-    bowlcareer_df = bowlcareer_df.merge(five_wickets, on='Name', how='left').fillna({'5W': 0})
-    bowlcareer_df = bowlcareer_df.merge(ten_wickets, on='Name', how='left').fillna({'10W': 0})
-    
-    pom_counts = df[df['Player_of_the_Match'] == df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
-    bowlcareer_df = bowlcareer_df.merge(pom_counts, on='Name', how='left').fillna({'POM': 0})
+    try:
+        pl_df = pl.from_pandas(df)
+        
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
 
-    for col in ['5W', '10W', 'POM']:
-        bowlcareer_df[col] = bowlcareer_df[col].astype(int)
+        bowlcareer_pl = pl_df.group_by("Name").agg(aggs)
 
-    final_df = bowlcareer_df[[
-        'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
-        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-    ]].sort_values('Wickets', ascending=False)
-    
-    return final_df
+        if "M/D" not in bowlcareer_pl.columns:
+            bowlcareer_pl = bowlcareer_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        bowlcareer_pl = bowlcareer_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Avg"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- DEFENSIVE Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by("Name").agg(pl.count().alias("5W"))
+        bowlcareer_pl = bowlcareer_pl.join(five_wickets, on="Name", how="left")
+
+        match_wickets = pl_df.group_by(["Name", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by("Name").agg(pl.count().alias("10W"))
+        bowlcareer_pl = bowlcareer_pl.join(ten_wickets, on="Name", how="left")
+
+        if "Player_of_the_Match" in pl_df.columns:
+            pom_counts = pl_df.filter(pl.col("Player_of_the_Match") == pl.col("Name")).group_by("Name").agg(pl.col("File Name").n_unique().alias("POM"))
+            bowlcareer_pl = bowlcareer_pl.join(pom_counts, on="Name", how="left")
+        else:
+            bowlcareer_pl = bowlcareer_pl.with_columns(pl.lit(0).alias("POM"))
+
+        # --- Final Touches ---
+        final_pl = bowlcareer_pl.select([
+            "Name", "Matches", "Balls", "Overs", "M/D", "Runs", "Wickets", "Avg",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM", "POM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute career stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_format_stats(df):
     if df.empty:
         return pd.DataFrame()
-    # Group by Name and Match_Format
-    format_df = df.groupby(['Name', 'Match_Format']).agg(
-        Matches=('File Name', 'nunique'),
-        Bowler_Balls=('Bowler_Balls', 'sum'),
-        Bowler_Runs=('Bowler_Runs', 'sum'),
-        Bowler_Wkts=('Bowler_Wkts', 'sum'),
-        Overs=('Overs', 'sum'),
-        Maidens=('Maidens', 'sum') if 'Maidens' in df.columns else ('Bowler_Balls', 'sum'),
-        FiveW=('FiveW', 'sum') if 'FiveW' in df.columns else ('Bowler_Balls', 'sum'),
-        TenW=('TenW', 'sum') if 'TenW' in df.columns else ('Bowler_Balls', 'sum'),
-        Avg_Runs_Conceded=('Total_Runs', 'sum') if 'Total_Runs' in df.columns else ('Bowler_Runs', 'sum')
-    ).reset_index()
-    wickets_safe = format_df['Bowler_Wkts'].replace(0, np.nan)
-    balls_safe = format_df['Bowler_Balls'].replace(0, np.nan)
-    runs_safe = format_df['Bowler_Runs'].replace(0, np.nan)
-    overs_safe = format_df['Overs'].replace(0, np.nan)
-    format_df['Strike Rate'] = (format_df['Bowler_Balls'] / wickets_safe).round(2).fillna(0)
-    format_df['Economy Rate'] = (format_df['Bowler_Runs'] / (format_df['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
-    format_df['Average'] = (format_df['Bowler_Runs'] / wickets_safe).round(2).fillna(0)
-    format_df['WPM'] = (format_df['Bowler_Wkts'] / format_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
-    return format_df
+
+    pl_df = pl.from_pandas(df)
+    
+    try:
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+            
+        bowlformat_pl = pl_df.group_by(["Name", "Match_Format"]).agg(aggs)
+
+        if "M/D" not in bowlformat_pl.columns:
+            bowlformat_pl = bowlformat_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        bowlformat_pl = bowlformat_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Avg"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- DEFENSIVE Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Match_Format"]).agg(pl.count().alias("5W"))
+        bowlformat_pl = bowlformat_pl.join(five_wickets, on=["Name", "Match_Format"], how="left")
+
+        match_wickets = pl_df.group_by(["Name", "File Name", "Match_Format"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Match_Format"]).agg(pl.count().alias("10W"))
+        bowlformat_pl = bowlformat_pl.join(ten_wickets, on=["Name", "Match_Format"], how="left")
+
+        if "Player_of_the_Match" in pl_df.columns:
+            pom_counts = pl_df.filter(pl.col("Player_of_the_Match") == pl.col("Name")).group_by(["Name", "Match_Format"]).agg(pl.col("File Name").n_unique().alias("POM"))
+            bowlformat_pl = bowlformat_pl.join(pom_counts, on=["Name", "Match_Format"], how="left")
+        else:
+            bowlformat_pl = bowlformat_pl.with_columns(pl.lit(0).alias("POM"))
+        
+        bowlformat_pl = bowlformat_pl.rename({"Match_Format": "Format"})
+
+        # --- Final Touches ---
+        final_pl = bowlformat_pl.select([
+            "Name", "Format", "Matches", "Balls", "Overs", "M/D", "Runs", "Wickets", "Avg",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM", "POM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        # SUCCESS: Return the final DataFrame if everything worked
+        return final_pl.to_pandas()
+
+    except Exception as e:
+        # FAILURE: Warn the user and return an empty DataFrame so the app doesn't crash
+        st.warning(f"Could not compute format stats due to an error: {e}. This may be because required columns are missing for the current filter.")
+        return pd.DataFrame()
 
 @st.cache_data
-def compute_bowl_season_stats(df):
+def compute_bowl_year_stats(df):
+    """
+    Computes bowling statistics for each player, grouped by year using Polars.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame with bowling data.
+
+    Returns:
+        pd.DataFrame: A DataFrame with bowling statistics per player and year.
+    """
     if df.empty:
         return pd.DataFrame()
-    # Group by Name and Year
-    season_df = df.groupby(['Name', 'Year']).agg(
-        Matches=('File Name', 'nunique'),
-        Bowler_Balls=('Bowler_Balls', 'sum'),
-        Bowler_Runs=('Bowler_Runs', 'sum'),
-        Bowler_Wkts=('Bowler_Wkts', 'sum'),
-        Overs=('Overs', 'sum'),
-        Maidens=('Maidens', 'sum') if 'Maidens' in df.columns else ('Bowler_Balls', 'sum'),
-        FiveW=('FiveW', 'sum') if 'FiveW' in df.columns else ('Bowler_Balls', 'sum'),
-        TenW=('TenW', 'sum') if 'TenW' in df.columns else ('Bowler_Balls', 'sum'),
-        Avg_Runs_Conceded=('Total_Runs', 'sum') if 'Total_Runs' in df.columns else ('Bowler_Runs', 'sum')
-    ).reset_index()
-    wickets_safe = season_df['Bowler_Wkts'].replace(0, np.nan)
-    balls_safe = season_df['Bowler_Balls'].replace(0, np.nan)
-    runs_safe = season_df['Bowler_Runs'].replace(0, np.nan)
-    overs_safe = season_df['Overs'].replace(0, np.nan)
-    season_df['Strike Rate'] = (season_df['Bowler_Balls'] / wickets_safe).round(2).fillna(0)
-    season_df['Economy Rate'] = (season_df['Bowler_Runs'] / (season_df['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
-    season_df['Average'] = (season_df['Bowler_Runs'] / wickets_safe).round(2).fillna(0)
-    season_df['WPM'] = (season_df['Bowler_Wkts'] / season_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
-    return season_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        season_pl = pl_df.group_by(["Name", "Year"]).agg(aggs)
+
+        if "M/D" not in season_pl.columns:
+            season_pl = season_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        season_pl = season_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Avg"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- DEFENSIVE Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Year"]).agg(pl.count().alias("5W"))
+        season_pl = season_pl.join(five_wickets, on=["Name", "Year"], how="left")
+
+        match_wickets = pl_df.group_by(["Name", "File Name", "Year"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Year"]).agg(pl.count().alias("10W"))
+        season_pl = season_pl.join(ten_wickets, on=["Name", "Year"], how="left")
+
+        if "Player_of_the_Match" in pl_df.columns:
+            pom_counts = pl_df.filter(pl.col("Player_of_the_Match") == pl.col("Name")).group_by(["Name", "Year"]).agg(pl.col("File Name").n_unique().alias("POM"))
+            season_pl = season_pl.join(pom_counts, on=["Name", "Year"], how="left")
+        else:
+            season_pl = season_pl.with_columns(pl.lit(0).alias("POM"))
+
+        # --- Final Touches ---
+        final_pl = season_pl.select([
+            "Name", "Year", "Matches", "Balls", "Overs", "M/D", "Runs", "Wickets", "Avg",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM", "POM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute year stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_opponent_stats(df):
     if df.empty:
         return pd.DataFrame()
-    # Calculate statistics dataframe for opponents
-    opponent_summary = df.groupby(['Name', 'Bat_Team']).agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-    opponent_summary.columns = ['Name', 'Opposition', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    overs_series = (opponent_summary['Balls'] // 6) + (opponent_summary['Balls'] % 6) / 10
-    opponent_summary['Overs'] = overs_series.round(1)
-    wickets_safe = opponent_summary['Wickets'].replace(0, np.nan)
-    matches_safe = opponent_summary['Matches'].replace(0, np.nan)
-    overs_safe = opponent_summary['Overs'].replace(0, np.nan)
-    opponent_summary['Strike Rate'] = (opponent_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    opponent_summary['Economy Rate'] = (opponent_summary['Runs'] / overs_safe).round(2).fillna(0)
-    opponent_summary['Average'] = (opponent_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    opponent_summary['WPM'] = (opponent_summary['Wickets'] / matches_safe).round(2).fillna(0)
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Bat_Team']).size().reset_index(name='5W')
-    opponent_summary = opponent_summary.merge(five_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left').fillna({'5W': 0})
-    match_wickets = df.groupby(['Name', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Bat_Team']).size().reset_index(name='10W')
-    opponent_summary = opponent_summary.merge(ten_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left').fillna({'10W': 0})
-    opponent_summary['5W'] = opponent_summary['5W'].astype(int)
-    opponent_summary['10W'] = opponent_summary['10W'].astype(int)
-    final_df = opponent_summary[[
-        'Name', 'Opposition', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-    ]].sort_values(by='Wickets', ascending=False)
-    return final_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        opponent_pl = pl_df.group_by(["Name", "Bat_Team"]).agg(aggs).rename({"Bat_Team": "Opposition"})
+
+        if "M/D" not in opponent_pl.columns:
+            opponent_pl = opponent_pl.with_columns(pl.lit(0).alias("M/D"))
+
+
+        # --- Feature Engineering ---
+        opponent_pl = opponent_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Average"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Bat_Team"]).agg(pl.count().alias("5W"))
+        match_wickets = pl_df.group_by(["Name", "Bat_Team", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Bat_Team"]).agg(pl.count().alias("10W"))
+
+        # --- Joins ---
+        opponent_pl = opponent_pl.join(five_wickets, left_on=["Name", "Opposition"], right_on=["Name", "Bat_Team"], how="left")
+        opponent_pl = opponent_pl.join(ten_wickets, left_on=["Name", "Opposition"], right_on=["Name", "Bat_Team"], how="left")
+
+        # --- Final Touches ---
+        final_pl = opponent_pl.select([
+            "Name", "Opposition", "Matches", "Overs", "M/D", "Runs", "Wickets", "Average",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute opponent stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_location_stats(df):
     if df.empty:
         return pd.DataFrame()
-    location_summary = df.groupby(['Name', 'Home_Team']).agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-    location_summary.columns = ['Name', 'Location', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    overs_series = (location_summary['Balls'] // 6) + (location_summary['Balls'] % 6) / 10
-    location_summary['Overs'] = overs_series.round(1)
-    wickets_safe = location_summary['Wickets'].replace(0, np.nan)
-    matches_safe = location_summary['Matches'].replace(0, np.nan)
-    overs_safe = location_summary['Overs'].replace(0, np.nan)
-    location_summary['Strike Rate'] = (location_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    location_summary['Economy Rate'] = (location_summary['Runs'] / overs_safe).round(2).fillna(0)
-    location_summary['Average'] = (location_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    location_summary['WPM'] = (location_summary['Wickets'] / matches_safe).round(2).fillna(0)
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Home_Team']).size().reset_index(name='5W')
-    location_summary = location_summary.merge(five_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left').fillna({'5W': 0})
-    match_wickets = df.groupby(['Name', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Home_Team']).size().reset_index(name='10W')
-    location_summary = location_summary.merge(ten_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left').fillna({'10W': 0})
-    location_summary['5W'] = location_summary['5W'].astype(int)
-    location_summary['10W'] = location_summary['10W'].astype(int)
-    final_df = location_summary[[
-        'Name', 'Location', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-    ]].sort_values(by='Wickets', ascending=False)
-    return final_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        location_pl = pl_df.group_by(["Name", "Home_Team"]).agg(aggs).rename({"Home_Team": "Location"})
+
+        if "M/D" not in location_pl.columns:
+            location_pl = location_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        location_pl = location_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Average"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Home_Team"]).agg(pl.count().alias("5W"))
+        match_wickets = pl_df.group_by(["Name", "Home_Team", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Home_Team"]).agg(pl.count().alias("10W"))
+
+        # --- Joins ---
+        location_pl = location_pl.join(five_wickets, left_on=["Name", "Location"], right_on=["Name", "Home_Team"], how="left")
+        location_pl = location_pl.join(ten_wickets, left_on=["Name", "Location"], right_on=["Name", "Home_Team"], how="left")
+
+        # --- Final Touches ---
+        final_pl = location_pl.select([
+            "Name", "Location", "Matches", "Overs", "M/D", "Runs", "Wickets", "Average",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute location stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_innings_stats(df):
     if df.empty:
         return pd.DataFrame()
-    innings_summary = df.groupby(['Name', 'Innings']).agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-    innings_summary.columns = ['Name', 'Innings', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    overs_series = (innings_summary['Balls'] // 6) + (innings_summary['Balls'] % 6) / 10
-    innings_summary['Overs'] = overs_series.round(1)
-    wickets_safe = innings_summary['Wickets'].replace(0, np.nan)
-    matches_safe = innings_summary['Matches'].replace(0, np.nan)
-    overs_safe = innings_summary['Overs'].replace(0, np.nan)
-    innings_summary['Strike Rate'] = (innings_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    innings_summary['Economy Rate'] = (innings_summary['Runs'] / overs_safe).round(2).fillna(0)
-    innings_summary['Average'] = (innings_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    innings_summary['WPM'] = (innings_summary['Wickets'] / matches_safe).round(2).fillna(0)
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
-    innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left').fillna({'5W': 0})
-    match_wickets = df.groupby(['Name', 'Innings', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Innings']).size().reset_index(name='10W')
-    innings_summary = innings_summary.merge(ten_wickets, on=['Name', 'Innings'], how='left').fillna({'10W': 0})
-    innings_summary['5W'] = innings_summary['5W'].astype(int)
-    innings_summary['10W'] = innings_summary['10W'].astype(int)
-    final_df = innings_summary[[
-        'Name', 'Innings', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-    ]].sort_values(by='Wickets', ascending=False)
-    return final_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        innings_pl = pl_df.group_by(["Name", "Innings"]).agg(aggs)
+
+        if "M/D" not in innings_pl.columns:
+            innings_pl = innings_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        innings_pl = innings_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Average"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Innings"]).agg(pl.count().alias("5W"))
+        match_wickets = pl_df.group_by(["Name", "Innings", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Innings"]).agg(pl.count().alias("10W"))
+
+        # --- Joins ---
+        innings_pl = innings_pl.join(five_wickets, on=["Name", "Innings"], how="left")
+        innings_pl = innings_pl.join(ten_wickets, on=["Name", "Innings"], how="left")
+
+        # --- Final Touches ---
+        final_pl = innings_pl.select([
+            "Name", "Innings", "Matches", "Overs", "M/D", "Runs", "Wickets", "Average",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute innings stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_position_stats(df):
     if df.empty:
         return pd.DataFrame()
-    position_summary = df.groupby(['Name', 'Position']).agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-    position_summary.columns = ['Name', 'Position', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    overs_series = (position_summary['Balls'] // 6) + (position_summary['Balls'] % 6) / 10
-    position_summary['Overs'] = overs_series.round(1)
-    wickets_safe = position_summary['Wickets'].replace(0, np.nan)
-    matches_safe = position_summary['Matches'].replace(0, np.nan)
-    overs_safe = position_summary['Overs'].replace(0, np.nan)
-    position_summary['Strike Rate'] = (position_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    position_summary['Economy Rate'] = (position_summary['Runs'] / overs_safe).round(2).fillna(0)
-    position_summary['Average'] = (position_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    position_summary['WPM'] = (position_summary['Wickets'] / matches_safe).round(2).fillna(0)
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Position']).size().reset_index(name='5W')
-    position_summary = position_summary.merge(five_wickets, on=['Name', 'Position'], how='left').fillna({'5W': 0})
-    match_wickets = df.groupby(['Name', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Position']).size().reset_index(name='10W')
-    position_summary = position_summary.merge(ten_wickets, on=['Name', 'Position'], how='left').fillna({'10W': 0})
-    position_summary['5W'] = position_summary['5W'].astype(int)
-    position_summary['10W'] = position_summary['10W'].astype(int)
-    final_df = position_summary[[
-        'Name', 'Position', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-    ]].sort_values(by='Wickets', ascending=False)
-    return final_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        position_pl = pl_df.group_by(["Name", "Position"]).agg(aggs)
+
+        if "M/D" not in position_pl.columns:
+            position_pl = position_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        position_pl = position_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Average"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "Position"]).agg(pl.count().alias("5W"))
+        match_wickets = pl_df.group_by(["Name", "Position", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "Position"]).agg(pl.count().alias("10W"))
+
+        # --- Joins ---
+        position_pl = position_pl.join(five_wickets, on=["Name", "Position"], how="left")
+        position_pl = position_pl.join(ten_wickets, on=["Name", "Position"], how="left")
+
+        # --- Final Touches ---
+        final_pl = position_pl.select([
+            "Name", "Position", "Matches", "Overs", "M/D", "Runs", "Wickets", "Average",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute position stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_latest_innings(df):
     if df.empty:
         return pd.DataFrame()
-    latest_innings = df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
-        'Bowl_Team': 'first',
-        'Bat_Team': 'first',
-        'Overs': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum',
-        'File Name': 'first'
-    }).reset_index()
-    latest_innings = latest_innings.rename(columns={
-        'Match_Format': 'Format',
-        'Bowl_Team': 'Team',
-        'Bat_Team': 'Opponent',
-        'Overs': 'Overs',
-        'Maidens': 'Maidens',
-        'Bowler_Runs': 'Runs',
-        'Bowler_Wkts': 'Wickets',
-        'File Name': 'File Name'
-    })
-    latest_innings['Date'] = pd.to_datetime(latest_innings['Date'], errors='coerce')
-    latest_innings = latest_innings.sort_values(by='Date', ascending=False).head(20)
-    latest_innings['Date'] = latest_innings['Date'].dt.strftime('%d/%m/%Y')
-    return latest_innings[['Name', 'Format', 'Date', 'Innings', 'Team', 'Opponent', 'Overs', 'Maidens', 'Runs', 'Wickets', 'File Name']]
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # Date is already in datetime format from display_bowl_view
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col('Bowl_Team').first(),
+            pl.col('Bat_Team').first(),
+            pl.col('Bowler_Runs').sum(),
+            pl.col('Bowler_Wkts').sum(),
+            pl.col('File Name').first()
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum())
+        if "Overs" in pl_df.columns:
+            aggs.append(pl.col("Overs").sum())
+
+        latest_innings_pl = pl_df.group_by(['Name', 'Match_Format', 'Date', 'Innings']).agg(aggs)
+
+        # Add columns with 0 if they were not in the original df
+        if "Maidens" not in latest_innings_pl.columns:
+            latest_innings_pl = latest_innings_pl.with_columns(pl.lit(0).alias("Maidens"))
+        if "Overs" not in latest_innings_pl.columns:
+            latest_innings_pl = latest_innings_pl.with_columns(pl.lit(0.0).alias("Overs"))
+
+        # --- Sort, Format, and Select ---
+        final_pl = (
+            latest_innings_pl.sort(by='Date', descending=True)
+            .head(20)
+            .with_columns(pl.col("Date").dt.strftime('%d/%m/%Y'))
+            .rename({
+                'Match_Format': 'Format',
+                'Bowl_Team': 'Team',
+                'Bat_Team': 'Opponent',
+                'Bowler_Runs': 'Runs',
+                'Bowler_Wkts': 'Wickets'
+            })
+            .select([
+                "Name", "Format", "Date", "Innings", "Team", "Opponent", 
+                "Overs", "Maidens", "Runs", "Wickets", "File Name"
+            ])
+        )
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute latest innings: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_cumulative_stats(df):
     if df.empty:
         return pd.DataFrame()
-    df = df.sort_values(by=['Name', 'Match_Format', 'Date'])
-    match_level_df = df.groupby(['Name', 'Match_Format', 'Date', 'File Name']).agg({
-        'Bowler_Balls': 'sum', 'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    # Cumulative Matches: true count of matches per player/format
-    match_level_df['Cumulative Matches'] = match_level_df.groupby(['Name', 'Match_Format']).cumcount() + 1
-    match_level_df['Cumulative Runs'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Runs'].cumsum()
-    match_level_df['Cumulative Balls'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Balls'].cumsum()
-    match_level_df['Cumulative Wickets'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Wkts'].cumsum()
-    match_level_df['Cumulative Avg'] = (match_level_df['Cumulative Runs'] / match_level_df['Cumulative Wickets'].replace(0, np.nan)).fillna(0).round(2)
-    match_level_df['Cumulative SR'] = (match_level_df['Cumulative Balls'] / match_level_df['Cumulative Wickets'].replace(0, np.nan)).fillna(0).round(2)
-    match_level_df['Cumulative Econ'] = (match_level_df['Cumulative Runs'] / (match_level_df['Cumulative Balls'].replace(0, np.nan) / 6)).fillna(0).round(2)
-    return match_level_df.sort_values(by='Date', ascending=False)
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # Date is already in datetime format from display_bowl_view
+
+        # Aggregate stats at the match level first
+        match_level_pl = pl_df.group_by(['Name', 'Match_Format', 'Date', 'File Name']).agg([
+            pl.col('Bowler_Balls').sum(),
+            pl.col('Bowler_Runs').sum(),
+            pl.col('Bowler_Wkts').sum()
+        ]).sort(['Name', 'Match_Format', 'Date'])
+
+        # Calculate cumulative stats using window functions
+        cumulative_pl = match_level_pl.with_columns([
+            (pl.cum_count('File Name').over(['Name', 'Match_Format']) + 1).alias('Cumulative Matches'),
+            pl.col('Bowler_Runs').cum_sum().over(['Name', 'Match_Format']).alias('Cumulative Runs'),
+            pl.col('Bowler_Balls').cum_sum().over(['Name', 'Match_Format']).alias('Cumulative Balls'),
+            pl.col('Bowler_Wkts').cum_sum().over(['Name', 'Match_Format']).alias('Cumulative Wickets')
+        ])
+
+        # Calculate derived cumulative stats (Avg, SR, Econ)
+        final_pl = cumulative_pl.with_columns([
+            pl.when(pl.col('Cumulative Wickets') > 0)
+              .then(pl.col('Cumulative Runs') / pl.col('Cumulative Wickets'))
+              .otherwise(0)
+              .round(2).alias('Cumulative Avg'),
+            pl.when(pl.col('Cumulative Wickets') > 0)
+              .then(pl.col('Cumulative Balls') / pl.col('Cumulative Wickets'))
+              .otherwise(0)
+              .round(2).alias('Cumulative SR'),
+            pl.when(pl.col('Cumulative Balls') > 0)
+              .then(pl.col('Cumulative Runs') / (pl.col('Cumulative Balls') / 6))
+              .otherwise(0)
+              .round(2).alias('Cumulative Econ')
+        ])
+
+        return final_pl.sort(by='Date', descending=True).to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute cumulative stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_block_stats(df):
     if df.empty:
         return pd.DataFrame()
-    df = df.sort_values(by=['Name', 'Match_Format', 'Date'])
-    # Create innings number and innings range
-    df['Innings_Number'] = df.groupby(['Name', 'Match_Format']).cumcount() + 1
-    df['Innings_Range'] = (((df['Innings_Number'] - 1) // 20) * 20).astype(str) + '-' + (((df['Innings_Number'] - 1) // 20) * 20 + 19).astype(str)
-    df['Range_Start'] = ((df['Innings_Number'] - 1) // 20) * 20
-    # Group by blocks and calculate statistics
-    block_stats_df = df.groupby(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg({
-        'Innings_Number': 'count',
-        'Bowler_Balls': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum',
-        'Date': ['first', 'last']
-    }).reset_index()
-    # Flatten the column names
-    block_stats_df.columns = ['Name', 'Match_Format', 'Innings_Range', 'Range_Start',
-                            'Innings', 'Balls', 'Runs', 'Wickets',
-                            'First_Date', 'Last_Date']
-    # Calculate statistics for each block
-    block_stats_df['Overs'] = (block_stats_df['Balls'] // 6) + (block_stats_df['Balls'] % 6) / 10
-    block_stats_df['Average'] = (block_stats_df['Runs'] / block_stats_df['Wickets']).round(2)
-    block_stats_df['Strike_Rate'] = (block_stats_df['Balls'] / block_stats_df['Wickets']).round(2)
-    block_stats_df['Economy'] = (block_stats_df['Runs'] / block_stats_df['Overs']).round(2)
-    # Format dates properly before creating date range
-    block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
-    block_stats_df['Last_Date'] = pd.to_datetime(block_stats_df['Last_Date']).dt.strftime('%d/%m/%Y')
-    # Create date range column
-    block_stats_df['Date_Range'] = block_stats_df['First_Date'] + ' to ' + block_stats_df['Last_Date']
-    # Sort the DataFrame
-    block_stats_df = block_stats_df.sort_values(['Name', 'Match_Format', 'Range_Start'])
-    # Select and order final columns
-    final_columns = [
-        'Name', 'Match_Format', 'Innings_Range', 'Date_Range',
-        'Innings', 'Overs', 'Runs', 'Wickets',
-        'Average', 'Strike_Rate', 'Economy'
-    ]
-    block_stats_df = block_stats_df[final_columns]
-    # Handle any infinities and NaN values
-    block_stats_df = block_stats_df.replace([np.inf, -np.inf], np.nan)
-    return block_stats_df
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- Initial Preparation ---
+        # Date is already in datetime format from display_bowl_view
+        pl_df = pl_df.sort(['Name', 'Match_Format', 'Date'])
+
+        # --- Create Innings and Block Identifiers ---
+        pl_df = pl_df.with_columns([
+            (pl.cum_count("Date").over(["Name", "Match_Format"]) + 1).alias("Innings_Number")
+        ])
+        pl_df = pl_df.with_columns([
+            (((pl.col("Innings_Number") - 1) / 20).floor().cast(pl.Int32) * 20).alias("Range_Start")
+        ])
+        pl_df = pl_df.with_columns([
+            (pl.col("Range_Start").cast(pl.Utf8) + "-" + (pl.col("Range_Start") + 19).cast(pl.Utf8)).alias("Innings_Range")
+        ])
+
+        # --- Group by Blocks and Aggregate ---
+        block_stats_pl = pl_df.group_by(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg([
+            pl.count().alias('Innings'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+            pl.col('Date').first().alias('First_Date'),
+            pl.col('Date').last().alias('Last_Date')
+        ])
+
+        # --- Calculate Derived Statistics ---
+        block_stats_pl = block_stats_pl.with_columns([
+            (((pl.col("Balls") / 6).floor() + (pl.col("Balls") % 6) / 10)).alias("Overs"),
+        ])
+        block_stats_pl = block_stats_pl.with_columns([
+            pl.when(pl.col("Wickets") > 0).then(pl.col('Runs') / pl.col('Wickets')).otherwise(0).round(2).alias('Average'),
+            pl.when(pl.col("Wickets") > 0).then(pl.col('Balls') / pl.col('Wickets')).otherwise(0).round(2).alias('Strike_Rate'),
+        ])
+        # Economy Rate needs Overs, so calculate separately
+        block_stats_pl = block_stats_pl.with_columns(
+            pl.when(pl.col("Overs") > 0).then(pl.col('Runs') / pl.col('Overs')).otherwise(0).round(2).alias('Economy')
+        )
+
+        # --- Format Dates and Create Date Range ---
+        block_stats_pl = block_stats_pl.with_columns([
+            (pl.col('First_Date').dt.strftime('%d/%m/%Y') + " to " + pl.col('Last_Date').dt.strftime('%d/%m/%Y')).alias('Date_Range')
+        ])
+
+        # --- Final Selection and Sorting ---
+        final_pl = (
+            block_stats_pl.sort(by='Range_Start', descending=False)
+            .select([
+                'Name', 'Match_Format', 'Innings_Range', 'Date_Range', 'Innings', 
+                'Overs', 'Runs', 'Wickets', 'Average', 'Strike_Rate', 'Economy'
+            ])
+        )
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute block stats: {e}")
+        return pd.DataFrame()
 
 @st.cache_data
 def compute_bowl_homeaway_stats(df):
     if df.empty:
         return pd.DataFrame()
-    homeaway_stats = df.groupby(['Name', 'HomeOrAway']).agg({
-        'File Name': 'nunique',
-        'Bowler_Balls': 'sum',
-        'Maidens': 'sum',
-        'Bowler_Runs': 'sum',
-        'Bowler_Wkts': 'sum'
-    }).reset_index()
-    homeaway_stats.columns = ['Name', 'HomeOrAway', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    overs_series = (homeaway_stats['Balls'] // 6) + (homeaway_stats['Balls'] % 6) / 10
-    homeaway_stats['Overs'] = overs_series.round(1)
-    wickets_safe = homeaway_stats['Wickets'].replace(0, np.nan)
-    matches_safe = homeaway_stats['Matches'].replace(0, np.nan)
-    overs_safe = homeaway_stats['Overs'].replace(0, np.nan)
-    homeaway_stats['Strike Rate'] = (homeaway_stats['Balls'] / wickets_safe).round(2).fillna(0)
-    homeaway_stats['Economy Rate'] = (homeaway_stats['Runs'] / overs_safe).round(2).fillna(0)
-    homeaway_stats['Average'] = (homeaway_stats['Runs'] / wickets_safe).round(2).fillna(0)
-    homeaway_stats['WPM'] = (homeaway_stats['Wickets'] / matches_safe).round(2).fillna(0)
-    return homeaway_stats
+
+    try:
+        pl_df = pl.from_pandas(df)
+
+        # --- DEFENSIVE AGGREGATIONS ---
+        aggs = [
+            pl.col("File Name").n_unique().alias("Matches"),
+            pl.col("Bowler_Balls").sum().alias("Balls"),
+            pl.col("Bowler_Runs").sum().alias("Runs"),
+            pl.col("Bowler_Wkts").sum().alias("Wickets")
+        ]
+        if "Maidens" in pl_df.columns:
+            aggs.append(pl.col("Maidens").sum().alias("M/D"))
+
+        homeaway_pl = pl_df.group_by(["Name", "HomeOrAway"]).agg(aggs)
+
+        if "M/D" not in homeaway_pl.columns:
+            homeaway_pl = homeaway_pl.with_columns(pl.lit(0).alias("M/D"))
+
+        # --- Feature Engineering ---
+        homeaway_pl = homeaway_pl.with_columns([
+            (((pl.col("Balls") / 6) + (pl.col("Balls") % 6) / 10).round(1)).alias("Overs"),
+            (pl.col("Runs") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Average"),
+            (pl.col("Balls") / pl.col("Wickets").cast(pl.Float64)).round(2).alias("Strike Rate"),
+            (pl.col("Runs") / (pl.col("Balls").cast(pl.Float64) / 6)).round(2).alias("Economy Rate"),
+            (pl.col("Wickets") / pl.col("Matches").cast(pl.Float64)).round(2).alias("WPM")
+        ])
+
+        # --- Complex Aggregations ---
+        five_wickets = pl_df.filter(pl.col("Bowler_Wkts") >= 5).group_by(["Name", "HomeOrAway"]).agg(pl.count().alias("5W"))
+        match_wickets = pl_df.group_by(["Name", "HomeOrAway", "File Name"]).agg(pl.col("Bowler_Wkts").sum())
+        ten_wickets = match_wickets.filter(pl.col("Bowler_Wkts") >= 10).group_by(["Name", "HomeOrAway"]).agg(pl.count().alias("10W"))
+
+        # --- Joins ---
+        homeaway_pl = homeaway_pl.join(five_wickets, on=["Name", "HomeOrAway"], how="left")
+        homeaway_pl = homeaway_pl.join(ten_wickets, on=["Name", "HomeOrAway"], how="left")
+
+        # --- Final Touches ---
+        final_pl = homeaway_pl.rename({"HomeOrAway": "Home/Away"}).select([
+            "Name", "Home/Away", "Matches", "Overs", "M/D", "Runs", "Wickets", "Average",
+            "Strike Rate", "Economy Rate", "5W", "10W", "WPM"
+        ]).fill_null(0).sort("Wickets", descending=True)
+
+        return final_pl.to_pandas()
+    except Exception as e:
+        st.warning(f"Could not compute home/away stats: {e}")
+        return pd.DataFrame()
+
+@st.cache_data
+def get_player_summary_for_filtering(_df):
+    """
+    Pre-computes a summary DataFrame with min/max values for filtering.
+    This is much faster than filtering the main DataFrame directly.
+    """
+    if _df.empty:
+        return pd.DataFrame(columns=["Name", "Matches", "Wickets", "Avg", "SR"])
+
+    pl_df = pl.from_pandas(_df)
+
+    # Aggregate stats at the player level
+    player_summary_pl = pl_df.group_by("Name").agg(
+        pl.col("File Name").n_unique().alias("Matches"),
+        pl.col("Bowler_Wkts").sum().alias("Wickets"),
+        (pl.col("Bowler_Runs").sum() / pl.col("Bowler_Wkts").sum()).alias("Avg"),
+        (pl.col("Bowler_Balls").sum() / pl.col("Bowler_Wkts").sum()).alias("SR")
+    )
+
+    # Handle potential division by zero issues that create inf or nan
+    player_summary_pl = player_summary_pl.with_columns([
+        pl.when(pl.col("Avg").is_infinite() | pl.col("Avg").is_nan()).then(0).otherwise(pl.col("Avg")).alias("Avg"),
+        pl.when(pl.col("SR").is_infinite() | pl.col("SR").is_nan()).then(0).otherwise(pl.col("SR")).alias("SR")
+    ])
+    
+    return player_summary_pl.to_pandas()
 
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
@@ -672,24 +961,16 @@ def display_bowl_view():
         all_color = '#f84e4e' if not individual_players else 'black'
         player_colors['All'] = all_color
 
-        # Calculate range filter statistics
-        career_stats = bowl_df.groupby('Name').agg({
-            'File Name': 'nunique',
-            'Bowler_Wkts': 'sum',
-            'Bowler_Runs': 'sum',
-            'Bowler_Balls': 'sum'
-        }).reset_index()
+        # --- NEW: Fast Range Filter Setup ---
+        # Get the pre-calculated summary stats for ALL players ONCE.
+        player_summary = get_player_summary_for_filtering(bowl_df)
 
-        career_stats['Avg'] = career_stats['Bowler_Runs'] / career_stats['Bowler_Wkts'].replace(0, np.inf)
-        career_stats['SR'] = career_stats['Bowler_Balls'] / career_stats['Bowler_Wkts'].replace(0, np.inf)
-        career_stats['Avg'] = career_stats['Avg'].replace([np.inf, -np.inf], np.nan)
-        career_stats['SR'] = career_stats['SR'].replace([np.inf, -np.inf], np.nan)
+        # Calculate max values from the small summary DataFrame
+        max_wickets = int(player_summary['Wickets'].max()) if not player_summary.empty else 0
+        max_matches = int(player_summary['Matches'].max()) if not player_summary.empty else 0
+        max_avg = float(player_summary['Avg'].max()) if not player_summary.empty else 0.0
+        max_sr = float(player_summary['SR'].max()) if not player_summary.empty else 0.0
 
-        # Calculate max values
-        max_wickets = int(career_stats['Bowler_Wkts'].max())
-        max_matches = int(career_stats['File Name'].max())
-        max_avg = float(career_stats['Avg'].max())
-        max_sr = float(career_stats['SR'].max())
 
         # Add range filters
         col5, col6, col7, col8, col9, col10 = st.columns(6)
@@ -754,11 +1035,10 @@ def display_bowl_view():
                                 label_visibility='collapsed',
                                 key='sr_slider')
 
-###-------------------------------------APPLY FILTERS-------------------------------------###
-        # Create filtered dataframe
+###-------------------------------------APPLY FILTERS (THE FAST WAY)-------------------------------------###
+        
+        # 1. Start with the cheap multiselect filters on the main dataframe
         filtered_df = bowl_df.copy()
-
-        # Apply basic filters
         if name_choice and 'All' not in name_choice:
             filtered_df = filtered_df[filtered_df['Name'].isin(name_choice)]
         if bowl_team_choice and 'All' not in bowl_team_choice:
@@ -770,21 +1050,27 @@ def display_bowl_view():
         if comp_choice and 'All' not in comp_choice:
             filtered_df = filtered_df[filtered_df['comp'].isin(comp_choice)]
 
-        # Apply year filter (only if Year column exists)
+        # 2. Filter the SMALL player_summary DataFrame based on the sliders. This is VERY fast.
+        if not player_summary.empty:
+            eligible_players = player_summary[
+                (player_summary['Wickets'].between(wickets_range[0], wickets_range[1])) &
+                (player_summary['Matches'].between(matches_range[0], matches_range[1])) &
+                (player_summary['Avg'].between(avg_range[0], avg_range[1])) &
+                (player_summary['SR'].between(sr_range[0], sr_range[1]))
+            ]
+            
+            # 3. Get the list of names that passed the filter.
+            eligible_player_names = eligible_players['Name'].unique()
+            
+            # 4. Apply a final, lightning-fast .isin() filter to the main DataFrame
+            filtered_df = filtered_df[filtered_df['Name'].isin(eligible_player_names)]
+        
+        # 5. Apply the last remaining filters
         if 'Year' in filtered_df.columns:
             filtered_df = filtered_df[filtered_df['Year'].between(year_choice[0], year_choice[1])]
-        else:
-            st.warning("Year column not available. Year filter will be skipped.")
-
-        # Apply range filters
-        filtered_df = filtered_df.groupby('Name').filter(lambda x: 
-            wickets_range[0] <= x['Bowler_Wkts'].sum() <= wickets_range[1] and
-            matches_range[0] <= x['File Name'].nunique() <= matches_range[1] and
-            (avg_range[0] <= (x['Bowler_Runs'].sum() / x['Bowler_Wkts'].sum()) <= avg_range[1] if x['Bowler_Wkts'].sum() > 0 else True) and
-            (sr_range[0] <= (x['Bowler_Balls'].sum() / x['Bowler_Wkts'].sum()) <= sr_range[1] if x['Bowler_Wkts'].sum() > 0 else True)
-        )
-
+        
         filtered_df = filtered_df[filtered_df['Position'].between(position_choice[0], position_choice[1])]
+
 
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
@@ -994,7 +1280,7 @@ def display_bowl_view():
         ###-------------------------------------SEASON STATS-------------------------------------###
         # Season Stats Tab
         with tabs[2]:
-            season_df = compute_bowl_season_stats(filtered_df)
+            season_df = compute_bowl_year_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
@@ -1067,7 +1353,7 @@ def display_bowl_view():
         with tabs[3]:
             latest_innings = compute_bowl_latest_innings(filtered_df)
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140  100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
                         box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
                         border: 1px solid rgba(255, 255, 255, 0.2);">
@@ -1110,7 +1396,7 @@ def display_bowl_view():
             st.markdown("""
             <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
+                        box-shadow: 0 8px 32px rgba(168, 202, 186,  0.3);
                         border: 1px solid rgba(255, 255, 255, 0.2);">
                 <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Opposition Statistics</h3>
             </div>
@@ -1219,7 +1505,7 @@ def display_bowl_view():
             st.markdown("""
             <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        box-shadow: 0 8px  32px rgba(131, 96, 195, 0.3);
                         border: 1px solid rgba(255, 255, 255, 0.2);">
                 <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Position Statistics</h3>
             </div>
@@ -1416,60 +1702,67 @@ def display_bowl_view():
                 <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Block Statistics (Groups of 20 Innings)</h3>
             </div>
             """, unsafe_allow_html=True)
-            st.dataframe(block_stats_df, use_container_width=True, hide_index=True)
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
-                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                        box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Bowling Average by Innings Block</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            fig = go.Figure()
-            # Handle 'All' selection
-            if 'All' in name_choice:
-                all_blocks = block_stats_df.groupby('Innings_Range').agg({
-                    'Runs': 'sum',
-                    'Wickets': 'sum'
-                }).reset_index()
-                all_blocks['Average'] = (all_blocks['Runs'] / all_blocks['Wickets']).round(2)
-                all_blocks = all_blocks.sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
-                all_color = '#f84e4e' if not individual_players else 'black'
-                fig.add_trace(
-                    go.Bar(
-                        x=all_blocks['Innings_Range'],
-                        y=all_blocks['Average'],
-                        name='All Players',
-                        marker_color=all_color
+            
+            # --- THIS IS THE FIX ---
+            if block_stats_df.empty:
+                st.info("No block statistics to display for the current selection.")
+            else:
+                # All the code that uses the dataframe now goes inside this 'else' block
+                st.dataframe(block_stats_df, use_container_width=True, hide_index=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Bowling Average by Innings Block</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                fig = go.Figure()
+                # This code is now safe because we know the DataFrame is not empty
+                if 'All' in name_choice:
+                    all_blocks = block_stats_df.groupby('Innings_Range').agg({
+                        'Runs': 'sum',
+                        'Wickets': 'sum'
+                    }).reset_index()
+                    all_blocks['Average'] = (all_blocks['Runs'] / all_blocks['Wickets']).round(2)
+                    all_blocks = all_blocks.sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
+                    all_color = '#f84e4e' if not individual_players else 'black'
+                    fig.add_trace(
+                        go.Bar(
+                            x=all_blocks['Innings_Range'],
+                            y=all_blocks['Average'],
+                            name='All Players',
+                            marker_color=all_color
+                        )
                     )
-                )
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_blocks = block_stats_df[block_stats_df['Name'] == name].sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                fig.add_trace(
-                    go.Bar(
-                        x=player_blocks['Innings_Range'],
-                        y=player_blocks['Average'],
-                        name=name,
-                        marker_color=color
+                # Add individual player traces
+                for i, name in enumerate(individual_players):
+                    player_blocks = block_stats_df[block_stats_df['Name'] == name].sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
+                    color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                    fig.add_trace(
+                        go.Bar(
+                            x=player_blocks['Innings_Range'],
+                            y=player_blocks['Average'],
+                            name=name,
+                            marker_color=color
+                        )
                     )
+                fig.update_layout(
+                    showlegend=True,
+                    height=500,
+                    xaxis_title='Innings Range',
+                    yaxis_title='Bowling Average',
+                    margin=dict(l=50, r=50, t=70, b=50),
+                    font=dict(size=12),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    barmode='group',
+                    xaxis={'categoryorder': 'array', 'categoryarray': sorted(block_stats_df['Innings_Range'].unique(), key=lambda x: int(x.split('-')[0]))}
                 )
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                xaxis_title='Innings Range',
-                yaxis_title='Bowling Average',
-                margin=dict(l=50, r=50, t=70, b=50),
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                barmode='group',
-                xaxis={'categoryorder': 'array', 'categoryarray': sorted(block_stats_df['Innings_Range'].unique(), key=lambda x: int(x.split('-')[0]))}
-            )
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            st.plotly_chart(fig, use_container_width=True)
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+                st.plotly_chart(fig, use_container_width=True)
 
     else:
         st.error("No bowling data available. Please upload scorecards first.")
