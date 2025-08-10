@@ -390,6 +390,12 @@ def display_ar_view():
             filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])
         ]
 
+        # Ensure categorical-safe comparison for POM (cast to string)
+        if 'Player_of_the_Match' in filtered_bat_df.columns:
+            filtered_bat_df['Player_of_the_Match'] = filtered_bat_df['Player_of_the_Match'].astype(str)
+        if 'Name' in filtered_bat_df.columns:
+            filtered_bat_df['Name'] = filtered_bat_df['Name'].astype(str)
+
         # Get POM count after all filters
         pom_count = filtered_bat_df[
             filtered_bat_df['Player_of_the_Match'] == filtered_bat_df['Name']

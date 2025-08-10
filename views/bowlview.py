@@ -88,6 +88,38 @@ tbody tr:nth-child(odd) { background-color: white; }
 </style>
 """, unsafe_allow_html=True)
 
+def sanitize_df_for_polars(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert any dict/list-like object columns to strings so pl.from_pandas won't fail.
+    Keeps numeric/string columns unchanged.
+    """
+    if df is None or df.empty:
+        return df
+    safe = df.copy()
+    for col in safe.columns:
+        col_series = safe[col]
+        # 1) Convert categoricals to string to avoid Arrow dictionary issues
+        try:
+            if pd.api.types.is_categorical_dtype(col_series):
+                safe[col] = col_series.astype(str)
+                continue
+        except Exception:
+            pass
+        # 2) Convert Period dtype to string
+        try:
+            if hasattr(pd.api.types, 'is_period_dtype') and pd.api.types.is_period_dtype(col_series):
+                safe[col] = col_series.astype(str)
+                continue
+        except Exception:
+            pass
+        # 3) If object with dict/list-like values, cast to string
+        if col_series.dtype == 'object':
+            try:
+                if col_series.map(lambda x: isinstance(x, (dict, list, set, tuple, bytes))).any():
+                    safe[col] = col_series.astype(str)
+            except Exception:
+                safe[col] = col_series.astype(str)
+    return safe
+
 def get_filtered_options(df, column, selected_filters=None):
     """
     Get available options for a column based on current filter selections.
@@ -115,6 +147,7 @@ def compute_bowl_career_stats(df):
         return pd.DataFrame()
     
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
         
         # --- DEFENSIVE AGGREGATIONS ---
@@ -170,10 +203,10 @@ def compute_bowl_career_stats(df):
 def compute_bowl_format_stats(df):
     if df.empty:
         return pd.DataFrame()
-
-    pl_df = pl.from_pandas(df)
     
     try:
+        df = sanitize_df_for_polars(df)
+        pl_df = pl.from_pandas(df)
         # --- DEFENSIVE AGGREGATIONS ---
         aggs = [
             pl.col("File Name").n_unique().alias("Matches"),
@@ -243,6 +276,7 @@ def compute_bowl_year_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -300,6 +334,7 @@ def compute_bowl_opponent_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -353,6 +388,7 @@ def compute_bowl_location_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -405,6 +441,7 @@ def compute_bowl_innings_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -457,6 +494,7 @@ def compute_bowl_position_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -509,6 +547,7 @@ def compute_bowl_latest_innings(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # Date is already in datetime format from display_bowl_view
@@ -563,6 +602,7 @@ def compute_bowl_cumulative_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # Date is already in datetime format from display_bowl_view
@@ -609,6 +649,7 @@ def compute_bowl_block_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- Initial Preparation ---
@@ -674,6 +715,7 @@ def compute_bowl_homeaway_stats(df):
         return pd.DataFrame()
 
     try:
+        df = sanitize_df_for_polars(df)
         pl_df = pl.from_pandas(df)
 
         # --- DEFENSIVE AGGREGATIONS ---
@@ -729,7 +771,23 @@ def get_player_summary_for_filtering(_df):
     if _df.empty:
         return pd.DataFrame(columns=["Name", "Matches", "Wickets", "Avg", "SR"])
 
-    pl_df = pl.from_pandas(_df)
+    # Use only the columns we actually need to avoid dict-like columns causing Polars conversion failures
+    needed_cols = ["Name", "File Name", "Bowler_Wkts", "Bowler_Runs", "Bowler_Balls"]
+    existing_cols = [c for c in needed_cols if c in _df.columns]
+    if len(existing_cols) < 5:
+        # Missing required columns; return empty but valid frame
+        return pd.DataFrame(columns=["Name", "Matches", "Wickets", "Avg", "SR"])
+
+    slim_df = _df[existing_cols].copy()
+    # Coerce numeric columns safely
+    for c in ["Bowler_Wkts", "Bowler_Runs", "Bowler_Balls"]:
+        slim_df[c] = pd.to_numeric(slim_df[c], errors='coerce').fillna(0)
+    # Ensure names/file names are strings
+    slim_df["Name"] = slim_df["Name"].astype(str)
+    slim_df["File Name"] = slim_df["File Name"].astype(str)
+
+    # Now safe to convert to Polars
+    pl_df = pl.from_pandas(slim_df)
 
     # Aggregate stats at the player level
     player_summary_pl = pl_df.group_by("Name").agg(
@@ -751,9 +809,9 @@ def display_bowl_view():
     if 'bowl_df' in st.session_state:
         # Get the bowling dataframe with safer date parsing
         bowl_df = st.session_state['bowl_df'].copy()
-        
-
-            
+        # Upload mode from Home.py (small vs large)
+        upload_mode = st.session_state.get('upload_mode', 'small')
+        is_large = upload_mode == 'large'
         try:
             # Safer date parsing with multiple fallbacks
             if 'Date' in bowl_df.columns:
@@ -770,8 +828,10 @@ def display_bowl_view():
                 st.error("No 'Date' column found in bowl_df")
                 bowl_df['Year'] = 2024  # Default year
                 
-            # Add HomeOrAway column
+            # Add HomeOrAway column (cast to str to avoid categorical mismatch)
             if 'Bowl_Team' in bowl_df.columns and 'Home_Team' in bowl_df.columns:
+                bowl_df['Bowl_Team'] = bowl_df['Bowl_Team'].astype(str)
+                bowl_df['Home_Team'] = bowl_df['Home_Team'].astype(str)
                 bowl_df['HomeOrAway'] = np.where(bowl_df['Bowl_Team'] == bowl_df['Home_Team'], 'Home', 'Away')
             else:
                 st.warning("Could not determine Home/Away status due to missing columns.")
@@ -813,6 +873,9 @@ def display_bowl_view():
             </h1>
         </div>
         """, unsafe_allow_html=True)
+        # Large dataset info banner
+        if is_large:
+            st.info("Large dataset mode is ON. Heavy charts are hidden and the Cumulative and Block tabs are disabled to keep things fast.")
         
         # Check if only one scorecard is loaded
         unique_matches = bowl_df['File Name'].nunique()
@@ -846,7 +909,7 @@ def display_bowl_view():
             
             # Check if comp column exists after merge and fill missing values
             if 'comp' in bowl_df.columns:
-                bowl_df['comp'] = bowl_df['comp'].fillna(bowl_df['Competition'])
+                bowl_df['comp'] = bowl_df['comp'].astype(object).fillna(bowl_df['Competition'])
             else:
                 bowl_df['comp'] = bowl_df['Competition']
         else:
@@ -1039,18 +1102,25 @@ def display_bowl_view():
         
         # 1. Start with the cheap multiselect filters on the main dataframe
         filtered_df = bowl_df.copy()
-        if name_choice and 'All' not in name_choice:
-            filtered_df = filtered_df[filtered_df['Name'].isin(name_choice)]
-        if bowl_team_choice and 'All' not in bowl_team_choice:
-            filtered_df = filtered_df[filtered_df['Bowl_Team'].isin(bowl_team_choice)]
-        if bat_team_choice and 'All' not in bat_team_choice:
-            filtered_df = filtered_df[filtered_df['Bat_Team'].isin(bat_team_choice)]
-        if match_format_choice and 'All' not in match_format_choice:
-            filtered_df = filtered_df[filtered_df['Match_Format'].isin(match_format_choice)]
-        if comp_choice and 'All' not in comp_choice:
-            filtered_df = filtered_df[filtered_df['comp'].isin(comp_choice)]
+        # Treat 'All' as a no-op: if specific values are chosen alongside 'All', ignore 'All'
+        eff_names = [v for v in name_choice if v != 'All'] if name_choice else []
+        eff_bowl_teams = [v for v in bowl_team_choice if v != 'All'] if bowl_team_choice else []
+        eff_bat_teams = [v for v in bat_team_choice if v != 'All'] if bat_team_choice else []
+        eff_formats = [v for v in match_format_choice if v != 'All'] if match_format_choice else []
+        eff_comp = [v for v in comp_choice if v != 'All'] if comp_choice else []
 
-        # 2. Filter the SMALL player_summary DataFrame based on the sliders. This is VERY fast.
+        if eff_names:
+            filtered_df = filtered_df[filtered_df['Name'].isin(eff_names)]
+        if eff_bowl_teams:
+            filtered_df = filtered_df[filtered_df['Bowl_Team'].isin(eff_bowl_teams)]
+        if eff_bat_teams:
+            filtered_df = filtered_df[filtered_df['Bat_Team'].isin(eff_bat_teams)]
+        if eff_formats:
+            filtered_df = filtered_df[filtered_df['Match_Format'].isin(eff_formats)]
+        if eff_comp:
+            filtered_df = filtered_df[filtered_df['comp'].isin(eff_comp)]
+
+    # 2. Filter the SMALL player_summary DataFrame based on the sliders. This is VERY fast.
         if not player_summary.empty:
             eligible_players = player_summary[
                 (player_summary['Wickets'].between(wickets_range[0], wickets_range[1])) &
@@ -1071,20 +1141,25 @@ def display_bowl_view():
         
         filtered_df = filtered_df[filtered_df['Position'].between(position_choice[0], position_choice[1])]
 
+        # Make DataFrame Polars-safe before passing to any compute_* functions that use Polars
+        filtered_df = sanitize_df_for_polars(filtered_df)
 
         # Create a placeholder for tabs that will be lazily loaded
         main_container = st.container()
         
-        # Create tabs for different views with clean, short names
-        tabs = main_container.tabs([
-            "Career", "Format", "Season", "Latest", "Opponent", 
-            "Location", "Innings", "Position", "Home/Away",
-            "Cumulative", "Block"
-        ])
+        # Create tabs dynamically based on upload mode
+        tab_labels = [
+            "Career", "Format", "Season", "Latest", "Opponent",
+            "Location", "Innings", "Position", "Home/Away"
+        ]
+        if not is_large:
+            tab_labels.extend(["Cumulative", "Block"])
+        tabs = main_container.tabs(tab_labels)
+        tab_map = dict(zip(tab_labels, tabs))
 
-        ###-------------------------------------CAREER STATS-------------------------------------###
-        # Career Stats Tab
-        with tabs[0]:
+    ###-------------------------------------CAREER STATS-------------------------------------###
+    # Career Stats Tab
+    with tab_map["Career"]:
             bowlcareer_df = compute_bowl_career_stats(filtered_df)
 
             st.markdown("""
@@ -1102,57 +1177,56 @@ def display_bowl_view():
                 st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
 
                 # Defensive scatter plot for Economy Rate vs Strike Rate, only for players with >0 wickets
-                if not bowlcareer_df.empty and 'Economy Rate' in bowlcareer_df.columns and 'Strike Rate' in bowlcareer_df.columns and 'Wickets' in bowlcareer_df.columns:
-                    plot_df = bowlcareer_df[bowlcareer_df['Wickets'] > 0]
-                    if not plot_df.empty:
-                        scatter_fig = go.Figure()
-                        for name in plot_df['Name'].unique():
-                            player_stats = plot_df[plot_df['Name'] == name]
-                            economy_rate = player_stats['Economy Rate'].iloc[0]
-                            strike_rate = player_stats['Strike Rate'].iloc[0]
-                            wickets = player_stats['Wickets'].iloc[0]
-                            scatter_fig.add_trace(go.Scatter(
-                                x=[economy_rate],
-                                y=[strike_rate],
-                                mode='markers+text',
-                                text=[name],
-                                textposition='top center',
-                                marker=dict(size=10),
-                                name=name,
-                                hovertemplate=(
-                                    f"<b>{name}</b><br><br>"
-                                    f"Economy Rate: {economy_rate:.2f}<br>"
-                                    f"Strike Rate: {strike_rate:.2f}<br>"
-                                    f"Wickets: {wickets}<br>"
-                                    "<extra></extra>"
-                                )
-                            ))
-                        scatter_fig.update_layout(
-                            xaxis_title="Economy Rate",
-                            yaxis_title="Strike Rate",
-                            height=500,
-                            font=dict(size=12),
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            showlegend=False
-                        )
-                        st.markdown("""
-                        <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
-                                    padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                                    box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
-                                    border: 1px solid rgba(255, 255, 255, 0.2);">
-                            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Economy Rate vs Strike Rate Analysis</h3>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.plotly_chart(scatter_fig, use_container_width=True)
-                    else:
-                        st.info("No players with wickets to display in the Economy Rate vs Strike Rate Analysis.")
-                else:
-                    st.info("Not enough data to display the Economy Rate vs Strike Rate Analysis.")
+                if not is_large:
+                    if not bowlcareer_df.empty and 'Economy Rate' in bowlcareer_df.columns and 'Strike Rate' in bowlcareer_df.columns and 'Wickets' in bowlcareer_df.columns:
+                        plot_df = bowlcareer_df[bowlcareer_df['Wickets'] > 0]
+                        if not plot_df.empty:
+                            scatter_fig = go.Figure()
+                            for name in plot_df['Name'].unique():
+                                player_stats = plot_df[plot_df['Name'] == name]
+                                economy_rate = player_stats['Economy Rate'].iloc[0]
+                                strike_rate = player_stats['Strike Rate'].iloc[0]
+                                wickets = player_stats['Wickets'].iloc[0]
+                                scatter_fig.add_trace(go.Scatter(
+                                    x=[economy_rate],
+                                    y=[strike_rate],
+                                    mode='markers+text',
+                                    text=[name],
+                                    textposition='top center',
+                                    marker=dict(size=10),
+                                    name=name,
+                                    hovertemplate=(
+                                        f"<b>{name}</b><br><br>"
+                                        f"Economy Rate: {economy_rate:.2f}<br>"
+                                        f"Strike Rate: {strike_rate:.2f}<br>"
+                                        f"Wickets: {wickets}<br>"
+                                        "<extra></extra>"
+                                    )
+                                ))
+                            scatter_fig.update_layout(
+                                xaxis_title="Economy Rate",
+                                yaxis_title="Strike Rate",
+                                height=500,
+                                font=dict(size=12),
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                showlegend=False
+                            )
+                            st.markdown("""
+                            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                        box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
+                                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Economy Rate vs Strike Rate Analysis</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            st.plotly_chart(scatter_fig, use_container_width=True)
+                        else:
+                            st.info("No players with wickets to display in the Economy Rate vs Strike Rate Analysis.")
 
-        ###-------------------------------------FORMAT STATS-------------------------------------###
-        # Format Stats Tab
-        with tabs[1]:
+    ###-------------------------------------FORMAT STATS-------------------------------------###
+    # Format Stats Tab
+    with tab_map["Format"]:
             format_df = compute_bowl_format_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
@@ -1166,120 +1240,116 @@ def display_bowl_view():
                 st.info("No format statistics to display for the current selection.")
             else:
                 st.dataframe(format_df, use_container_width=True, hide_index=True)
-                # --- Modern UI Section Header for Graphs ---
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Format Performance Trends by Season</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                col1, col2, col3 = st.columns(3)
-                # Get unique formats from filtered data
-                unique_formats = sorted(filtered_df['Match_Format'].unique())
-                # Define format colors
-                format_colors = {
-                    'Test Match': '#28a745',              # Green
-                    'One Day International': '#dc3545',    # Red
-                    '20 Over International': '#ffc107',    # Yellow/Amber
-                    'First Class': '#6610f2',              # Purple
-                    'List A': '#fd7e14',                   # Orange
-                    'T20': '#17a2b8'                       # Cyan
-                }
-                # Prepare totals per year/format
-                totals = filtered_df.groupby(['Match_Format', 'Year']).agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                totals['Average'] = (totals['Bowler_Runs'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                totals['Economy Rate'] = (totals['Bowler_Runs'] / (totals['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
-                totals['Strike Rate'] = (totals['Bowler_Balls'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                # Build a consistent color map for all formats present
-                color_map = {fmt: format_colors.get(fmt, f'#{hash(fmt) & 0xFFFFFF:06x}') for fmt in unique_formats}
-                # Average per Season by Format
-                with col1:
-                    st.subheader("Average per Season by Format")
-                    fig_avg = go.Figure()
-                    for format_name in unique_formats:
-                        format_data = totals[totals['Match_Format'] == format_name]
-                        color = color_map[format_name]
-                        fig_avg.add_trace(go.Scatter(
-                            x=format_data['Year'],
-                            y=format_data['Average'],
-                            mode='lines+markers',
-                            name=format_name,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_avg.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Average",
-                        font=dict(size=12)
-                    )
-                    fig_avg.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_avg, use_container_width=True)
-                # Economy Rate per Season by Format
-                with col2:
-                    st.subheader("Economy Rate per Season by Format")
-                    fig_econ = go.Figure()
-                    for format_name in unique_formats:
-                        format_data = totals[totals['Match_Format'] == format_name]
-                        color = color_map[format_name]
-                        fig_econ.add_trace(go.Scatter(
-                            x=format_data['Year'],
-                            y=format_data['Economy Rate'],
-                            mode='lines+markers',
-                            name=format_name,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_econ.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Economy Rate",
-                        font=dict(size=12)
-                    )
-                    fig_econ.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_econ, use_container_width=True)
-                # Strike Rate per Season by Format
-                with col3:
-                    st.subheader("Strike Rate per Season by Format")
-                    fig_sr = go.Figure()
-                    for format_name in unique_formats:
-                        format_data = totals[totals['Match_Format'] == format_name]
-                        color = color_map[format_name]
-                        fig_sr.add_trace(go.Scatter(
-                            x=format_data['Year'],
-                            y=format_data['Strike Rate'],
-                            mode='lines+markers',
-                            name=format_name,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_sr.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Strike Rate",
-                        font=dict(size=12)
-                    )
-                    fig_sr.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_sr, use_container_width=True)
+                if not is_large:
+                    # --- Modern UI Section Header for Graphs ---
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">📈 Format Performance Trends by Season</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    col1, col2, col3 = st.columns(3)
+                    # Get unique formats from filtered data
+                    unique_formats = sorted(filtered_df['Match_Format'].unique())
+                    # Define format colors
+                    format_colors = {
+                        'Test Match': '#28a745',              # Green
+                        'One Day International': '#dc3545',    # Red
+                        '20 Over International': '#ffc107',    # Yellow/Amber
+                        'First Class': '#6610f2',              # Purple
+                        'List A': '#fd7e14',                   # Orange
+                        'T20': '#17a2b8'                       # Cyan
+                    }
+                    # Prepare totals per year/format
+                    totals = filtered_df.groupby(['Match_Format', 'Year']).agg({
+                        'Bowler_Runs': 'sum',
+                        'Bowler_Wkts': 'sum',
+                        'Bowler_Balls': 'sum'
+                    }).reset_index()
+                    totals['Average'] = (totals['Bowler_Runs'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    totals['Economy Rate'] = (totals['Bowler_Runs'] / (totals['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+                    totals['Strike Rate'] = (totals['Bowler_Balls'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    # Build a consistent color map for all formats present
+                    color_map = {fmt: format_colors.get(fmt, f'#{hash(fmt) & 0xFFFFFF:06x}') for fmt in unique_formats}
+                    # Average per Season by Format
+                    with col1:
+                        st.subheader("Average per Season by Format")
+                        fig_avg = go.Figure()
+                        for format_name in unique_formats:
+                            format_data = totals[totals['Match_Format'] == format_name]
+                            color = color_map[format_name]
+                            fig_avg.add_trace(go.Scatter(
+                                x=format_data['Year'],
+                                y=format_data['Average'],
+                                mode='lines+markers',
+                                name=format_name,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_avg.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Average",
+                            font=dict(size=12)
+                        )
+                        fig_avg.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_avg, use_container_width=True)
+                    # Economy Rate per Season by Format
+                    with col2:
+                        st.subheader("Economy Rate per Season by Format")
+                        fig_econ = go.Figure()
+                        for format_name in unique_formats:
+                            format_data = totals[totals['Match_Format'] == format_name]
+                            color = color_map[format_name]
+                            fig_econ.add_trace(go.Scatter(
+                                x=format_data['Year'],
+                                y=format_data['Economy Rate'],
+                                mode='lines+markers',
+                                name=format_name,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_econ.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Economy Rate",
+                            font=dict(size=12)
+                        )
+                        fig_econ.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_econ, use_container_width=True)
+                    # Strike Rate per Season by Format
+                    with col3:
+                        st.subheader("Strike Rate per Season by Format")
+                        fig_sr = go.Figure()
+                        for format_name in unique_formats:
+                            format_data = totals[totals['Match_Format'] == format_name]
+                            color = color_map[format_name]
+                            fig_sr.add_trace(go.Scatter(
+                                x=format_data['Year'],
+                                y=format_data['Strike Rate'],
+                                mode='lines+markers',
+                                name=format_name,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_sr.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Strike Rate",
+                            font=dict(size=12)
+                        )
+                        fig_sr.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_sr, use_container_width=True)
 
-        ###-------------------------------------SEASON STATS-------------------------------------###
-        # Season Stats Tab
-        with tabs[2]:
+    ###-------------------------------------SEASON STATS-------------------------------------###
+    # Season Stats Tab
+    with tab_map["Season"]:
             season_df = compute_bowl_year_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
@@ -1293,64 +1363,55 @@ def display_bowl_view():
                 st.info("No season statistics to display for the current selection.")
             else:
                 st.dataframe(season_df, use_container_width=True, hide_index=True)
-                # --- Modern UI Section Header for Graphs ---
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Bowling Average, Strike Rate & Economy Rate Per Season</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                # --- Three Column Layout for Graphs ---
-                col1, col2, col3 = st.columns(3)
-                # Use actual column names from season_df for totals
-                # Try to find the correct columns for runs, wickets, balls
-                # Print or inspect season_df.columns if unsure
-                # For now, try 'Runs', 'Wickets', 'Balls'
-                # If not present, fallback to 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Balls'
-                cols = season_df.columns
-                runs_col = 'Runs' if 'Runs' in cols else ('Bowler_Runs' if 'Bowler_Runs' in cols else None)
-                wickets_col = 'Wickets' if 'Wickets' in cols else ('Bowler_Wkts' if 'Bowler_Wkts' in cols else None)
-                balls_col = 'Balls' if 'Balls' in cols else ('Bowler_Balls' if 'Bowler_Balls' in cols else None)
-                if not (runs_col and wickets_col and balls_col):
-                    st.error("Could not find the correct columns for runs, wickets, and balls in season_df.")
-                else:
-                    totals = season_df.groupby('Year').agg({
-                        runs_col: 'sum',
-                        wickets_col: 'sum',
-                        balls_col: 'sum'
-                    }).reset_index()
-                    totals['Average'] = (totals[runs_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
-                    totals['Strike Rate'] = (totals[balls_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
-                    totals['Economy Rate'] = (totals[runs_col] / (totals[balls_col].replace(0, np.nan) / 6)).round(2).fillna(0)
-                    for col, metric, ytitle in zip([col1, col2, col3], ['Average', 'Strike Rate', 'Economy Rate'], ["Bowling Average", "Strike Rate", "Economy Rate"]):
-                        with col:
-                            st.subheader(ytitle)
-                            fig = go.Figure()
-                            fig.add_trace(go.Scatter(
-                                x=totals['Year'],
-                                y=totals[metric],
-                                mode='lines+markers',
-                                name='All Players',
-                                line=dict(color='#f04f53'),
-                                marker=dict(color='#f04f53', size=8),
-                                showlegend=False
-                            ))
-                            fig.update_layout(
-                                height=350,
-                                plot_bgcolor='rgba(0,0,0,0)',
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                xaxis_title="Year",
-                                yaxis_title=ytitle,
-                                font=dict(size=12)
-                            )
-                            fig.update_xaxes(tickmode='linear', dtick=1)
-                            st.plotly_chart(fig, use_container_width=True)
+                if not is_large:
+                    # --- Modern UI Section Header for Graphs ---
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">📈 Bowling Average, Strike Rate & Economy Rate Per Season</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    # --- Three Column Layout for Graphs ---
+                    col1, col2, col3 = st.columns(3)
+                    cols = season_df.columns
+                    runs_col = 'Runs' if 'Runs' in cols else ('Bowler_Runs' if 'Bowler_Runs' in cols else None)
+                    wickets_col = 'Wickets' if 'Wickets' in cols else ('Bowler_Wkts' if 'Bowler_Wkts' in cols else None)
+                    balls_col = 'Balls' if 'Balls' in cols else ('Bowler_Balls' if 'Bowler_Balls' in cols else None)
+                    if not (runs_col and wickets_col and balls_col):
+                        st.error("Could not find the correct columns for runs, wickets, and balls in season_df.")
+                    else:
+                        totals = season_df.groupby('Year').agg({
+                            runs_col: 'sum',
+                            wickets_col: 'sum',
+                            balls_col: 'sum'
+                        }).reset_index()
+                        totals['Average'] = (totals[runs_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
+                        totals['Strike Rate'] = (totals[balls_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
+                        totals['Economy Rate'] = (totals[runs_col] / (totals[balls_col].replace(0, np.nan) / 6)).round(2).fillna(0)
+                        for col, metric, ytitle in zip([col1, col2, col3], ['Average', 'Strike Rate', 'Economy Rate'], ["Bowling Average", "Strike Rate", "Economy Rate"]):
+                            with col:
+                                st.subheader(ytitle)
+                                fig = go.Figure()
+                                fig.add_trace(go.Scatter(
+                                    x=totals['Year'],
+                                    y=totals[metric],
+                                    mode='lines+markers',
+                                    name='All Players',
+                                    line=dict(color='#f04f53'),
+                                    marker=dict(color='#f04f53', size=8),
+                                    showlegend=False
+                                ))
+                                fig.update_layout(
+                                    height=350,
+                                    plot_bgcolor='rgba(0,0,0,0)',
+                                    paper_bgcolor='rgba(0,0,0,0)',
+                                    xaxis_title="Year",
+                                    yaxis_title=ytitle,
+                                    font=dict(size=12)
+                                )
+                                fig.update_xaxes(tickmode='linear', dtick=1)
+                                st.plotly_chart(fig, use_container_width=True)
 
-        ###-------------------------------------LATEST INNINGS-------------------------------------###
-        # Latest Innings Tab
-        with tabs[3]:
+    ###-------------------------------------LATEST INNINGS-------------------------------------###
+    # Latest Innings Tab
+    with tab_map["Latest"]:
             latest_innings = compute_bowl_latest_innings(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140  100%); 
@@ -1389,9 +1450,9 @@ def display_bowl_view():
                     avg = (latest_innings['Runs'].sum() / latest_innings['Wickets'].replace(0, np.nan).sum()) if latest_innings['Wickets'].sum() > 0 else 0
                     st.metric("Average", f"{avg:.2f}")
 
-        ###-------------------------------------OPPONENT STATS-------------------------------------###
-        # Opponent Stats Tab  
-        with tabs[4]:
+    ###-------------------------------------OPPONENT STATS-------------------------------------###
+    # Opponent Stats Tab  
+    with tab_map["Opponent"]:
             opponent_summary = compute_bowl_opponent_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
@@ -1406,31 +1467,25 @@ def display_bowl_view():
                 st.info("No opponent statistics to display for the current selection.")
             else:
                 st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
+                if not is_large:
+                    # --- Plotting Logic ---
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">Average vs Opponent Team</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    fig = go.Figure()
+                    for name in opponent_summary['Name'].unique():
+                        player_data = opponent_summary[opponent_summary['Name'] == name]
+                        fig.add_trace(go.Bar(
+                            x=player_data['Opposition'], 
+                            y=player_data['Average'], 
+                            name=name,
+                        ))
+                    fig.update_layout(barmode='group', xaxis_title="Opposition Team", yaxis_title="Average")
+                    st.plotly_chart(fig, use_container_width=True)
 
-                # --- Plotting Logic ---
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Opponent Team</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                fig = go.Figure()
-                for name in opponent_summary['Name'].unique():
-                    player_data = opponent_summary[opponent_summary['Name'] == name]
-                    fig.add_trace(go.Bar(
-                        x=player_data['Opposition'], 
-                        y=player_data['Average'], 
-                        name=name,
-                    ))
-                fig.update_layout(barmode='group', xaxis_title="Opposition Team", yaxis_title="Average")
-                st.plotly_chart(fig, use_container_width=True)
-
-        ###-------------------------------------LOCATION STATS-------------------------------------###
-        # Location Stats Tab
-        with tabs[5]:
+    ###-------------------------------------LOCATION STATS-------------------------------------###
+    # Location Stats Tab
+    with tab_map["Location"]:
             location_summary = compute_bowl_location_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -1444,28 +1499,24 @@ def display_bowl_view():
                 st.info("No location statistics to display for the current selection.")
             else:
                 st.dataframe(location_summary, use_container_width=True, hide_index=True)
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(71, 118, 230, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Location</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                fig = go.Figure()
-                for name in location_summary['Name'].unique():
-                    player_data = location_summary[location_summary['Name'] == name]
-                    fig.add_trace(go.Bar(
-                        x=player_data['Location'],
-                        y=player_data['Average'],
-                        name=name,
-                    ))
-                fig.update_layout(barmode='group', xaxis_title="Location", yaxis_title="Average")
-                st.plotly_chart(fig, use_container_width=True)
+                if not is_large:
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(71, 118, 230, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">Average vs Location</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    fig = go.Figure()
+                    for name in location_summary['Name'].unique():
+                        player_data = location_summary[location_summary['Name'] == name]
+                        fig.add_trace(go.Bar(
+                            x=player_data['Location'],
+                            y=player_data['Average'],
+                            name=name,
+                        ))
+                    fig.update_layout(barmode='group', xaxis_title="Location", yaxis_title="Average")
+                    st.plotly_chart(fig, use_container_width=True)
 
-        ###-------------------------------------INNINGS STATS-------------------------------------###
-        # Innings Stats Tab
-        with tabs[6]:
+    ###-------------------------------------INNINGS STATS-------------------------------------###
+    # Innings Stats Tab
+    with tab_map["Innings"]:
             innings_summary = compute_bowl_innings_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
@@ -1479,28 +1530,24 @@ def display_bowl_view():
                 st.info("No innings statistics to display for the current selection.")
             else:
                 st.dataframe(innings_summary, use_container_width=True, hide_index=True)
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Innings</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                fig = go.Figure()
-                for name in innings_summary['Name'].unique():
-                    player_data = innings_summary[innings_summary['Name'] == name]
-                    fig.add_trace(go.Bar(
-                        x=player_data['Innings'],
-                        y=player_data['Average'],
-                        name=name,
-                    ))
-                fig.update_layout(barmode='group', xaxis_title="Innings", yaxis_title="Average")
-                st.plotly_chart(fig, use_container_width=True)
+                if not is_large:
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">Average vs Innings</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    fig = go.Figure()
+                    for name in innings_summary['Name'].unique():
+                        player_data = innings_summary[innings_summary['Name'] == name]
+                        fig.add_trace(go.Bar(
+                            x=player_data['Innings'],
+                            y=player_data['Average'],
+                            name=name,
+                        ))
+                    fig.update_layout(barmode='group', xaxis_title="Innings", yaxis_title="Average")
+                    st.plotly_chart(fig, use_container_width=True)
 
-        ###-------------------------------------POSITION STATS-------------------------------------###
-        # Position Stats Tab
-        with tabs[7]:
+    ###-------------------------------------POSITION STATS-------------------------------------###
+    # Position Stats Tab
+    with tab_map["Position"]:
             position_summary = compute_bowl_position_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
@@ -1514,28 +1561,24 @@ def display_bowl_view():
                 st.info("No position statistics to display for the current selection.")
             else:
                 st.dataframe(position_summary, use_container_width=True, hide_index=True)
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Position</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                fig = go.Figure()
-                for name in position_summary['Name'].unique():
-                    player_data = position_summary[position_summary['Name'] == name]
-                    fig.add_trace(go.Bar(
-                        x=player_data['Position'],
-                        y=player_data['Average'],
-                        name=name,
-                    ))
-                fig.update_layout(barmode='group', xaxis_title="Position", yaxis_title="Average")
-                st.plotly_chart(fig, use_container_width=True)
+                if not is_large:
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">Average vs Position</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    fig = go.Figure()
+                    for name in position_summary['Name'].unique():
+                        player_data = position_summary[position_summary['Name'] == name]
+                        fig.add_trace(go.Bar(
+                            x=player_data['Position'],
+                            y=player_data['Average'],
+                            name=name,
+                        ))
+                    fig.update_layout(barmode='group', xaxis_title="Position", yaxis_title="Average")
+                    st.plotly_chart(fig, use_container_width=True)
 
-        ###-------------------------------------HOME/AWAY STATS-------------------------------------###
-        # Home/Away Stats Tab
-        with tabs[8]:
+    ###-------------------------------------HOME/AWAY STATS-------------------------------------###
+    # Home/Away Stats Tab
+    with tab_map["Home/Away"]:
             homeaway_stats_df = compute_bowl_homeaway_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
@@ -1549,117 +1592,114 @@ def display_bowl_view():
                 st.info("No Home/Away statistics to display for the current selection.")
             else:
                 st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True)
-                # --- Modern UI Section Header for Graphs ---
-                st.markdown("""
-                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Home/Away Performance Trends by Year</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                col1, col2, col3 = st.columns(3)
-                # Prepare yearly stats by Home/Away
-                yearly_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                yearly_ha['Average'] = (yearly_ha['Bowler_Runs'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                yearly_ha['Economy Rate'] = (yearly_ha['Bowler_Runs'] / (yearly_ha['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
-                yearly_ha['Strike Rate'] = (yearly_ha['Bowler_Balls'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                ha_colors = {'Home': '#1f77b4', 'Away': '#d62728', 'Neutral': '#2ca02c'}
-                # Average by Year
-                with col1:
-                    st.subheader("Average by Year")
-                    fig_avg = go.Figure()
-                    for ha in yearly_ha['HomeOrAway'].unique():
-                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
-                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
-                        fig_avg.add_trace(go.Scatter(
-                            x=ha_data['Year'],
-                            y=ha_data['Average'],
-                            mode='lines+markers',
-                            name=ha,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_avg.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Average",
-                        font=dict(size=12)
-                    )
-                    fig_avg.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_avg, use_container_width=True)
-                # Economy Rate by Year
-                with col2:
-                    st.subheader("Economy Rate by Year")
-                    fig_econ = go.Figure()
-                    for ha in yearly_ha['HomeOrAway'].unique():
-                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
-                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
-                        fig_econ.add_trace(go.Scatter(
-                            x=ha_data['Year'],
-                            y=ha_data['Economy Rate'],
-                            mode='lines+markers',
-                            name=ha,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_econ.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Economy Rate",
-                        font=dict(size=12)
-                    )
-                    fig_econ.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_econ, use_container_width=True)
-                # Strike Rate by Year
-                with col3:
-                    st.subheader("Strike Rate by Year")
-                    fig_sr = go.Figure()
-                    for ha in yearly_ha['HomeOrAway'].unique():
-                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
-                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
-                        fig_sr.add_trace(go.Scatter(
-                            x=ha_data['Year'],
-                            y=ha_data['Strike Rate'],
-                            mode='lines+markers',
-                            name=ha,
-                            line=dict(color=color),
-                            marker=dict(color=color, size=8)
-                        ))
-                    fig_sr.update_layout(
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
-                        xaxis_title="Year",
-                        yaxis_title="Strike Rate",
-                        font=dict(size=12)
-                    )
-                    fig_sr.update_xaxes(tickmode='linear', dtick=1)
-                    st.plotly_chart(fig_sr, use_container_width=True)
+                if not is_large:
+                    # --- Modern UI Section Header for Graphs ---
+                    st.markdown("""
+                    <div style=\"background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                        <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">📈 Home/Away Performance Trends by Year</h3>\n                    </div>
+                    """, unsafe_allow_html=True)
+                    col1, col2, col3 = st.columns(3)
+                    # Prepare yearly stats by Home/Away
+                    yearly_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                        'Bowler_Runs': 'sum',
+                        'Bowler_Wkts': 'sum',
+                        'Bowler_Balls': 'sum'
+                    }).reset_index()
+                    yearly_ha['Average'] = (yearly_ha['Bowler_Runs'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    yearly_ha['Economy Rate'] = (yearly_ha['Bowler_Runs'] / (yearly_ha['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+                    yearly_ha['Strike Rate'] = (yearly_ha['Bowler_Balls'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                    ha_colors = {'Home': '#1f77b4', 'Away': '#d62728', 'Neutral': '#2ca02c'}
+                    # Average by Year
+                    with col1:
+                        st.subheader("Average by Year")
+                        fig_avg = go.Figure()
+                        for ha in yearly_ha['HomeOrAway'].unique():
+                            ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                            color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                            fig_avg.add_trace(go.Scatter(
+                                x=ha_data['Year'],
+                                y=ha_data['Average'],
+                                mode='lines+markers',
+                                name=ha,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_avg.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Average",
+                            font=dict(size=12)
+                        )
+                        fig_avg.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_avg, use_container_width=True)
+                    # Economy Rate by Year
+                    with col2:
+                        st.subheader("Economy Rate by Year")
+                        fig_econ = go.Figure()
+                        for ha in yearly_ha['HomeOrAway'].unique():
+                            ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                            color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                            fig_econ.add_trace(go.Scatter(
+                                x=ha_data['Year'],
+                                y=ha_data['Economy Rate'],
+                                mode='lines+markers',
+                                name=ha,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_econ.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Economy Rate",
+                            font=dict(size=12)
+                        )
+                        fig_econ.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_econ, use_container_width=True)
+                    # Strike Rate by Year
+                    with col3:
+                        st.subheader("Strike Rate by Year")
+                        fig_sr = go.Figure()
+                        for ha in yearly_ha['HomeOrAway'].unique():
+                            ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                            color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                            fig_sr.add_trace(go.Scatter(
+                                x=ha_data['Year'],
+                                y=ha_data['Strike Rate'],
+                                mode='lines+markers',
+                                name=ha,
+                                line=dict(color=color),
+                                marker=dict(color=color, size=8)
+                            ))
+                        fig_sr.update_layout(
+                            height=350,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                            xaxis_title="Year",
+                            yaxis_title="Strike Rate",
+                            font=dict(size=12)
+                        )
+                        fig_sr.update_xaxes(tickmode='linear', dtick=1)
+                        st.plotly_chart(fig_sr, use_container_width=True)
 
-        ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
-        # Cumulative Stats Tab
-        with tabs[9]:
+    ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
+    # Cumulative Stats Tab
+    if not is_large:
+        with tab_map["Cumulative"]:
             cumulative_stats = compute_bowl_cumulative_stats(filtered_df)
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Cumulative Bowling Statistics</h3>
-            </div>
-            """, unsafe_allow_html=True)
+        <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                    padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                    box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.2);">
+            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Cumulative Bowling Statistics</h3>
+        </div>
+        """, unsafe_allow_html=True)
             if cumulative_stats.empty:
                 st.info("No cumulative statistics to display for the current selection.")
             else:
@@ -1690,18 +1730,19 @@ def display_bowl_view():
                     fig3.update_layout(xaxis_title='Cumulative Matches', yaxis_title='Cumulative Economy Rate')
                     st.plotly_chart(fig3, use_container_width=True)
 
-        ###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
-        # Block Stats Tab
-        with tabs[10]:
+    ###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
+    # Block Stats Tab
+    if not is_large:
+        with tab_map["Block"]:
             block_stats_df = compute_bowl_block_stats(filtered_df)
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
-                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                        box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Block Statistics (Groups of 20 Innings)</h3>
-            </div>
-            """, unsafe_allow_html=True)
+        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                    padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                    box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                    border: 1px solid rgba(255, 255, 255, 0.2);">
+            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Block Statistics (Groups of 20 Innings)</h3>
+        </div>
+        """, unsafe_allow_html=True)
             
             # --- THIS IS THE FIX ---
             if block_stats_df.empty:
@@ -1710,12 +1751,7 @@ def display_bowl_view():
                 # All the code that uses the dataframe now goes inside this 'else' block
                 st.dataframe(block_stats_df, use_container_width=True, hide_index=True)
                 st.markdown("""
-                <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
-                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
-                            box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);
-                            border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Bowling Average by Innings Block</h3>
-                </div>
+                <div style=\"background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); \n                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; \n                            box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);\n                            border: 1px solid rgba(255, 255, 255, 0.2);\">\n                    <h3 style=\"color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;\">Bowling Average by Innings Block</h3>\n                </div>
                 """, unsafe_allow_html=True)
                 
                 fig = go.Figure()
@@ -1763,9 +1799,6 @@ def display_bowl_view():
                 fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
                 fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
                 st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.error("No bowling data available. Please upload scorecards first.")
 
 # Display the bowling view
 display_bowl_view()

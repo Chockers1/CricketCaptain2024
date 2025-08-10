@@ -4,351 +4,481 @@ import numpy as np
 import plotly.graph_objects as go
 import random
 import plotly.express as px
+import polars as pl
+
+# --- Helpers for fast Polars aggregations ---
+def sanitize_df_for_polars(df: pd.DataFrame) -> pd.DataFrame:
+    """Best-effort cast to Polars/Arrow-friendly types to avoid conversion errors.
+    - Cast categoricals/periods to str
+    - If any object column contains dict/list/tuple/set, cast to str
+    - Leave numeric/datetime as-is
+    """
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    for col in df.columns:
+        s = df[col]
+        # Categorical or period types -> str
+        try:
+            if pd.api.types.is_categorical_dtype(s) or str(s.dtype).startswith("period"):
+                df[col] = s.astype(str)
+                continue
+        except Exception:
+            pass
+        # Object columns: ensure no nested types
+        if s.dtype == object:
+            try:
+                if s.apply(lambda x: isinstance(x, (dict, list, tuple, set))).any():
+                    df[col] = s.astype(str)
+                else:
+                    # Keep as object; Polars can often infer strings
+                    df[col] = s.astype(str)
+            except Exception:
+                df[col] = s.astype(str)
+    return df
 
 # ===================== CACHED TEAM BATTING FUNCTIONS =====================
 @st.cache_data
 def compute_team_batting_career(df):
-    df = df.copy()
-    df['50s'] = ((df['Runs'] >= 50) & (df['Runs'] < 100)).astype(int)
-    df['100s'] = ((df['Runs'] >= 100) & (df['Runs'] < 150)).astype(int)
-    df['150s'] = ((df['Runs'] >= 150) & (df['Runs'] < 200)).astype(int)
-    df['200s'] = (df['Runs'] >= 200).astype(int)
-    bat_team_career_df = df.groupby('Bat_Team_y').agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',
-        '100s': 'sum',
-        '150s': 'sum',
-        '200s': 'sum',
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-    bat_team_career_df.columns = ['Team', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls']
-    bat_team_career_df['Avg'] = (bat_team_career_df['Runs'] / bat_team_career_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_career_df['SR'] = ((bat_team_career_df['Runs'] / bat_team_career_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['BPO'] = (bat_team_career_df['Balls'] / bat_team_career_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_career_df['Team Avg'] = (bat_team_career_df['Team Runs'] / bat_team_career_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_career_df['Team SR'] = (bat_team_career_df['Team Runs'] / bat_team_career_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_career_df['P+ Avg'] = (bat_team_career_df['Avg'] / bat_team_career_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_career_df['P+ SR'] = (bat_team_career_df['SR'] / bat_team_career_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_career_df['BPB'] = (bat_team_career_df['Balls'] / (bat_team_career_df['4s'] + bat_team_career_df['6s']).replace(0, np.nan)).round(2).fillna(0)
-    bat_team_career_df['50+PI'] = (((bat_team_career_df['50s'] + bat_team_career_df['100s'] + bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['100PI'] = (((bat_team_career_df['100s'] + bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['150PI'] = (((bat_team_career_df['150s'] + bat_team_career_df['200s']) / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['200PI'] = ((bat_team_career_df['200s'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['<25&OutPI'] = ((bat_team_career_df['<25&Out'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['Caught%'] = ((bat_team_career_df['Caught'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['Bowled%'] = ((bat_team_career_df['Bowled'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['LBW%'] = ((bat_team_career_df['LBW'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['Run Out%'] = ((bat_team_career_df['Run Out'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['Stumped%'] = ((bat_team_career_df['Stumped'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_career_df['Not Out%'] = ((bat_team_career_df['Not Out'] / bat_team_career_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    return bat_team_career_df
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    # Add milestone flags
+    pl_df = pl_df.with_columns([
+        (pl.col('Runs').ge(50) & pl.col('Runs').lt(100)).cast(pl.Int64).alias('50s'),
+        (pl.col('Runs').ge(100) & pl.col('Runs').lt(150)).cast(pl.Int64).alias('100s'),
+        (pl.col('Runs').ge(150) & pl.col('Runs').lt(200)).cast(pl.Int64).alias('150s'),
+        (pl.col('Runs').ge(200)).cast(pl.Int64).alias('200s'),
+    ])
+    agg = (
+        pl_df.group_by('Bat_Team_y')
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('150s').sum().alias('150s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+        .rename({'Bat_Team_y': 'Team'})
+    )
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    agg = agg.with_columns([
+        (pl.col('Runs') / denom(pl.col('Out'))).round(2).fill_null(0).alias('Avg'),
+        ((pl.col('Runs') / denom(pl.col('Balls'))) * 100).round(2).fill_null(0).alias('SR'),
+        (pl.col('Balls') / denom(pl.col('Out'))).round(2).fill_null(0).alias('BPO'),
+        (pl.col('Team Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Team Avg'),
+        ((pl.col('Team Runs') / denom(pl.col('Team Balls'))) * 100).round(2).fill_null(0).alias('Team SR'),
+    ])
+    agg = agg.with_columns([
+        ((pl.col('Avg') / denom(pl.col('Team Avg'))) * 100).round(2).fill_null(0).alias('P+ Avg'),
+        ((pl.col('SR') / denom(pl.col('Team SR'))) * 100).round(2).fill_null(0).alias('P+ SR'),
+        (pl.col('Balls') / denom(pl.col('4s') + pl.col('6s'))).round(2).fill_null(0).alias('BPB'),
+        (((pl.col('50s') + pl.col('100s') + pl.col('150s') + pl.col('200s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('50+PI'),
+        (((pl.col('100s') + pl.col('150s') + pl.col('200s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('100PI'),
+        (((pl.col('150s') + pl.col('200s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('150PI'),
+        ((pl.col('200s') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('200PI'),
+        ((pl.col('<25&Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('<25&OutPI'),
+        ((pl.col('Caught') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Caught%'),
+        ((pl.col('Bowled') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Bowled%'),
+        ((pl.col('LBW') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('LBW%'),
+        ((pl.col('Run Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Run Out%'),
+        ((pl.col('Stumped') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Stumped%'),
+        ((pl.col('Not Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Not Out%'),
+    ])
+    return agg.to_pandas()
 
 @st.cache_data
 def compute_team_batting_season(df):
-    df = df.copy()
-    bat_team_season_df = df.groupby(['Bat_Team_y', 'Year']).agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',
-        '100s': 'sum',
-        '200s': 'sum',
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-    bat_team_season_df.columns = ['Team', 'Year', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls']
-    bat_team_season_df['Avg'] = (bat_team_season_df['Runs'] / bat_team_season_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_season_df['SR'] = ((bat_team_season_df['Runs'] / bat_team_season_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['BPO'] = (bat_team_season_df['Balls'] / bat_team_season_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_season_df['Team Avg'] = (bat_team_season_df['Team Runs'] / bat_team_season_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_season_df['Team SR'] = (bat_team_season_df['Team Runs'] / bat_team_season_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_season_df['P+ Avg'] = (bat_team_season_df['Avg'] / bat_team_season_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_season_df['P+ SR'] = (bat_team_season_df['SR'] / bat_team_season_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_season_df['BPB'] = (bat_team_season_df['Balls'] / (bat_team_season_df['4s'] + bat_team_season_df['6s']).replace(0, np.nan)).round(2).fillna(0)
-    bat_team_season_df['50+PI'] = (((bat_team_season_df['50s'] + bat_team_season_df['100s']) / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['100PI'] = ((bat_team_season_df['100s'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['<25&OutPI'] = ((bat_team_season_df['<25&Out'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['Caught%'] = ((bat_team_season_df['Caught'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['Bowled%'] = ((bat_team_season_df['Bowled'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['LBW%'] = ((bat_team_season_df['LBW'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['Run Out%'] = ((bat_team_season_df['Run Out'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['Stumped%'] = ((bat_team_season_df['Stumped'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_season_df['Not Out%'] = ((bat_team_season_df['Not Out'] / bat_team_season_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    return bat_team_season_df
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    agg = (
+        pl_df.group_by(['Bat_Team_y', 'Year'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+        .rename({'Bat_Team_y': 'Team'})
+    )
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    agg = agg.with_columns([
+        (pl.col('Runs') / denom(pl.col('Out'))).round(2).fill_null(0).alias('Avg'),
+        ((pl.col('Runs') / denom(pl.col('Balls'))) * 100).round(2).fill_null(0).alias('SR'),
+        (pl.col('Balls') / denom(pl.col('Out'))).round(2).fill_null(0).alias('BPO'),
+        (pl.col('Team Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Team Avg'),
+        ((pl.col('Team Runs') / denom(pl.col('Team Balls'))) * 100).round(2).fill_null(0).alias('Team SR'),
+        ((pl.col('Balls') / denom(pl.col('4s') + pl.col('6s')))).round(2).fill_null(0).alias('BPB'),
+        (((pl.col('50s') + pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('50+PI'),
+        (((pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('100PI'),
+        (((pl.col('<25&Out') / denom(pl.col('Inns'))) * 100)).round(2).fill_null(0).alias('<25&OutPI'),
+        ((pl.col('Caught') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Caught%'),
+        ((pl.col('Bowled') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Bowled%'),
+        ((pl.col('LBW') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('LBW%'),
+        ((pl.col('Run Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Run Out%'),
+        ((pl.col('Stumped') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Stumped%'),
+        ((pl.col('Not Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Not Out%'),
+    ])
+    return agg.to_pandas()
 
 @st.cache_data
 def compute_team_batting_opponent(df):
-    df = df.copy()
-    bat_team_opponent_df = df.groupby(['Bat_Team_y', 'Bowl_Team_y']).agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',
-        '100s': 'sum',
-        '200s': 'sum',
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-    bat_team_opponent_df.columns = ['Team', 'Opponent', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls']
-    bat_team_opponent_df['Avg'] = (bat_team_opponent_df['Runs'] / bat_team_opponent_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_opponent_df['SR'] = ((bat_team_opponent_df['Runs'] / bat_team_opponent_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['BPO'] = (bat_team_opponent_df['Balls'] / bat_team_opponent_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_opponent_df['Team Avg'] = (bat_team_opponent_df['Team Runs'] / bat_team_opponent_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_opponent_df['Team SR'] = (bat_team_opponent_df['Team Runs'] / bat_team_opponent_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_opponent_df['P+ Avg'] = (bat_team_opponent_df['Avg'] / bat_team_opponent_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_opponent_df['P+ SR'] = (bat_team_opponent_df['SR'] / bat_team_opponent_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_opponent_df['BPB'] = (bat_team_opponent_df['Balls'] / (bat_team_opponent_df['4s'] + bat_team_opponent_df['6s']).replace(0, np.nan)).round(2).fillna(0)
-    bat_team_opponent_df['50+PI'] = (((bat_team_opponent_df['50s'] + bat_team_opponent_df['100s']) / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['100PI'] = ((bat_team_opponent_df['100s'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['<25&OutPI'] = ((bat_team_opponent_df['<25&Out'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['Caught%'] = ((bat_team_opponent_df['Caught'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['Bowled%'] = ((bat_team_opponent_df['Bowled'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['LBW%'] = ((bat_team_opponent_df['LBW'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['Run Out%'] = ((bat_team_opponent_df['Run Out'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['Stumped%'] = ((bat_team_opponent_df['Stumped'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_opponent_df['Not Out%'] = ((bat_team_opponent_df['Not Out'] / bat_team_opponent_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    return bat_team_opponent_df
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    agg = (
+        pl_df.group_by(['Bat_Team_y', 'Bowl_Team_y'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+        .rename({'Bat_Team_y': 'Team', 'Bowl_Team_y': 'Opponent'})
+    )
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    agg = agg.with_columns([
+        (pl.col('Runs') / denom(pl.col('Out'))).round(2).fill_null(0).alias('Avg'),
+        ((pl.col('Runs') / denom(pl.col('Balls'))) * 100).round(2).fill_null(0).alias('SR'),
+        (pl.col('Balls') / denom(pl.col('Out'))).round(2).fill_null(0).alias('BPO'),
+        (pl.col('Team Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Team Avg'),
+        ((pl.col('Team Runs') / denom(pl.col('Team Balls'))) * 100).round(2).fill_null(0).alias('Team SR'),
+        (pl.col('Balls') / denom(pl.col('4s') + pl.col('6s'))).round(2).fill_null(0).alias('BPB'),
+        (((pl.col('50s') + pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('50+PI'),
+        (((pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('100PI'),
+        (((pl.col('<25&Out') / denom(pl.col('Inns'))) * 100)).round(2).fill_null(0).alias('<25&OutPI'),
+        ((pl.col('Caught') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Caught%'),
+        ((pl.col('Bowled') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Bowled%'),
+        ((pl.col('LBW') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('LBW%'),
+        ((pl.col('Run Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Run Out%'),
+        ((pl.col('Stumped') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Stumped%'),
+        ((pl.col('Not Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Not Out%'),
+    ])
+    return agg.to_pandas()
 
 @st.cache_data
 def compute_team_batting_location(df):
-    df = df.copy()
-    bat_team_location_df = df.groupby(['Bat_Team_y', 'Home Team']).agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',
-        '100s': 'sum',
-        '200s': 'sum',
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-    bat_team_location_df.columns = ['Team', 'Location', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls']
-    bat_team_location_df['Avg'] = (bat_team_location_df['Runs'] / bat_team_location_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_location_df['SR'] = ((bat_team_location_df['Runs'] / bat_team_location_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['BPO'] = (bat_team_location_df['Balls'] / bat_team_location_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_location_df['Team Avg'] = (bat_team_location_df['Team Runs'] / bat_team_location_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_location_df['Team SR'] = (bat_team_location_df['Team Runs'] / bat_team_location_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_location_df['P+ Avg'] = (bat_team_location_df['Avg'] / bat_team_location_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_location_df['P+ SR'] = (bat_team_location_df['SR'] / bat_team_location_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_location_df['BPB'] = (bat_team_location_df['Balls'] / (bat_team_location_df['4s'] + bat_team_location_df['6s']).replace(0, np.nan)).round(2).fillna(0)
-    bat_team_location_df['50+PI'] = (((bat_team_location_df['50s'] + bat_team_location_df['100s']) / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['100PI'] = ((bat_team_location_df['100s'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['<25&OutPI'] = ((bat_team_location_df['<25&Out'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['Caught%'] = ((bat_team_location_df['Caught'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['Bowled%'] = ((bat_team_location_df['Bowled'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['LBW%'] = ((bat_team_location_df['LBW'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['Run Out%'] = ((bat_team_location_df['Run Out'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['Stumped%'] = ((bat_team_location_df['Stumped'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_location_df['Not Out%'] = ((bat_team_location_df['Not Out'] / bat_team_location_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    return bat_team_location_df
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    agg = (
+        pl_df.group_by(['Bat_Team_y', 'Home Team'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+        .rename({'Bat_Team_y': 'Team', 'Home Team': 'Location'})
+    )
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    agg = agg.with_columns([
+        (pl.col('Runs') / denom(pl.col('Out'))).round(2).fill_null(0).alias('Avg'),
+        ((pl.col('Runs') / denom(pl.col('Balls'))) * 100).round(2).fill_null(0).alias('SR'),
+        (pl.col('Balls') / denom(pl.col('Out'))).round(2).fill_null(0).alias('BPO'),
+        (pl.col('Team Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Team Avg'),
+        ((pl.col('Team Runs') / denom(pl.col('Team Balls'))) * 100).round(2).fill_null(0).alias('Team SR'),
+        (pl.col('Balls') / denom(pl.col('4s') + pl.col('6s'))).round(2).fill_null(0).alias('BPB'),
+        (((pl.col('50s') + pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('50+PI'),
+        (((pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('100PI'),
+        (((pl.col('<25&Out') / denom(pl.col('Inns'))) * 100)).round(2).fill_null(0).alias('<25&OutPI'),
+        ((pl.col('Caught') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Caught%'),
+        ((pl.col('Bowled') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Bowled%'),
+        ((pl.col('LBW') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('LBW%'),
+        ((pl.col('Run Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Run Out%'),
+        ((pl.col('Stumped') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Stumped%'),
+        ((pl.col('Not Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Not Out%'),
+    ])
+    return agg.to_pandas()
 
 @st.cache_data
 def compute_team_batting_position(df):
-    df = df.copy()
-    bat_team_position_df = df.groupby(['Bat_Team_y', 'Position']).agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',
-        '100s': 'sum',
-        '200s': 'sum',
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-    bat_team_position_df.columns = ['Team', 'Position', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls']
-    bat_team_position_df['Avg'] = (bat_team_position_df['Runs'] / bat_team_position_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_position_df['SR'] = ((bat_team_position_df['Runs'] / bat_team_position_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['BPO'] = (bat_team_position_df['Balls'] / bat_team_position_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_position_df['Team Avg'] = (bat_team_position_df['Team Runs'] / bat_team_position_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_team_position_df['Team SR'] = (bat_team_position_df['Team Runs'] / bat_team_position_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_position_df['P+ Avg'] = (bat_team_position_df['Avg'] / bat_team_position_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_position_df['P+ SR'] = (bat_team_position_df['SR'] / bat_team_position_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_team_position_df['BPB'] = (bat_team_position_df['Balls'] / (bat_team_position_df['4s'] + bat_team_position_df['6s']).replace(0, np.nan)).round(2).fillna(0)
-    bat_team_position_df['50+PI'] = (((bat_team_position_df['50s'] + bat_team_position_df['100s']) / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['100PI'] = ((bat_team_position_df['100s'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['<25&OutPI'] = ((bat_team_position_df['<25&Out'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['Caught%'] = ((bat_team_position_df['Caught'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['Bowled%'] = ((bat_team_position_df['Bowled'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['LBW%'] = ((bat_team_position_df['LBW'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['Run Out%'] = ((bat_team_position_df['Run Out'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['Stumped%'] = ((bat_team_position_df['Stumped'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_team_position_df['Not Out%'] = ((bat_team_position_df['Not Out'] / bat_team_position_df['Inns'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    return bat_team_position_df
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    agg = (
+        pl_df.group_by(['Bat_Team_y', 'Position'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+        .rename({'Bat_Team_y': 'Team'})
+    )
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    agg = agg.with_columns([
+        (pl.col('Runs') / denom(pl.col('Out'))).round(2).fill_null(0).alias('Avg'),
+        ((pl.col('Runs') / denom(pl.col('Balls'))) * 100).round(2).fill_null(0).alias('SR'),
+        (pl.col('Balls') / denom(pl.col('Out'))).round(2).fill_null(0).alias('BPO'),
+        (pl.col('Team Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Team Avg'),
+        ((pl.col('Team Runs') / denom(pl.col('Team Balls'))) * 100).round(2).fill_null(0).alias('Team SR'),
+        (pl.col('Balls') / denom(pl.col('4s') + pl.col('6s'))).round(2).fill_null(0).alias('BPB'),
+        (((pl.col('50s') + pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('50+PI'),
+        (((pl.col('100s')) / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('100PI'),
+        (((pl.col('<25&Out') / denom(pl.col('Inns'))) * 100)).round(2).fill_null(0).alias('<25&OutPI'),
+        ((pl.col('Caught') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Caught%'),
+        ((pl.col('Bowled') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Bowled%'),
+        ((pl.col('LBW') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('LBW%'),
+        ((pl.col('Run Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Run Out%'),
+        ((pl.col('Stumped') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Stumped%'),
+        ((pl.col('Not Out') / denom(pl.col('Inns'))) * 100).round(2).fill_null(0).alias('Not Out%'),
+    ])
+    return agg.to_pandas()
 
 # ===================== CACHED TEAM BOWLING FUNCTIONS =====================
 @st.cache_data
 def compute_team_bowling_career(df):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
-    bowl_team_df = df.groupby('Bowl_Team').agg({
-        'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
-        'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    bowl_team_df.columns = ['Bowl_Team', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    bowl_team_df['Overs'] = ((bowl_team_df['Balls'] // 6) + (bowl_team_df['Balls'] % 6) / 10).round(1)
-    wickets_safe = bowl_team_df['Wickets'].replace(0, np.nan)
-    overs_safe = bowl_team_df['Overs'].replace(0, np.nan)
-    bowl_team_df['Strike Rate'] = (bowl_team_df['Balls'] / wickets_safe).round(2).fillna(0)
-    bowl_team_df['Economy Rate'] = (bowl_team_df['Runs'] / overs_safe).round(2).fillna(0)
-    bowl_team_df['Avg'] = (bowl_team_df['Runs'] / wickets_safe).round(2).fillna(0)
-    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby('Bowl_Team').size().reset_index(name='5W')
-    bowl_team_df = bowl_team_df.merge(five_wickets, on='Bowl_Team', how='left').fillna({'5W': 0})
-    match_wickets = df.groupby(['Bowl_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby('Bowl_Team').size().reset_index(name='10W')
-    bowl_team_df = bowl_team_df.merge(ten_wickets, on='Bowl_Team', how='left').fillna({'10W': 0})
-    bowl_team_df['WPM'] = (bowl_team_df['Wickets'] / bowl_team_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
-    return bowl_team_df.sort_values(by='Avg')
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    base = (
+        pl_df.group_by('Bowl_Team')
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Maidens').sum().alias('M/D'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+        ])
+    )
+    base = base.with_columns([
+        ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs'),
+    ])
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    base = base.with_columns([
+        (pl.col('Balls') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Strike Rate'),
+        (pl.col('Runs') / denom(pl.col('Overs'))).round(2).fill_null(0).alias('Economy Rate'),
+        (pl.col('Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Avg'),
+    ])
+    five = (
+        pl_df.filter(pl.col('Bowler_Wkts') >= 5)
+        .group_by('Bowl_Team')
+        .agg(pl.len().alias('5W'))
+    )
+    match_wkts = (
+        pl_df.group_by(['Bowl_Team', 'File Name'])
+        .agg(pl.col('Bowler_Wkts').sum().alias('TeamMatchWkts'))
+    )
+    ten = (
+        match_wkts.filter(pl.col('TeamMatchWkts') >= 10)
+        .group_by('Bowl_Team')
+        .agg(pl.len().alias('10W'))
+    )
+    out = base.join(five, on='Bowl_Team', how='left').join(ten, on='Bowl_Team', how='left')
+    out = out.with_columns([
+        pl.col('5W').fill_null(0),
+        pl.col('10W').fill_null(0),
+        (pl.col('Wickets') / denom(pl.col('Matches'))).round(2).fill_null(0).alias('WPM'),
+    ])
+    return out.sort(by='Avg').to_pandas()
 
 @st.cache_data
 def compute_team_bowling_season(df):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
-    bowl_team_season_df = df.groupby(['Bowl_Team', 'Year']).agg({
-        'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
-        'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    bowl_team_season_df.columns = ['Bowl_Team', 'Year', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    bowl_team_season_df['Overs'] = ((bowl_team_season_df['Balls'] // 6) + (bowl_team_season_df['Balls'] % 6) / 10).round(1)
-    wickets_safe = bowl_team_season_df['Wickets'].replace(0, np.nan)
-    overs_safe = bowl_team_season_df['Overs'].replace(0, np.nan)
-    bowl_team_season_df['Strike Rate'] = (bowl_team_season_df['Balls'] / wickets_safe).round(2).fillna(0)
-    bowl_team_season_df['Economy Rate'] = (bowl_team_season_df['Runs'] / overs_safe).round(2).fillna(0)
-    bowl_team_season_df['Avg'] = (bowl_team_season_df['Runs'] / wickets_safe).round(2).fillna(0)
-    return bowl_team_season_df.sort_values(by=['Year', 'Avg'], ascending=[False, True])
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    out = (
+        pl_df.group_by(['Bowl_Team', 'Year'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Maidens').sum().alias('M/D'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+        ])
+    )
+    out = out.with_columns([
+        ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs'),
+    ])
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    out = out.with_columns([
+        (pl.col('Balls') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Strike Rate'),
+        (pl.col('Runs') / denom(pl.col('Overs'))).round(2).fill_null(0).alias('Economy Rate'),
+        (pl.col('Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Avg'),
+    ])
+    return out.sort(by=['Year', 'Avg'], descending=[True, False]).to_pandas()
 
 @st.cache_data
 def compute_team_bowling_opponent(df):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
-    opponent_summary = df.groupby(['Bowl_Team', 'Bat_Team']).agg({
-        'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
-        'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    opponent_summary.columns = ['Bowl_Team', 'Opposition', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    opponent_summary['Overs'] = ((opponent_summary['Balls'] // 6) + (opponent_summary['Balls'] % 6) / 10).round(1)
-    wickets_safe = opponent_summary['Wickets'].replace(0, np.nan)
-    overs_safe = opponent_summary['Overs'].replace(0, np.nan)
-    opponent_summary['Strike Rate'] = (opponent_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    opponent_summary['Economy Rate'] = (opponent_summary['Runs'] / overs_safe).round(2).fillna(0)
-    opponent_summary['Avg'] = (opponent_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    return opponent_summary.sort_values(by=['Bowl_Team', 'Avg'])
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    out = (
+        pl_df.group_by(['Bowl_Team', 'Bat_Team'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Maidens').sum().alias('M/D'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+        ])
+        .rename({'Bat_Team': 'Opposition'})
+    )
+    out = out.with_columns([
+        ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs'),
+    ])
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    out = out.with_columns([
+        (pl.col('Balls') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Strike Rate'),
+        (pl.col('Runs') / denom(pl.col('Overs'))).round(2).fill_null(0).alias('Economy Rate'),
+        (pl.col('Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Avg'),
+    ])
+    return out.sort(by=['Bowl_Team', 'Avg']).to_pandas()
 
 @st.cache_data
 def compute_team_bowling_location(df):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
-    location_summary = df.groupby(['Bowl_Team', 'Home_Team']).agg({
-        'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
-        'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    location_summary.columns = ['Team', 'Location', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    location_summary['Overs'] = ((location_summary['Balls'] // 6) + (location_summary['Balls'] % 6) / 10).round(1)
-    wickets_safe = location_summary['Wickets'].replace(0, np.nan)
-    overs_safe = location_summary['Overs'].replace(0, np.nan)
-    location_summary['Strike Rate'] = (location_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    location_summary['Economy Rate'] = (location_summary['Runs'] / overs_safe).round(2).fillna(0)
-    location_summary['Avg'] = (location_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    return location_summary.sort_values(by=['Team', 'Avg'])
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    out = (
+        pl_df.group_by(['Bowl_Team', 'Home_Team'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Maidens').sum().alias('M/D'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+        ])
+        .rename({'Bowl_Team': 'Team', 'Home_Team': 'Location'})
+    )
+    out = out.with_columns([
+        ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs'),
+    ])
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    out = out.with_columns([
+        (pl.col('Balls') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Strike Rate'),
+        (pl.col('Runs') / denom(pl.col('Overs'))).round(2).fill_null(0).alias('Economy Rate'),
+        (pl.col('Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Avg'),
+    ])
+    return out.sort(by=['Team', 'Avg']).to_pandas()
 
 @st.cache_data
 def compute_team_bowling_position(df):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
-    position_summary = df.groupby(['Bowl_Team', 'Position']).agg({
-        'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
-        'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
-    }).reset_index()
-    position_summary.columns = ['Bowl_Team', 'Position', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-    position_summary['Overs'] = ((position_summary['Balls'] // 6) + (position_summary['Balls'] % 6) / 10).round(1)
-    wickets_safe = position_summary['Wickets'].replace(0, np.nan)
-    overs_safe = position_summary['Overs'].replace(0, np.nan)
-    position_summary['Strike Rate'] = (position_summary['Balls'] / wickets_safe).round(2).fillna(0)
-    position_summary['Economy Rate'] = (position_summary['Runs'] / overs_safe).round(2).fillna(0)
-    position_summary['Avg'] = (position_summary['Runs'] / wickets_safe).round(2).fillna(0)
-    return position_summary.sort_values(by=['Bowl_Team', 'Position'])
+    df = sanitize_df_for_polars(df)
+    pl_df = pl.from_pandas(df)
+    out = (
+        pl_df.group_by(['Bowl_Team', 'Position'])
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Bowler_Balls').sum().alias('Balls'),
+            pl.col('Maidens').sum().alias('M/D'),
+            pl.col('Bowler_Runs').sum().alias('Runs'),
+            pl.col('Bowler_Wkts').sum().alias('Wickets'),
+        ])
+    )
+    out = out.with_columns([
+        ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs'),
+    ])
+    denom = lambda x: pl.when(x == 0).then(None).otherwise(x)
+    out = out.with_columns([
+        (pl.col('Balls') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Strike Rate'),
+        (pl.col('Runs') / denom(pl.col('Overs'))).round(2).fill_null(0).alias('Economy Rate'),
+        (pl.col('Runs') / denom(pl.col('Wickets'))).round(2).fill_null(0).alias('Avg'),
+    ])
+    return out.sort(by=['Bowl_Team', 'Position']).to_pandas()
 
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
@@ -1553,7 +1683,10 @@ def compute_team_rankings(bat_season_df, bowl_season_df):
     )
     if 'Bowl_Team' in combined_df.columns:
         combined_df = combined_df.drop('Bowl_Team', axis=1)
-    combined_df = combined_df.fillna(0)
+    
+    # Select only numeric columns and fill NaNs with 0
+    numeric_cols = combined_df.select_dtypes(include=np.number).columns
+    combined_df[numeric_cols] = combined_df[numeric_cols].fillna(0)
 
     combined_df = combined_df.rename(columns={
         'Avg_x': 'Batting Avg',

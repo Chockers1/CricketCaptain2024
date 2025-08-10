@@ -4,6 +4,10 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import datetime
+try:
+    import polars as pl
+except Exception:
+    pl = None
 
 # Modern CSS for beautiful UI - Enhanced styling
 def apply_modern_styling():
@@ -274,34 +278,64 @@ def apply_modern_styling():
     </style>
     """, unsafe_allow_html=True)
 
+def _show_table_with_cap(
+    df: pd.DataFrame,
+    name: str | None = None,
+    top_n: int = 5000,
+    force_full: bool = False,
+) -> pd.DataFrame:
+    """Return a display DataFrame, optionally capped in large mode.
+
+    - If upload_mode=='large' and df is big, we cap to top_n for display only.
+    - If force_full=True, do not cap.
+    """
+    if df is None or len(df) == 0:
+        return df
+    mode = st.session_state.get('upload_mode', 'small')
+    if not force_full and mode == 'large' and len(df) > top_n:
+        if name:
+            st.info(f"Large dataset mode: showing first {top_n:,} rows for {name}.")
+        return df.head(top_n)
+    return df
+
+def _sanitize_for_polars(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    # Coerce Date to datetime where present
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    # Cast categoricals or objects with nested types to strings
+    for c in df.columns:
+        if pd.api.types.is_categorical_dtype(df[c]):
+            df[c] = df[c].astype(str)
+        elif df[c].dtype == object:
+            sample = df[c].dropna().head(1)
+            if not sample.empty and isinstance(sample.iloc[0], (list, dict, set, tuple)):
+                df[c] = df[c].astype(str)
+    return df
+
 @st.cache_data
 def calculate_batter_rating_per_match(df):
     """Calculate batting rating with bonuses"""
     stats = df.copy()
-    stats['Strike_Rate'] = (stats['Runs'] / stats['Balls']) * 100
-    stats['Base_Score'] = stats['Runs']
-    
-    def calculate_bonus(row):
-        runs = row['Runs']
-        sr = row['Strike_Rate']
-        bonus = 0
-        
-        if 100 <= runs < 150:
-            bonus += 50  # Century bonus
-        elif 150 <= runs < 200:
-            bonus += 75  # 150+ bonus
-        elif runs >= 200:
-            bonus += 100  # Double century bonus
-            
-        if runs >= 40:  # Only apply SR bonus/penalty for substantial innings
-            if sr >= 75:
-                bonus += 25  # Good scoring rate bonus
-            elif sr <= 40:
-                bonus -= 25  # Slow scoring penalty
-                
-        return bonus
-    
-    stats['Bonus'] = stats.apply(calculate_bonus, axis=1)
+    # Vectorized strike rate and base
+    stats['Strike_Rate'] = (pd.to_numeric(stats['Runs'], errors='coerce').fillna(0) /
+                            pd.to_numeric(stats['Balls'], errors='coerce').replace(0, np.nan)) * 100
+    stats['Strike_Rate'] = stats['Strike_Rate'].fillna(0)
+    stats['Base_Score'] = pd.to_numeric(stats['Runs'], errors='coerce').fillna(0)
+    runs = stats['Base_Score']
+    sr = stats['Strike_Rate']
+    # Century tier bonuses
+    bonus = np.select(
+        [runs.ge(200), runs.ge(150), runs.ge(100)],
+        [100, 75, 50],
+        default=0
+    )
+    # SR bonus/penalty when substantial innings
+    sr_bonus = np.where(runs.ge(40) & sr.ge(75), 25, 0)
+    sr_pen = np.where(runs.ge(40) & sr.le(40), -25, 0)
+    stats['Bonus'] = bonus + sr_bonus + sr_pen
     stats['Batting_Rating'] = stats['Base_Score'] + stats['Bonus']
     return stats
 
@@ -309,41 +343,24 @@ def calculate_batter_rating_per_match(df):
 def calculate_bowler_rating_per_match(df):
     """Calculate bowling rating with bonuses"""
     stats = df.copy()
-    stats['Overs'] = stats['Bowler_Balls'] / 6
-    stats['Economy'] = (stats['Bowler_Runs'] / stats['Overs']).replace(float('inf'), 0)
-    stats['Base_Score'] = (stats['Bowler_Wkts'] * 20) + (stats['Maidens'] * 2)
-    
-    def calculate_wicket_bonus(wickets):
-        if wickets == 10:
-            return 260
-        elif wickets == 9:
-            return 200
-        elif wickets == 8:
-            return 150
-        elif wickets == 7:
-            return 100
-        elif wickets == 6:
-            return 75
-        elif wickets == 5:
-            return 50
-        elif wickets == 4:
-            return 35
-        elif wickets == 3:
-            return 20
-        return 0
-    
-    def calculate_economy_bonus(row):
-        if row['Overs'] >= 10:
-            if row['Economy'] <= 2.5:
-                return 25
-            elif row['Economy'] >= 4.5:
-                return -25
-        return 0
-    
-    stats['Wicket_Bonus'] = stats['Bowler_Wkts'].apply(calculate_wicket_bonus)
-    stats['Economy_Bonus'] = stats.apply(calculate_economy_bonus, axis=1)
+    balls = pd.to_numeric(stats.get('Bowler_Balls', 0), errors='coerce').fillna(0)
+    runs = pd.to_numeric(stats.get('Bowler_Runs', 0), errors='coerce').fillna(0)
+    wkts = pd.to_numeric(stats.get('Bowler_Wkts', 0), errors='coerce').fillna(0)
+    maid = pd.to_numeric(stats.get('Maidens', stats.get('Bowler_Maidens', 0)), errors='coerce').fillna(0)
+    overs = balls / 6.0
+    econ = runs / overs.replace(0, np.nan)
+    econ = econ.fillna(0)
+    stats['Overs'] = overs
+    stats['Economy'] = econ
+    stats['Base_Score'] = wkts * 20 + maid * 2
+    # Wicket bonus mapping
+    bonus_map = {10:260,9:200,8:150,7:100,6:75,5:50,4:35,3:20}
+    stats['Wicket_Bonus'] = wkts.map(bonus_map).fillna(0)
+    # Economy bonus when enough overs
+    econ_bonus = np.where(overs.ge(10) & econ.le(2.5), 25, 0)
+    econ_pen = np.where(overs.ge(10) & econ.ge(4.5), -25, 0)
+    stats['Economy_Bonus'] = econ_bonus + econ_pen
     stats['Bowling_Rating'] = stats['Base_Score'] + stats['Wicket_Bonus'] + stats['Economy_Bonus']
-    
     return stats
 
 def calculate_peak_ratings(rankings_df):
@@ -401,37 +418,56 @@ def display_number_one_rankings(bat_df, bowl_df):
             clean_bat = filtered_bat_df.dropna(subset=['Year', 'Match_Format', 'Name', 'Batting_Rating'])
             clean_bat = clean_bat[clean_bat['Name'].str.strip() != '']
             if not clean_bat.empty:
-                batting_by_player = clean_bat.groupby(['Year', 'Match_Format', 'Name'])['Batting_Rating'].sum().reset_index()
-                best_batting = batting_by_player.groupby(['Year', 'Match_Format']).apply(
-                    lambda x: f"{x.loc[x['Batting_Rating'].idxmax(), 'Name']} - {x['Batting_Rating'].max():.0f}" 
-                    if x['Batting_Rating'].max() > 0 else "-"
-                ).reset_index(name='Best_Batting')
+                if pl is not None:
+                    p = pl.from_pandas(_sanitize_for_polars(clean_bat))
+                    batting_by_player = (
+                        p.group_by(['Year','Match_Format','Name']).agg(pl.col('Batting_Rating').sum().alias('Batting_Rating'))
+                    ).to_pandas()
+                else:
+                    batting_by_player = clean_bat.groupby(['Year','Match_Format','Name'], observed=True)['Batting_Rating'].sum().reset_index()
+                # Best string per (Year,Format)
+                tmp = batting_by_player.sort_values(['Year','Match_Format','Batting_Rating'], ascending=[True,True,False])
+                idx = tmp.groupby(['Year','Match_Format'])['Batting_Rating'].idxmax()
+                bb = tmp.loc[idx]
+                best_batting = bb.assign(Best_Batting=bb['Name'] + ' - ' + bb['Batting_Rating'].round(0).astype(int).astype(str))[
+                    ['Year','Match_Format','Best_Batting']
+                ].reset_index(drop=True)
 
         # Best bowling by year
         if not filtered_bowl_df.empty:
             clean_bowl = filtered_bowl_df.dropna(subset=['Year', 'Match_Format', 'Name', 'Bowling_Rating'])
             clean_bowl = clean_bowl[clean_bowl['Name'].str.strip() != '']
             if not clean_bowl.empty:
-                bowling_by_player = clean_bowl.groupby(['Year', 'Match_Format', 'Name'])['Bowling_Rating'].sum().reset_index()
-                best_bowling = bowling_by_player.groupby(['Year', 'Match_Format']).apply(
-                    lambda x: f"{x.loc[x['Bowling_Rating'].idxmax(), 'Name']} - {x['Bowling_Rating'].max():.0f}" 
-                    if x['Bowling_Rating'].max() > 0 else "-"
-                ).reset_index(name='Best_Bowling')
+                if pl is not None:
+                    p = pl.from_pandas(_sanitize_for_polars(clean_bowl))
+                    bowling_by_player = (
+                        p.group_by(['Year','Match_Format','Name']).agg(pl.col('Bowling_Rating').sum().alias('Bowling_Rating'))
+                    ).to_pandas()
+                else:
+                    bowling_by_player = clean_bowl.groupby(['Year','Match_Format','Name'], observed=True)['Bowling_Rating'].sum().reset_index()
+                tmp = bowling_by_player.sort_values(['Year','Match_Format','Bowling_Rating'], ascending=[True,True,False])
+                idx = tmp.groupby(['Year','Match_Format'])['Bowling_Rating'].idxmax()
+                bw = tmp.loc[idx]
+                best_bowling = bw.assign(Best_Bowling=bw['Name'] + ' - ' + bw['Bowling_Rating'].round(0).astype(int).astype(str))[
+                    ['Year','Match_Format','Best_Bowling']
+                ].reset_index(drop=True)
 
         # Calculate AR ratings with Match_Format
         if 'batting_by_player' in locals() and 'bowling_by_player' in locals() and not batting_by_player.empty and not bowling_by_player.empty:
             yearly_ar = pd.merge(
                 batting_by_player,
                 bowling_by_player,
-                on=['Year', 'Match_Format', 'Name'],
+                on=['Year','Match_Format','Name'],
                 how='outer'
             ).fillna(0)
-            
-            yearly_ar['AR_Rating'] = yearly_ar['Batting_Rating'] + yearly_ar['Bowling_Rating']
-            best_ar = yearly_ar.groupby(['Year', 'Match_Format']).apply(
-                lambda x: f"{x.loc[x['AR_Rating'].idxmax(), 'Name']} - {x['AR_Rating'].max():.0f}" 
-                if x['AR_Rating'].max() > 0 else "-"
-            ).reset_index(name='Best_AllRounder')
+            yearly_ar['AR_Rating'] = pd.to_numeric(yearly_ar['Batting_Rating'], errors='coerce').fillna(0) + \
+                                      pd.to_numeric(yearly_ar['Bowling_Rating'], errors='coerce').fillna(0)
+            tmp = yearly_ar.sort_values(['Year','Match_Format','AR_Rating'], ascending=[True,True,False])
+            idx = tmp.groupby(['Year','Match_Format'])['AR_Rating'].idxmax()
+            arw = tmp.loc[idx]
+            best_ar = arw.assign(Best_AllRounder=arw['Name'] + ' - ' + arw['AR_Rating'].round(0).astype(int).astype(str))[
+                ['Year','Match_Format','Best_AllRounder']
+            ].reset_index(drop=True)
 
         # Combine summaries safely
         if not best_batting.empty or not best_bowling.empty or not best_ar.empty:
@@ -441,6 +477,10 @@ def display_number_one_rankings(bat_df, bowl_df):
             yearly_summary = yearly_summary.sort_values(['Year', 'Match_Format'], ascending=[False, True])
 
             if not yearly_summary.empty:
+                yearly_summary = _show_table_with_cap(
+                    yearly_summary,
+                    name='Yearly Best Performers',
+                )
                 st.dataframe(
                     yearly_summary,
                     use_container_width=True,
@@ -527,6 +567,7 @@ def display_number_one_rankings(bat_df, bowl_df):
                 
                 peaks = peaks.sort_values(['Match_Format', 'AR_Rating'], ascending=[True, False])
 
+                peaks = _show_table_with_cap(peaks, name='Peak Rating Achievements')
                 st.dataframe(
                     peaks,
                     use_container_width=True,
@@ -620,6 +661,7 @@ def display_number_one_rankings(bat_df, bowl_df):
                 all_no1 = all_no1[all_no1['Name'].str.strip() != '']
                 
                 if not all_no1.empty:
+                    all_no1 = _show_table_with_cap(all_no1, name='#1 Rankings')
                     st.dataframe(
                         all_no1,
                         use_container_width=True,
@@ -665,6 +707,7 @@ def display_number_one_rankings(bat_df, bowl_df):
     
     # Hall of Fame thresholds by format
     HOF_THRESHOLDS = {
+        'goat': 15000,            # G.O.A.T status
         'hall_of_fame': 7500,      # Standard HOF threshold
         'elite': 10000,             # Elite status
         'legendary': 12500          # Legendary status
@@ -672,7 +715,9 @@ def display_number_one_rankings(bat_df, bowl_df):
     
     def get_hof_status(points):
         """Determine Hall of Fame status based on total rating points"""
-        if points >= HOF_THRESHOLDS['legendary']:
+        if points >= HOF_THRESHOLDS['goat']:
+            return "🐐 G.O.A.T", "goat"
+        elif points >= HOF_THRESHOLDS['legendary']:
             return "🌟 Legend", "legendary"
         elif points >= HOF_THRESHOLDS['elite']:
             return "💎 Elite", "elite"
@@ -751,19 +796,24 @@ def display_number_one_rankings(bat_df, bowl_df):
                                padding: 15px; border-radius: 10px; margin: 20px 0; color: white;">
                         <h4 style="margin: 0 0 10px 0;">🏛️ Hall of Fame Criteria</h4>
                         <p style="margin: 0; font-size: 0.9em;">
-                            <strong>🏛️ Hall of Fame:</strong> 7500+ career rating points | 
+                            <strong>🐐 G.O.A.T:</strong> 15,000+ points | 
+                            <strong>🌟 Legendary:</strong> 12,500+ points | 
                             <strong>💎 Elite:</strong> 10,000+ points | 
-                            <strong>🌟 Legendary:</strong> 12,500+ points
+                            <strong>�️ Hall of Fame:</strong> 7,500+ points
                         </p>
                     </div>
                 """, unsafe_allow_html=True)
                 
-                st.dataframe(
+                hof_tbl = _show_table_with_cap(
                     hof_players[['Name', 'Match_Format', 'Batting_Points', 'Bowling_Points', 
                                'AllRounder_Points', 'Max_Points', 'HOF_Status']],
+                    name='Hall of Fame Players'
+                )
+                st.dataframe(
+                    hof_tbl,
                     use_container_width=True,
                     hide_index=True,
-                    height=min(500, (len(hof_players) + 1) * 35),
+                    height=min(500, (len(hof_tbl) + 1) * 35),
                     column_config={
                         "Name": st.column_config.TextColumn("🏆 Player", width="medium"),
                         "Match_Format": st.column_config.TextColumn("📊 Format", width="small"),
@@ -776,16 +826,19 @@ def display_number_one_rankings(bat_df, bowl_df):
                 )
                 
                 # Show summary stats
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    total_hof = len(hof_players)
-                    st.metric("🏛️ Total HOF Players", total_hof)
-                with col2:
-                    elite_count = len(hof_players[hof_players['HOF_Level'] == 'elite'])
-                    st.metric("💎 Elite Players", elite_count)
+                    goat_count = len(hof_players[hof_players['HOF_Level'] == 'goat'])
+                    st.metric("🐐 G.O.A.T Players", goat_count)
                 with col3:
                     legend_count = len(hof_players[hof_players['HOF_Level'] == 'legendary'])
                     st.metric("🌟 Legendary Players", legend_count)
+                with col2:
+                    elite_count = len(hof_players[hof_players['HOF_Level'] == 'elite'])
+                    st.metric("💎 Elite Players", elite_count)
+                with col4:
+                    total_hof = len(hof_players)
+                    st.metric("🏛️ Total HOF Players", total_hof)
                     
             else:
                 st.info(f"No players have achieved Hall of Fame status (minimum {HOF_THRESHOLDS['hall_of_fame']:,} career rating points) for the selected filters.")
@@ -798,6 +851,7 @@ def display_number_one_rankings(bat_df, bowl_df):
 
     # ...rest of the function remains unchanged...
 
+@st.cache_data
 @st.cache_data
 def compute_batting_rankings(bat_df):
     if bat_df.empty:
@@ -812,26 +866,48 @@ def compute_batting_rankings(bat_df):
             bat_df['Team'] = bat_df['Bat_Team_y']
         else:
             bat_df['Team'] = 'Unknown'
-    # Calculate additional batting statistics
-    bat_df['Average'] = bat_df.groupby(['Year', 'Name'])['Runs'].transform('mean')
-    bat_df['Strike_Rate'] = (bat_df['Runs'] / bat_df['Balls']) * 100
-    bat_df['Centuries'] = bat_df['Runs'].apply(lambda x: 1 if x >= 100 else 0)
-    bat_df['Double_Centuries'] = bat_df['Runs'].apply(lambda x: 1 if x >= 200 else 0)
-    batting_rankings = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
-        'File Name': 'nunique',
-        'Batting_Rating': 'sum',
-        'Runs': 'sum',
-        'Average': 'mean',
-        'Strike_Rate': 'mean',
-        'Centuries': 'sum',
-        'Double_Centuries': 'sum',
-        '4s': 'sum',
-        '6s': 'sum'
-    }).reset_index()
+    # Polars-first aggregation
+    if pl is not None:
+        pdf = _sanitize_for_polars(bat_df)
+        p = pl.from_pandas(pdf)
+        g = (
+            p.group_by(['Year','Name','Team','Match_Format'])
+             .agg([
+                 pl.col('File Name').n_unique().alias('Matches'),
+                 pl.col('Batting_Rating').sum().alias('Rating'),
+                 pl.col('Runs').sum().alias('Total_Runs'),
+                 pl.col('Runs').mean().alias('Average'),
+                 (pl.col('Runs').sum() / pl.col('Balls').sum() * 100).alias('Strike_Rate'),
+                 (pl.col('Runs')>=100).sum().alias('Centuries'),
+                 (pl.col('Runs')>=200).sum().alias('Double_Centuries'),
+                 pl.col('4s').sum().alias('4s'),
+                 pl.col('6s').sum().alias('6s'),
+             ])
+        )
+        batting_rankings = g.to_pandas()
+    else:
+        bat = bat_df.copy()
+        bat['Centuries'] = (bat['Runs']>=100).astype(int)
+        bat['Double_Centuries'] = (bat['Runs']>=200).astype(int)
+        grp = bat.groupby(['Year','Name','Team','Match_Format'], observed=True)
+        batting_rankings = grp.agg(
+            Matches=('File Name','nunique'),
+            Rating=('Batting_Rating','sum'),
+            Total_Runs=('Runs','sum'),
+            Average=('Runs','mean'),
+            Balls=('Balls','sum'),
+            Centuries=('Centuries','sum'),
+            Double_Centuries=('Double_Centuries','sum'),
+            **{'4s':('4s','sum'), '6s':('6s','sum')}
+        ).reset_index()
+        batting_rankings['Strike_Rate'] = np.where(
+            batting_rankings['Balls']>0,
+            batting_rankings['Total_Runs']/batting_rankings['Balls']*100,
+            0
+        )
+        batting_rankings = batting_rankings.drop(columns=['Balls'])
     batting_rankings = batting_rankings.rename(columns={
-        'File Name': 'Matches',
-        'Batting_Rating': 'Rating',
-        'Runs': 'Total_Runs'
+        'Runs_mean': 'Average'
     })
     batting_rankings['RPG'] = batting_rankings['Rating'] / batting_rankings['Matches']
     batting_rankings['Rank'] = batting_rankings.groupby('Year')['Rating'].rank(method='dense', ascending=False).astype(int)
@@ -907,11 +983,17 @@ def display_batting_rankings(bat_df):
     if filtered_batting.empty:
         st.info("No results match your filters. Try broadening your selection.")
     else:
-        st.dataframe(
+        show_all_bat = st.checkbox("Show all rows (disable large-mode cap)", key="bat_show_all")
+        display_batting = _show_table_with_cap(
             filtered_batting,
+            name='Batting Rankings',
+            force_full=show_all_bat
+        )
+        st.dataframe(
+            display_batting,
             use_container_width=True,
             hide_index=True,
-            height=min(850, (len(filtered_batting) + 1) * 35),
+            height=min(850, (len(display_batting) + 1) * 35),
             column_config={
                 "Year": st.column_config.NumberColumn("📅 Year", format="%d"),
                 "Rank": st.column_config.NumberColumn("🏆 Rank", format="%d"),
@@ -922,62 +1004,110 @@ def display_batting_rankings(bat_df):
                 "Double_Centuries": st.column_config.NumberColumn("🔥 200s", format="%.0f")
             }
         )
+        # Download full filtered data
+        st.download_button(
+            "Download full batting results (CSV)",
+            data=filtered_batting.to_csv(index=False).encode('utf-8'),
+            file_name="batting_rankings_filtered.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="dl_batting_full"
+        )
 
     # Trend Graphs Section
     col1, col2 = st.columns(2)
 
     with col1:
         fig1 = go.Figure()
+        # Always chart on the full filtered data (not the capped table)
         trend_data = filtered_batting.sort_values('Year')
         show_legend = len(selected_names) > 0
         for player in trend_data['Name'].unique():
-            player_data = trend_data[trend_data['Name'] == player]
-            fig1.add_trace(go.Scatter(
-                x=player_data['Year'],
-                y=player_data['RPG'],
-                name=player,
-                mode='lines+markers',
-                line=dict(width=2),
-                hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-                customdata=player_data['Team'],
-                showlegend=show_legend
-            ))
+            for fmt in trend_data.loc[trend_data['Name'] == player, 'Match_Format'].unique():
+                player_data = trend_data[(trend_data['Name'] == player) & (trend_data['Match_Format'] == fmt)]
+                if player_data.empty:
+                    continue
+                legend_name = f"{player} • {fmt}"
+                customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                fig1.add_trace(go.Scatter(
+                    x=player_data['Year'],
+                    y=player_data['Rating'],
+                    name=legend_name,
+                    mode='lines+markers',
+                    line=dict(width=2),
+                    hovertemplate="Year: %{x}<br>Rating: %{y:.2f}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                    customdata=customdata,
+                    showlegend=show_legend
+                ))
         fig1.update_layout(
-            title="Rating Per Game Trends",
+            title="Rating Per Year Trends",
             xaxis_title="Year",
-            yaxis_title="Rating Per Game",
+            yaxis_title="Rating Per Year",
             hovermode='closest',
             showlegend=show_legend,
+            autosize=False,
+            margin=dict(l=20, r=20, t=40, b=40, pad=0),
+            height=500,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)'
             # ... other layout options ...
         )
+        fig1.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1, tickmode='linear', dtick=1)
+        fig1.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
         fig1.update_xaxes(tickmode='linear', dtick=1)  # Ensure integer years only
-        st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     with col2:
         fig2 = go.Figure()
         for player in trend_data['Name'].unique():
-            player_data = trend_data[trend_data['Name'] == player]
-            fig2.add_trace(go.Scatter(
-                x=player_data['Year'],
-                y=player_data['Rank'],
-                name=player,
-                mode='lines+markers',
-                line=dict(width=2),
-                hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-                customdata=player_data['Team'],
-                showlegend=show_legend
-            ))
+            for fmt in trend_data.loc[trend_data['Name'] == player, 'Match_Format'].unique():
+                player_data = trend_data[(trend_data['Name'] == player) & (trend_data['Match_Format'] == fmt)]
+                if player_data.empty:
+                    continue
+                legend_name = f"{player} • {fmt}"
+                customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                fig2.add_trace(go.Scatter(
+                    x=player_data['Year'],
+                    y=player_data['Rank'],
+                    name=legend_name,
+                    mode='lines+markers',
+                    line=dict(width=2),
+                    hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                    customdata=customdata,
+                    showlegend=show_legend
+                ))
         fig2.update_layout(
             title="Ranking Trends",
             xaxis_title="Year",
             yaxis_title="Rank",
             hovermode='closest',
             showlegend=show_legend,
+            autosize=False,
+            margin=dict(l=20, r=20, t=40, b=40, pad=0),
+            height=500,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)"
+            ),
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)'
             # ... other layout options ...
         )
-        fig2.update_xaxes(tickmode='linear', dtick=1)  # Ensure integer years only
-        st.plotly_chart(fig2, use_container_width=True)
+        fig2.update_yaxes(autorange='reversed', showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+        fig2.update_xaxes(tickmode='linear', dtick=1, showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)  # Ensure integer years only
+    st.plotly_chart(fig2, use_container_width=True)
 
+@st.cache_data
 @st.cache_data
 def compute_bowling_rankings(bowl_df):
     if bowl_df.empty:
@@ -992,32 +1122,60 @@ def compute_bowling_rankings(bowl_df):
             bowl_df['Team'] = bowl_df['Bowl_Team_y']
         else:
             bowl_df['Team'] = 'Unknown'
-    # Calculate additional bowling statistics
-    bowl_df['Average'] = bowl_df.groupby(['Year', 'Name'])['Bowler_Runs'].transform('sum') / \
-                         bowl_df.groupby(['Year', 'Name'])['Bowler_Wkts'].transform('sum')
-    bowl_df['Strike_Rate'] = (bowl_df.groupby(['Year', 'Name'])['Bowler_Balls'].transform('sum') / \
-                              bowl_df.groupby(['Year', 'Name'])['Bowler_Wkts'].transform('sum'))
-    bowl_df['Economy'] = (bowl_df.groupby(['Year', 'Name'])['Bowler_Runs'].transform('sum') * 6) / \
-                         bowl_df.groupby(['Year', 'Name'])['Bowler_Balls'].transform('sum')
-    bowl_df['Five_Wickets'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 5 else 0)
-    bowl_df['Ten_Wickets'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 10 else 0)
-    bowl_df['Maidens'] = bowl_df['Bowler_Maidens'] if 'Bowler_Maidens' in bowl_df.columns else 0
-    bowling_rankings = bowl_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg({
-        'File Name': 'nunique',
-        'Bowling_Rating': 'sum',
-        'Bowler_Wkts': 'sum',
-        'Average': 'mean',
-        'Strike_Rate': 'mean',
-        'Economy': 'mean',
-        'Five_Wickets': 'sum',
-        'Ten_Wickets': 'sum',
-        'Maidens': 'sum'
-    }).reset_index()
-    bowling_rankings = bowling_rankings.rename(columns={
-        'File Name': 'Matches',
-        'Bowling_Rating': 'Rating',
-        'Bowler_Wkts': 'Total_Wickets'
-    })
+    if pl is not None:
+        pdf = _sanitize_for_polars(bowl_df)
+        p = pl.from_pandas(pdf)
+        # Ensure optional columns exist for aggregation
+        if 'Bowler_Maidens' not in p.columns:
+            p = p.with_columns(pl.lit(0).alias('Bowler_Maidens'))
+        five = (pl.col('Bowler_Wkts')>=5).sum().alias('Five_Wickets')
+        ten = (pl.col('Bowler_Wkts')>=10).sum().alias('Ten_Wickets')
+        runs_sum = pl.col('Bowler_Runs').sum()
+        balls_sum = pl.col('Bowler_Balls').sum()
+        wkts_sum = pl.col('Bowler_Wkts').sum()
+        maid_sum = pl.col('Bowler_Maidens').sum().alias('Maidens')
+        g = (
+            p.group_by(['Year','Name','Team','Match_Format'])
+             .agg([
+                 pl.col('File Name').n_unique().alias('Matches'),
+                 pl.col('Bowling_Rating').sum().alias('Rating'),
+                 wkts_sum.alias('Total_Wickets'),
+                 (runs_sum / wkts_sum).alias('Average'),
+                 (balls_sum / wkts_sum).alias('Strike_Rate'),
+                 (runs_sum * 6.0 / balls_sum).alias('Economy'),
+                 five,
+                 ten,
+                 maid_sum,
+             ])
+        )
+        bowling_rankings = g.to_pandas()
+    else:
+        b = bowl_df.copy()
+        b['Five_Wickets'] = (b['Bowler_Wkts']>=5).astype(int)
+        b['Ten_Wickets'] = (b['Bowler_Wkts']>=10).astype(int)
+        grp = b.groupby(['Year','Name','Team','Match_Format'], observed=True)
+        agg_dict = {
+            'File Name':'nunique',
+            'Bowling_Rating':'sum',
+            'Bowler_Wkts':'sum',
+            'Bowler_Runs':'sum',
+            'Bowler_Balls':'sum',
+            'Five_Wickets':'sum',
+            'Ten_Wickets':'sum'
+        }
+        if 'Bowler_Maidens' in b.columns:
+            agg_dict['Bowler_Maidens'] = 'sum'
+        agg = grp.agg(agg_dict).reset_index()
+        agg = agg.rename(columns={'File Name':'Matches','Bowling_Rating':'Rating','Bowler_Wkts':'Total_Wickets'})
+        if 'Bowler_Maidens' in agg.columns:
+            agg = agg.rename(columns={'Bowler_Maidens':'Maidens'})
+        else:
+            agg['Maidens'] = 0
+        agg['Average'] = np.where(agg['Total_Wickets']>0, agg['Bowler_Runs']/agg['Total_Wickets'], 0)
+        agg['Strike_Rate'] = np.where(agg['Total_Wickets']>0, agg['Bowler_Balls']/agg['Total_Wickets'], 0)
+        agg['Economy'] = np.where(agg['Bowler_Balls']>0, agg['Bowler_Runs']*6/agg['Bowler_Balls'], 0)
+        bowling_rankings = agg.drop(columns=['Bowler_Runs','Bowler_Balls'])
+    # columns already correctly named across branches
     bowling_rankings['RPG'] = bowling_rankings['Rating'] / bowling_rankings['Matches']
     bowling_rankings['Rank'] = bowling_rankings.groupby('Year')['Rating'].rank(method='dense', ascending=False).astype(int)
     bowling_rankings = bowling_rankings.sort_values(['Year', 'Rank'])
@@ -1172,11 +1330,17 @@ def display_bowling_rankings(bowl_df):
     # Display Yearly Rankings safely
     try:
         if not filtered_bowling.empty:
-            st.dataframe(
+            show_all_bowl = st.checkbox("Show all rows (disable large-mode cap)", key="bowl_show_all")
+            display_bowling = _show_table_with_cap(
                 filtered_bowling,
+                name='Bowling Rankings',
+                force_full=show_all_bowl
+            )
+            st.dataframe(
+                display_bowling,
                 use_container_width=True,
                 hide_index=True,
-                height=min(850, (len(filtered_bowling) + 1) * 35),
+                height=min(850, (len(display_bowling) + 1) * 35),
                 column_config={
                     "Year": st.column_config.NumberColumn("📅 Year", format="%d"),
                     "Rank": st.column_config.NumberColumn("🏆 Rank", format="%d"),
@@ -1188,6 +1352,15 @@ def display_bowling_rankings(bowl_df):
                     "Five_Wickets": st.column_config.NumberColumn("🔥 5WI", format="%.0f"),
                     "Ten_Wickets": st.column_config.NumberColumn("💯 10WM", format="%.0f")
                 }
+            )
+            # Download full filtered data
+            st.download_button(
+                "Download full bowling results (CSV)",
+                data=filtered_bowling.to_csv(index=False).encode('utf-8'),
+                file_name="bowling_rankings_filtered.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_bowling_full"
             )
         else:
             st.info("No yearly rankings data available for the selected filters.")
@@ -1212,31 +1385,39 @@ def display_bowling_rankings(bowl_df):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Rating per game trend graph
+        # Rating per year trend graph
         fig1 = go.Figure()
-        
+        # Always chart on the full filtered data (not the capped table)
         trend_data = filtered_bowling.sort_values('Year')
         show_legend = len(selected_names) > 0  # Only show legend if players are selected
         
         for player in trend_data['Name'].unique():
-            player_data = trend_data[trend_data['Name'] == player]
-            fig1.add_trace(go.Scatter(
-                x=player_data['Year'],
-                y=player_data['RPG'],
-                name=player,
-                mode='lines+markers',
-                line=dict(width=2),
-                hovertemplate="Year: %{x}<br>RPG: %{y:.2f}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-                customdata=player_data['Team'],
-                showlegend=show_legend
-            ))
+            for fmt in trend_data.loc[trend_data['Name'] == player, 'Match_Format'].unique():
+                player_data = trend_data[(trend_data['Name'] == player) & (trend_data['Match_Format'] == fmt)]
+                if player_data.empty:
+                    continue
+                legend_name = f"{player} • {fmt}"
+                customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                fig1.add_trace(go.Scatter(
+                    x=player_data['Year'],
+                    y=player_data['Rating'],
+                    name=legend_name,
+                    mode='lines+markers',
+                    line=dict(width=2),
+                    hovertemplate="Year: %{x}<br>Rating: %{y:.2f}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                    customdata=customdata,
+                    showlegend=show_legend
+                ))
 
         fig1.update_layout(
-            title="Rating Per Game Trends",
+            title="Rating Per Year Trends",
             xaxis_title="Year",
-            yaxis_title="Rating Per Game",
+            yaxis_title="Rating Per Year",
             hovermode='closest',
             showlegend=show_legend,
+            autosize=False,
+            margin=dict(l=20, r=20, t=40, b=40, pad=0),
+            height=500,
             legend=dict(
                 yanchor="top",
                 y=0.99,
@@ -1244,32 +1425,35 @@ def display_bowling_rankings(bowl_df):
                 x=0.01,
                 bgcolor="rgba(255,255,255,0.8)"
             ),
-            margin=dict(l=20, r=20, t=40, b=40),
-            height=500,
             plot_bgcolor='rgba(255,255,255,0)',
-            paper_bgcolor='rgba(255,255,255,0)',
-            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1),
-            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+            paper_bgcolor='rgba(255,255,255,0)'
         )
+        fig1.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1, tickmode='linear', dtick=1)
+        fig1.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
 
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     with col2:
-        # Rank trend graph
+        # Ranking trend graph
         fig2 = go.Figure()
-        
+
         for player in trend_data['Name'].unique():
-            player_data = trend_data[trend_data['Name'] == player]
-            fig2.add_trace(go.Scatter(
-                x=player_data['Year'],
-                y=player_data['Rank'],
-                name=player,
-                mode='lines+markers',
-                line=dict(width=2),
-                hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name: " + player + "<br>Team: %{customdata}<extra></extra>",
-                customdata=player_data['Team'],
-                showlegend=show_legend
-            ))
+            for fmt in trend_data.loc[trend_data['Name'] == player, 'Match_Format'].unique():
+                player_data = trend_data[(trend_data['Name'] == player) & (trend_data['Match_Format'] == fmt)]
+                if player_data.empty:
+                    continue
+                legend_name = f"{player} • {fmt}"
+                customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                fig2.add_trace(go.Scatter(
+                    x=player_data['Year'],
+                    y=player_data['Rank'],
+                    name=legend_name,
+                    mode='lines+markers',
+                    line=dict(width=2),
+                    hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                    customdata=customdata,
+                    showlegend=show_legend
+                ))
 
         fig2.update_layout(
             title="Ranking Trends",
@@ -1277,6 +1461,9 @@ def display_bowling_rankings(bowl_df):
             yaxis_title="Rank",
             hovermode='closest',
             showlegend=show_legend,
+            autosize=False,
+            margin=dict(l=20, r=20, t=40, b=40, pad=0),
+            height=500,
             legend=dict(
                 yanchor="top",
                 y=0.99,
@@ -1284,27 +1471,15 @@ def display_bowling_rankings(bowl_df):
                 x=0.01,
                 bgcolor="rgba(255,255,255,0.8)"
             ),
-            margin=dict(l=20, r=20, t=60, b=40),
-            height=500,
-            plot_bgcolor='rgba(248,249,250,0.8)',
-            paper_bgcolor='rgba(255,255,255,0)',
-            xaxis=dict(
-                showgrid=True, 
-                gridcolor='rgba(240,79,83,0.2)', 
-                gridwidth=1,
-                title_font={'color': '#2c3e50', 'size': 14}
-            ),
-            yaxis=dict(
-                showgrid=True, 
-                gridcolor='rgba(240,79,83,0.2)', 
-                gridwidth=1,
-                autorange="reversed",
-                title_font={'color': '#2c3e50', 'size': 14}
-            )
+            plot_bgcolor='rgba(255,255,255,0)',
+            paper_bgcolor='rgba(255,255,255,0)'
         )
+        fig2.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1, tickmode='linear', dtick=1)
+        fig2.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1, autorange='reversed')
 
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
+@st.cache_data
 @st.cache_data
 def compute_allrounder_rankings(bat_df, bowl_df):
     if bat_df.empty or bowl_df.empty:
@@ -1329,15 +1504,34 @@ def compute_allrounder_rankings(bat_df, bowl_df):
             bowl_df['Team'] = bowl_df['Bowl_Team_y']
         else:
             bowl_df['Team'] = 'Unknown'
-    batting_stats = bat_df.groupby(['Year', 'Name', 'Team', 'Match_Format']).agg(
-        Matches=('File Name', 'nunique'),
-        Batting_Rating=('Batting_Rating', 'sum'),
-        Runs=('Runs', 'sum')
-    ).reset_index()
-    bowling_stats = bowl_df.groupby(['Year', 'Name', 'Match_Format']).agg(
-        Bowling_Rating=('Bowling_Rating', 'sum'),
-        Bowler_Wkts=('Bowler_Wkts', 'sum')
-    ).reset_index()
+    if pl is not None:
+        pb = pl.from_pandas(_sanitize_for_polars(bat_df))
+        pbo = pl.from_pandas(_sanitize_for_polars(bowl_df))
+        batting_stats = (
+            pb.group_by(['Year','Name','Team','Match_Format'])
+              .agg([
+                  pl.col('File Name').n_unique().alias('Matches'),
+                  pl.col('Batting_Rating').sum().alias('Batting_Rating'),
+                  pl.col('Runs').sum().alias('Runs')
+              ])
+        ).to_pandas()
+        bowling_stats = (
+            pbo.group_by(['Year','Name','Match_Format'])
+               .agg([
+                   pl.col('Bowling_Rating').sum().alias('Bowling_Rating'),
+                   pl.col('Bowler_Wkts').sum().alias('Bowler_Wkts')
+               ])
+        ).to_pandas()
+    else:
+        batting_stats = bat_df.groupby(['Year','Name','Team','Match_Format'], observed=True).agg(
+            Matches=('File Name','nunique'),
+            Batting_Rating=('Batting_Rating','sum'),
+            Runs=('Runs','sum')
+        ).reset_index()
+        bowling_stats = bowl_df.groupby(['Year','Name','Match_Format'], observed=True).agg(
+            Bowling_Rating=('Bowling_Rating','sum'),
+            Bowler_Wkts=('Bowler_Wkts','sum')
+        ).reset_index()
     all_rounder_rankings = pd.merge(batting_stats, bowling_stats, on=['Year', 'Name', 'Match_Format'], how='outer').fillna(0)
     all_rounder_rankings['Matches'] = all_rounder_rankings['Matches'].replace(0, 1) # Avoid division by zero
     all_rounder_rankings['Batting_RPG'] = all_rounder_rankings['Batting_Rating'] / all_rounder_rankings['Matches']
@@ -1382,11 +1576,13 @@ def display_allrounder_rankings(bat_df, bowl_df):
     if filtered_ar.empty:
         st.info("No all-rounder data available for the selected filters.")
     else:
+        show_all_ar = st.checkbox("Show all rows (disable large-mode cap)", key="ar_show_all")
+        display_ar = _show_table_with_cap(filtered_ar, name='All-Rounder Rankings', force_full=show_all_ar)
         st.dataframe(
-            filtered_ar,
+            display_ar,
             use_container_width=True,
             hide_index=True,
-            height=min(850, (len(filtered_ar) + 1) * 35),
+            height=min(850, (len(display_ar) + 1) * 35),
             column_config={
                 "Year": st.column_config.NumberColumn("📅 Year", format="%d"),
                 "Rank": st.column_config.NumberColumn("🏆 Rank", format="%d"),
@@ -1402,7 +1598,118 @@ def display_allrounder_rankings(bat_df, bowl_df):
                 "AR_Rating": st.column_config.NumberColumn("📈 AR Rating", format="%.1f")
             }
         )
-        # (Optionally, add your trend graphs here as well)
+        # Download full filtered data
+        st.download_button(
+            "Download full all-rounder results (CSV)",
+            data=filtered_ar.to_csv(index=False).encode('utf-8'),
+            file_name="allrounder_rankings_filtered.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="dl_ar_full"
+        )
+        # All-Rounder Performance Trends (mirroring batting)
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); 
+                           padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        📈 All-Rounder Performance Trends
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                        Rating and ranking trends over time
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        ar_col1, ar_col2 = st.columns(2)
+        # Always chart on the full filtered data (not the capped table)
+        ar_trend = filtered_ar.sort_values('Year')
+        ar_show_legend = True if 'Name' in ar_trend.columns else False
+
+        with ar_col1:
+            ar_fig1 = go.Figure()
+            for player in ar_trend['Name'].unique():
+                for fmt in ar_trend.loc[ar_trend['Name'] == player, 'Match_Format'].unique():
+                    player_data = ar_trend[(ar_trend['Name'] == player) & (ar_trend['Match_Format'] == fmt)]
+                    if player_data.empty:
+                        continue
+                    legend_name = f"{player} • {fmt}"
+                    customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                    ar_fig1.add_trace(go.Scatter(
+                        x=player_data['Year'],
+                        y=player_data['AR_Rating'],
+                        name=legend_name,
+                        mode='lines+markers',
+                        line=dict(width=2),
+                        hovertemplate="Year: %{x}<br>Rating: %{y:.2f}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                        customdata=customdata,
+                        showlegend=ar_show_legend
+                    ))
+            ar_fig1.update_layout(
+                title="Rating Per Year Trends",
+                xaxis_title="Year",
+                yaxis_title="Rating Per Year",
+                hovermode='closest',
+                showlegend=ar_show_legend,
+                autosize=False,
+                margin=dict(l=20, r=20, t=40, b=40, pad=0),
+                height=500,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01,
+                    bgcolor="rgba(255,255,255,0.8)"
+                ),
+                plot_bgcolor='rgba(255,255,255,0)',
+                paper_bgcolor='rgba(255,255,255,0)'
+            )
+            ar_fig1.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1, tickmode='linear', dtick=1)
+            ar_fig1.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+            st.plotly_chart(ar_fig1, use_container_width=True, config={"displayModeBar": False, "responsive": True})
+
+        with ar_col2:
+            ar_fig2 = go.Figure()
+            for player in ar_trend['Name'].unique():
+                for fmt in ar_trend.loc[ar_trend['Name'] == player, 'Match_Format'].unique():
+                    player_data = ar_trend[(ar_trend['Name'] == player) & (ar_trend['Match_Format'] == fmt)]
+                    if player_data.empty:
+                        continue
+                    legend_name = f"{player} • {fmt}"
+                    customdata = np.stack([player_data['Team'].to_numpy(), player_data['Match_Format'].to_numpy()], axis=-1)
+                    ar_fig2.add_trace(go.Scatter(
+                        x=player_data['Year'],
+                        y=player_data['Rank'],
+                        name=legend_name,
+                        mode='lines+markers',
+                        line=dict(width=2),
+                        hovertemplate="Year: %{x}<br>Rank: %{y}<br>Name • Format: " + legend_name + "<br>Team: %{customdata[0]}<extra></extra>",
+                        customdata=customdata,
+                        showlegend=ar_show_legend
+                    ))
+            ar_fig2.update_layout(
+                title="Ranking Trends",
+                xaxis_title="Year",
+                yaxis_title="Rank",
+                hovermode='closest',
+                showlegend=ar_show_legend,
+                autosize=False,
+                margin=dict(l=20, r=20, t=40, b=40, pad=0),
+                height=500,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01,
+                    bgcolor="rgba(255,255,255,0.8)"
+                ),
+                plot_bgcolor='rgba(255,255,255,0)',
+                paper_bgcolor='rgba(255,255,255,0)'
+            )
+            ar_fig2.update_yaxes(autorange='reversed', showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+            ar_fig2.update_xaxes(tickmode='linear', dtick=1, showgrid=True, gridcolor='rgba(128,128,128,0.2)', gridwidth=1)
+            st.plotly_chart(ar_fig2, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 def display_ar_view():
     """Main function to display all rankings views"""
@@ -1442,44 +1749,26 @@ def display_ar_view():
     bat_df = st.session_state['bat_df'].copy()
     bowl_df = st.session_state['bowl_df'].copy()
 
-    def extract_date(text):
-        """Extract date from match description string"""
-        # If already a timestamp/datetime, return as is
-        if isinstance(text, (pd.Timestamp, datetime.datetime)):
-            return text
-            
-        if pd.isna(text):
-            return pd.NaT
-        
-        # Find the last dash and get everything after it
-        if ' - ' in text:
-            date_part = text.split(' - ')[-1].strip()
-        else:
-            date_part = text.strip()
-            
-        # Try parsing with different formats
-        try:
-            # Try the common formats in your data
-            for fmt in ['%d %b %Y', '%d/%m/%Y', '%d %B %Y']:
-                try:
-                    return pd.to_datetime(date_part, format=fmt)
-                except ValueError:
-                    continue
-            # If none of the specific formats work, try general parsing
-            return pd.to_datetime(date_part)
-        except:
-            return pd.NaT
+    def extract_date_series(series: pd.Series) -> pd.Series:
+        """Vectorized parse: if string contains ' - ', take last segment; then to_datetime (dayfirst)."""
+        s = series.copy()
+        # if already datetime, return
+        if pd.api.types.is_datetime64_any_dtype(s):
+            return s
+        s = s.astype('string')
+        parts = s.str.rsplit(' - ', n=1).str[-1].str.strip()
+        return pd.to_datetime(parts, errors='coerce', dayfirst=True)
 
     # Process dates and add Year column with robust date parsing
     if 'Date' in bat_df.columns:
-        bat_df['Date'] = bat_df['Date'].apply(extract_date)
+        bat_df['Date'] = extract_date_series(bat_df['Date'])
         bat_df['Year'] = bat_df['Date'].dt.year
         # Remove any rows where Year is null or 0
         bat_df = bat_df[bat_df['Year'].notna() & (bat_df['Year'] != 0)]
 
     # Process bowling dataframe dates
     if 'Date' in bowl_df.columns:
-        bowl_df['Date'] = bowl_df['Date'].apply(extract_date)
+        bowl_df['Date'] = extract_date_series(bowl_df['Date'])
         bowl_df['Year'] = bowl_df['Date'].dt.year
     
     # Merge with batting years as backup

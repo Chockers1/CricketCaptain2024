@@ -22,8 +22,9 @@ def parse_date(date_str):
 @st.cache_data
 def calculate_elo_ratings(match_df):
     df = match_df.copy()
-    df['Date_Sort'] = df['Date'].apply(parse_date)
-    df_sorted = df.sort_values('Date_Sort')
+    # Fast, vectorized date parsing and sorting
+    df['Date_Sort'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+    df_sorted = df.sort_values('Date_Sort', kind='mergesort')  # stable for cumulative counts
 
     initial_elo = 1000
     elo_ratings = {}
@@ -38,17 +39,19 @@ def calculate_elo_ratings(match_df):
         new_loser_elo = loser_elo + k_factor * ((1 - result) - (1 - expected_win))
         return round(new_winner_elo, 2), round(new_loser_elo, 2)
 
-    df_sorted['Home_Elo_Start'] = 0.0
-    df_sorted['Away_Elo_Start'] = 0.0
-    df_sorted['Home_Elo_End'] = 0.0
-    df_sorted['Away_Elo_End'] = 0.0
-    df_sorted['Match_Number'] = range(1, len(df_sorted) + 1)
+    n = len(df_sorted)
+    home_start = np.empty(n, dtype=np.float64)
+    away_start = np.empty(n, dtype=np.float64)
+    home_end = np.empty(n, dtype=np.float64)
+    away_end = np.empty(n, dtype=np.float64)
+    df_sorted['Match_Number'] = np.arange(1, n + 1)
     df_sorted['Format_Number'] = df_sorted.groupby('Match_Format').cumcount() + 1
 
-    for index, row in df_sorted.iterrows():
-        home_team = row['Home_Team']
-        away_team = row['Away_Team']
-        match_format = row['Match_Format']
+    # Iterate fast using positional index and itertuples
+    for i, row in enumerate(df_sorted.itertuples(index=False)):
+        home_team = row.Home_Team
+        away_team = row.Away_Team
+        match_format = row.Match_Format
 
         if match_format not in elo_ratings:
             elo_ratings[match_format] = {}
@@ -59,23 +62,30 @@ def calculate_elo_ratings(match_df):
         home_elo_start = elo_ratings[match_format][home_team]
         away_elo_start = elo_ratings[match_format][away_team]
 
-        df_sorted.at[index, 'Home_Elo_Start'] = home_elo_start
-        df_sorted.at[index, 'Away_Elo_Start'] = away_elo_start
+        home_start[i] = home_elo_start
+        away_start[i] = away_elo_start
 
-        if row['Home_Win']:
+        # result from home perspective
+        if getattr(row, 'Home_Win'):
             result = 1
-        elif row['Home_Lost']:
+        elif getattr(row, 'Home_Lost'):
             result = 0
         else:
             result = 0.5
 
         new_home_elo, new_away_elo = update_elo(home_elo_start, away_elo_start, k_factor, result)
 
-        df_sorted.at[index, 'Home_Elo_End'] = new_home_elo
-        df_sorted.at[index, 'Away_Elo_End'] = new_away_elo
+        home_end[i] = new_home_elo
+        away_end[i] = new_away_elo
 
         elo_ratings[match_format][home_team] = new_home_elo
         elo_ratings[match_format][away_team] = new_away_elo
+
+    # Assign arrays in one shot
+    df_sorted['Home_Elo_Start'] = home_start
+    df_sorted['Away_Elo_Start'] = away_start
+    df_sorted['Home_Elo_End'] = home_end
+    df_sorted['Away_Elo_End'] = away_end
 
     # Create home and away views
     home_df = df_sorted.rename(columns={
@@ -627,66 +637,28 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 graph_df = filtered_elo_df.copy()
+# Ensure Date is datetime
+graph_df['Date'] = pd.to_datetime(graph_df['Date'], errors='coerce', dayfirst=True)
 
-# Convert Date to datetime
-graph_df['Date'] = pd.to_datetime(graph_df['Date'], format='mixed', dayfirst=True, errors='coerce')
-
-# Create a complete timeline for all format/team combinations
+# Global monthly range
 min_date = graph_df['Date'].min()
 max_date = graph_df['Date'].max()
+all_months = pd.date_range(start=pd.Timestamp(min_date).replace(day=1), end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1), freq='M')
 
-# Get all months in the date range
-all_months = pd.date_range(
-    start=pd.Timestamp(min_date).replace(day=1),
-    end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1),
-    freq='M'
-)
-
-# Create all possible format/team/month combinations
-format_teams = graph_df[['Match_Format', 'Team']].drop_duplicates()
-timeline_data = []
-
-for _, row in format_teams.iterrows():
-    format_name = row['Match_Format']
-    team_name = row['Team']
-    
-    # Get this team's match data
-    team_matches = graph_df[
-        (graph_df['Match_Format'] == format_name) & 
-        (graph_df['Team'] == team_name)
-    ].sort_values('Date')
-    
-    if not team_matches.empty:
-        last_rating = None
-        for month in all_months:
-            # Find matches in this month
-            month_matches = team_matches[
-                (team_matches['Date'].dt.year == month.year) & 
-                (team_matches['Date'].dt.month == month.month)
-            ]
-            
-            if not month_matches.empty:
-                # Use the last rating from this month
-                rating = month_matches.iloc[-1]['Team_Elo_End']
-                last_rating = rating
-            elif last_rating is not None:
-                # Use the last known rating
-                rating = last_rating
-            else:
-                # Use the first rating we'll see
-                first_match = team_matches.iloc[0]
-                rating = first_match['Team_Elo_Start']
-                last_rating = rating
-            
-            timeline_data.append({
-                'Date': month,
-                'Match_Format': format_name,
-                'Team': team_name,
-                'Rating': rating
-            })
-
-# Convert to DataFrame
-timeline_df = pd.DataFrame(timeline_data)
+# Build monthly ratings per (Format, Team) via resample; forward-fill with first start
+timeline_parts = []
+for (fmt, team), g in graph_df.sort_values('Date').groupby(['Match_Format', 'Team'], sort=False):
+    if g.empty:
+        continue
+    # last rating per month from Team_Elo_End
+    s = g.set_index('Date')['Team_Elo_End'].resample('M').last()
+    s = s.reindex(all_months)
+    # fill forward and seed with first start rating for leading NaN
+    first_start = g.iloc[0]['Team_Elo_Start']
+    s = s.ffill().fillna(first_start)
+    part = pd.DataFrame({'Date': s.index, 'Match_Format': fmt, 'Team': team, 'Rating': s.values})
+    timeline_parts.append(part)
+timeline_df = pd.concat(timeline_parts, ignore_index=True) if timeline_parts else pd.DataFrame(columns=['Date','Match_Format','Team','Rating'])
 
 # Create the plot
 fig = go.Figure()
@@ -778,25 +750,9 @@ if 'elo_df' in st.session_state:
 ############===================number 1 per format==============================###############
 if 'elo_df' in st.session_state:
     try:
-        # Create a copy of the DataFrame
+        # Create a copy of the DataFrame and parse dates vectorially
         elo_df = st.session_state['elo_df'].copy()
-        
-        def parse_date(date_str):
-            """Helper function to parse dates in multiple formats"""
-            try:
-                # Try different date formats
-                for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
-                    try:
-                        return pd.to_datetime(date_str, format=fmt).date()  # Added .date() to remove time
-                    except ValueError:
-                        continue
-                # If none of the specific formats work, let pandas try to infer the format
-                return pd.to_datetime(date_str).date()  # Added .date() to remove time
-            except Exception:
-                return pd.NaT
-        
-        # Convert Date to datetime using our parse_date function
-        elo_df['Date'] = elo_df['Date'].apply(parse_date)
+        elo_df['Date'] = pd.to_datetime(elo_df['Date'], errors='coerce', dayfirst=True).dt.date
         
         # Remove any invalid dates
         invalid_dates = elo_df['Date'].isna().sum()
@@ -951,9 +907,9 @@ if 'elo_df' in st.session_state:
         
         if 'All' not in opponent_choice:
             elo_df_highest = elo_df_highest[elo_df_highest['Opponent'].isin(opponent_choice)]
-        
-        # Convert Date to datetime using our parse_date function
-        elo_df_highest['Date'] = elo_df_highest['Date'].apply(parse_date)
+
+        # Convert Date to datetime (vectorized) and drop invalid
+        elo_df_highest['Date'] = pd.to_datetime(elo_df_highest['Date'], errors='coerce', dayfirst=True)
         
         # Remove any invalid dates
         elo_df_highest = elo_df_highest.dropna(subset=['Date'])
@@ -1017,36 +973,24 @@ if 'elo_df' in st.session_state:
                     height=600
                 )
                 
-                # Create summary cards for the top 3 highest ratings overall
+                # Create summary cards for the highest rating per format
                 st.markdown("""
                     <div style="margin: 30px 0;">
-                        <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Top 3 Highest ELO Ratings Ever</h3>
+                        <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Highest ELO by Format</h3>
                     </div>
                 """, unsafe_allow_html=True)
-                
-                # Get the top 3 highest ratings overall
-                top_3_peaks = highest_ratings_df.nlargest(3, 'ELO')
-                
-                # Create cards in a grid layout
-                if not top_3_peaks.empty:
+
+                # Get the highest rating per format
+                idx = highest_ratings_df.groupby('Format')['ELO'].idxmax()
+                top_by_format = highest_ratings_df.loc[idx].sort_values('Format')
+
+                if not top_by_format.empty:
                     cols = st.columns(3)
-                    
-                    for idx, (_, peak) in enumerate(top_3_peaks.iterrows()):
-                        with cols[idx]:
-                            # Get team color for accent
+                    for i, (_, peak) in enumerate(top_by_format.iterrows()):
+                        with cols[i % 3]:
                             team_color = team_colors.get(peak['Team'], '#f04f53')
-                            
-                            # Determine medal color based on ranking
-                            if idx == 0:
-                                medal_color = '#FFD700'  # Gold
-                                medal_emoji = '🥇'
-                            elif idx == 1:
-                                medal_color = '#C0C0C0'  # Silver
-                                medal_emoji = '🥈'
-                            else:
-                                medal_color = '#cd7f32'  # Bronze
-                                medal_emoji = '🥉'
-                            
+                            medal_color = '#FFD700'
+                            medal_emoji = '🏆'
                             st.markdown(f"""
                                 <div style="background: linear-gradient(135deg, {medal_color} 0%, #FFA500 100%); 
                                             padding: 15px; border-radius: 12px; box-shadow: 0 6px 20px rgba(255,215,0,0.3); 
