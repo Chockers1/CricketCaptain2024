@@ -297,6 +297,15 @@ def compute_team_bowling_season(df):
     bowl_team_season_df['Strike Rate'] = (bowl_team_season_df['Balls'] / wickets_safe).round(2).fillna(0)
     bowl_team_season_df['Economy Rate'] = (bowl_team_season_df['Runs'] / overs_safe).round(2).fillna(0)
     bowl_team_season_df['Avg'] = (bowl_team_season_df['Runs'] / wickets_safe).round(2).fillna(0)
+    # Add 5W and 10W counts per team-season
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Bowl_Team', 'Year']).size().reset_index(name='5W')
+    bowl_team_season_df = bowl_team_season_df.merge(five_wickets, on=['Bowl_Team', 'Year'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Bowl_Team', 'Year', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Bowl_Team', 'Year']).size().reset_index(name='10W')
+    bowl_team_season_df = bowl_team_season_df.merge(ten_wickets, on=['Bowl_Team', 'Year'], how='left').fillna({'10W': 0})
+    bowl_team_season_df['5W'] = bowl_team_season_df['5W'].astype(int)
+    bowl_team_season_df['10W'] = bowl_team_season_df['10W'].astype(int)
+    bowl_team_season_df['WPM'] = (bowl_team_season_df['Wickets'] / bowl_team_season_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
     return bowl_team_season_df.sort_values(by=['Year', 'Avg'], ascending=[False, True])
 
 @st.cache_data
@@ -314,6 +323,21 @@ def compute_team_bowling_opponent(df):
     opponent_summary['Strike Rate'] = (opponent_summary['Balls'] / wickets_safe).round(2).fillna(0)
     opponent_summary['Economy Rate'] = (opponent_summary['Runs'] / overs_safe).round(2).fillna(0)
     opponent_summary['Avg'] = (opponent_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    # Add 5W and 10W counts per team-opponent
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Bowl_Team', 'Bat_Team']).size().reset_index(name='5W')
+    opponent_summary = opponent_summary.merge(
+        five_wickets.rename(columns={'Bat_Team': 'Opposition'}),
+        on=['Bowl_Team', 'Opposition'], how='left'
+    ).fillna({'5W': 0})
+    match_wickets = df.groupby(['Bowl_Team', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Bowl_Team', 'Bat_Team']).size().reset_index(name='10W')
+    opponent_summary = opponent_summary.merge(
+        ten_wickets.rename(columns={'Bat_Team': 'Opposition'}),
+        on=['Bowl_Team', 'Opposition'], how='left'
+    ).fillna({'10W': 0})
+    opponent_summary['5W'] = opponent_summary['5W'].astype(int)
+    opponent_summary['10W'] = opponent_summary['10W'].astype(int)
+    opponent_summary['WPM'] = (opponent_summary['Wickets'] / opponent_summary['Matches'].replace(0, np.nan)).round(2).fillna(0)
     return opponent_summary.sort_values(by=['Bowl_Team', 'Avg'])
 
 @st.cache_data
@@ -331,6 +355,21 @@ def compute_team_bowling_location(df):
     location_summary['Strike Rate'] = (location_summary['Balls'] / wickets_safe).round(2).fillna(0)
     location_summary['Economy Rate'] = (location_summary['Runs'] / overs_safe).round(2).fillna(0)
     location_summary['Avg'] = (location_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    # Add 5W and 10W counts per team-location
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Bowl_Team', 'Home_Team']).size().reset_index(name='5W')
+    location_summary = location_summary.merge(
+        five_wickets.rename(columns={'Bowl_Team': 'Team', 'Home_Team': 'Location'}),
+        on=['Team', 'Location'], how='left'
+    ).fillna({'5W': 0})
+    match_wickets = df.groupby(['Bowl_Team', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Bowl_Team', 'Home_Team']).size().reset_index(name='10W')
+    location_summary = location_summary.merge(
+        ten_wickets.rename(columns={'Bowl_Team': 'Team', 'Home_Team': 'Location'}),
+        on=['Team', 'Location'], how='left'
+    ).fillna({'10W': 0})
+    location_summary['5W'] = location_summary['5W'].astype(int)
+    location_summary['10W'] = location_summary['10W'].astype(int)
+    location_summary['WPM'] = (location_summary['Wickets'] / location_summary['Matches'].replace(0, np.nan)).round(2).fillna(0)
     return location_summary.sort_values(by=['Team', 'Avg'])
 
 @st.cache_data
@@ -348,6 +387,15 @@ def compute_team_bowling_position(df):
     position_summary['Strike Rate'] = (position_summary['Balls'] / wickets_safe).round(2).fillna(0)
     position_summary['Economy Rate'] = (position_summary['Runs'] / overs_safe).round(2).fillna(0)
     position_summary['Avg'] = (position_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    # Add 5W and 10W counts per team-position
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Bowl_Team', 'Position']).size().reset_index(name='5W')
+    position_summary = position_summary.merge(five_wickets, on=['Bowl_Team', 'Position'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Bowl_Team', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Bowl_Team', 'Position']).size().reset_index(name='10W')
+    position_summary = position_summary.merge(ten_wickets, on=['Bowl_Team', 'Position'], how='left').fillna({'10W': 0})
+    position_summary['5W'] = position_summary['5W'].astype(int)
+    position_summary['10W'] = position_summary['10W'].astype(int)
+    position_summary['WPM'] = (position_summary['Wickets'] / position_summary['Matches'].replace(0, np.nan)).round(2).fillna(0)
     return position_summary.sort_values(by=['Bowl_Team', 'Position'])
 
 def parse_date(date_str):
@@ -1050,7 +1098,7 @@ def display_team_view():
 ###-------------------------------------BOWLING STATS-------------------------------------###
 
         # Helper to standardize bowling display columns across tabs to match Career order
-        def _standardize_bowling_display(df: pd.DataFrame, context_cols: list[str], keep_remaining: bool = False) -> pd.DataFrame:
+    def _standardize_bowling_display(df: pd.DataFrame, context_cols: list[str], keep_remaining: bool = False) -> pd.DataFrame:
             if df is None or df.empty:
                 return df
             display_df = df.copy()
@@ -1068,16 +1116,19 @@ def display_team_view():
                         display_df[col] = 0
                     else:
                         display_df[col] = 0.0 if display_df.shape[0] > 0 else []
-            # Keep only existing columns in the specified order
-            ordered_context = [c for c in context_cols if c in display_df.columns]
+            # Keep only existing columns in the specified order (ensure Team stays first)
+            ordered_context = []
+            if 'Team' in display_df.columns:
+                ordered_context.append('Team')
+            ordered_context.extend([c for c in context_cols if c in display_df.columns and c != 'Team'])
             ordered_metrics = [c for c in metric_order if c in display_df.columns]
             if keep_remaining:
                 remaining = [c for c in display_df.columns if c not in ordered_context + ordered_metrics]
             else:
                 remaining = []
-            # If we want exact Career columns, ignore context and remaining when keep_remaining=False
+            # In strict mode return requested context (Team first) + metrics only
             if not keep_remaining:
-                return display_df[['Team'] + metric_order]
+                return display_df[ordered_context + metric_order]
             return display_df[ordered_context + ordered_metrics + remaining]
 
     # Bowling Statistics Tab
@@ -1170,7 +1221,7 @@ def display_team_view():
                 st.info("No position bowling stats to display.")
             else:
                 # Match career columns exactly (remove Position in visible table)
-                team_position_display = _standardize_bowling_display(team_position_summary, ['Team'], keep_remaining=False)
+                team_position_display = _standardize_bowling_display(team_position_summary, ['Team', 'Position'], keep_remaining=False)
                 # Sort bowling position by Wickets descending
                 if 'Wickets' in team_position_display.columns:
                     team_position_display = team_position_display.sort_values(by='Wickets', ascending=False)
