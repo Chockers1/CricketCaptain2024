@@ -760,8 +760,22 @@ def display_team_view():
                     """,
                     unsafe_allow_html=True
                 )
+                # Prepare display dataframe: remove team-wide columns and position Avg/SR after Runs
+                cols_to_drop = ['Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Team Avg', 'Team SR']
+                display_df = bat_team_career_df.drop(columns=cols_to_drop, errors='ignore')
+
+                # Reorder columns to place Avg and SR just after Runs (keeping Team as the first/pinned column)
+                priority_order = ['Team', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'Avg', 'SR']
+                # Keep only columns that exist
+                priority_order = [c for c in priority_order if c in display_df.columns]
+                remaining_cols = [c for c in display_df.columns if c not in priority_order]
+                ordered_cols = priority_order + remaining_cols
+                display_df = display_df[ordered_cols]
+                # Sort batting career by Runs descending
+                if 'Runs' in display_df.columns:
+                    display_df = display_df.sort_values(by='Runs', ascending=False)
                 st.dataframe(
-                    bat_team_career_df,
+                    display_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -809,8 +823,19 @@ def display_team_view():
                 st.info("No team season batting statistics to display for the current selection.")
             else:
                 st.markdown('<div class="season-header">📅 Season Statistics</div>', unsafe_allow_html=True)
+                # Prepare display dataframe: remove team-wide columns and position Avg/SR after Runs
+                cols_to_drop = ['Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Team Avg', 'Team SR']
+                season_display_df = bat_team_season_df.drop(columns=cols_to_drop, errors='ignore')
+                # Reorder columns with Year included early
+                season_priority = ['Team', 'Year', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'Avg', 'SR']
+                season_priority = [c for c in season_priority if c in season_display_df.columns]
+                season_remaining = [c for c in season_display_df.columns if c not in season_priority]
+                season_display_df = season_display_df[season_priority + season_remaining]
+                # Sort batting season by Runs descending
+                if 'Runs' in season_display_df.columns:
+                    season_display_df = season_display_df.sort_values(by='Runs', ascending=False)
                 st.dataframe(
-                    bat_team_season_df,
+                    season_display_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -852,8 +877,18 @@ def display_team_view():
                 st.info("No team opposition batting statistics to display for the current selection.")
             else:
                 st.markdown('<div class="opposition-header">⚔️ Opposition Statistics</div>', unsafe_allow_html=True)
+                # Prepare display dataframe: remove team-wide columns and position Avg/SR after Runs
+                cols_to_drop = ['Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Team Avg', 'Team SR']
+                opp_display_df = bat_team_opponent_df.drop(columns=cols_to_drop, errors='ignore')
+                opp_priority = ['Team', 'Opponent', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'Avg', 'SR']
+                opp_priority = [c for c in opp_priority if c in opp_display_df.columns]
+                opp_remaining = [c for c in opp_display_df.columns if c not in opp_priority]
+                opp_display_df = opp_display_df[opp_priority + opp_remaining]
+                # Sort batting opposition by Runs descending
+                if 'Runs' in opp_display_df.columns:
+                    opp_display_df = opp_display_df.sort_values(by='Runs', ascending=False)
                 st.dataframe(
-                    bat_team_opponent_df,
+                    opp_display_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -899,8 +934,18 @@ def display_team_view():
                 st.info("No team location batting statistics to display for the current selection.")
             else:
                 st.markdown('<div class="location-header">🌍 Location Statistics</div>', unsafe_allow_html=True)
+                # Prepare display dataframe: remove team-wide columns and position Avg/SR after Runs
+                cols_to_drop = ['Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Team Avg', 'Team SR']
+                loc_display_df = bat_team_location_df.drop(columns=cols_to_drop, errors='ignore')
+                loc_priority = ['Team', 'Location', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'Avg', 'SR']
+                loc_priority = [c for c in loc_priority if c in loc_display_df.columns]
+                loc_remaining = [c for c in loc_display_df.columns if c not in loc_priority]
+                loc_display_df = loc_display_df[loc_priority + loc_remaining]
+                # Sort batting location by Runs descending
+                if 'Runs' in loc_display_df.columns:
+                    loc_display_df = loc_display_df.sort_values(by='Runs', ascending=False)
                 st.dataframe(
-                    bat_team_location_df,
+                    loc_display_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -946,8 +991,18 @@ def display_team_view():
                 st.info("No team position batting statistics to display for the current selection.")
             else:
                 st.markdown('<div class="position-header">📍 Position Statistics</div>', unsafe_allow_html=True)
+                # Prepare display dataframe: remove team-wide columns and position Avg/SR after Runs
+                cols_to_drop = ['Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Team Avg', 'Team SR']
+                pos_display_df = bat_team_position_df.drop(columns=cols_to_drop, errors='ignore')
+                pos_priority = ['Team', 'Position', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 'Runs', 'Avg', 'SR']
+                pos_priority = [c for c in pos_priority if c in pos_display_df.columns]
+                pos_remaining = [c for c in pos_display_df.columns if c not in pos_priority]
+                pos_display_df = pos_display_df[pos_priority + pos_remaining]
+                # Sort batting position by Runs descending
+                if 'Runs' in pos_display_df.columns:
+                    pos_display_df = pos_display_df.sort_values(by='Runs', ascending=False)
                 st.dataframe(
-                    bat_team_position_df,
+                    pos_display_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -994,6 +1049,37 @@ def display_team_view():
 
 ###-------------------------------------BOWLING STATS-------------------------------------###
 
+        # Helper to standardize bowling display columns across tabs to match Career order
+        def _standardize_bowling_display(df: pd.DataFrame, context_cols: list[str], keep_remaining: bool = False) -> pd.DataFrame:
+            if df is None or df.empty:
+                return df
+            display_df = df.copy()
+            # Normalize team column name
+            if 'Bowl_Team' in display_df.columns:
+                display_df.rename(columns={'Bowl_Team': 'Team'}, inplace=True)
+            # Metric order to mirror Career tab
+            metric_order = ['Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets',
+                            'Strike Rate', 'Economy Rate', 'Avg', '5W', '10W', 'WPM']
+            # Ensure all metric columns exist so every tab has identical visible columns
+            for col in metric_order:
+                if col not in display_df.columns:
+                    # Default values: integers for 5W/10W, floats for others
+                    if col in ['5W', '10W']:
+                        display_df[col] = 0
+                    else:
+                        display_df[col] = 0.0 if display_df.shape[0] > 0 else []
+            # Keep only existing columns in the specified order
+            ordered_context = [c for c in context_cols if c in display_df.columns]
+            ordered_metrics = [c for c in metric_order if c in display_df.columns]
+            if keep_remaining:
+                remaining = [c for c in display_df.columns if c not in ordered_context + ordered_metrics]
+            else:
+                remaining = []
+            # If we want exact Career columns, ignore context and remaining when keep_remaining=False
+            if not keep_remaining:
+                return display_df[['Team'] + metric_order]
+            return display_df[ordered_context + ordered_metrics + remaining]
+
     # Bowling Statistics Tab
     with tab2:
         bowling_subtabs = st.tabs(["🎳 Career", "📅 Season", "⚔️ Opposition", "🌍 Location", "👥 Team Position"])
@@ -1004,7 +1090,18 @@ def display_team_view():
             if bowl_team_df.empty:
                 st.info("No career bowling stats to display.")
             else:
-                st.dataframe(bowl_team_df, use_container_width=True, hide_index=True)
+                bowl_team_df_display = _standardize_bowling_display(bowl_team_df, ['Team'], keep_remaining=False)
+                # Sort bowling career by Wickets descending
+                if 'Wickets' in bowl_team_df_display.columns:
+                    bowl_team_df_display = bowl_team_df_display.sort_values(by='Wickets', ascending=False)
+                st.dataframe(
+                    bowl_team_df_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Team": st.column_config.Column("Team", pinned=True)
+                    }
+                )
         # Season Stats Subtab
         with bowling_subtabs[1]:
             bowl_team_season_df = compute_team_bowling_season(filtered_bowl_df)
@@ -1012,7 +1109,19 @@ def display_team_view():
             if bowl_team_season_df.empty:
                 st.info("No season bowling stats to display.")
             else:
-                st.dataframe(bowl_team_season_df, use_container_width=True, hide_index=True)
+                # Match career columns exactly (remove Year in visible table)
+                bowl_team_season_display = _standardize_bowling_display(bowl_team_season_df, ['Team'], keep_remaining=False)
+                # Sort bowling season by Wickets descending
+                if 'Wickets' in bowl_team_season_display.columns:
+                    bowl_team_season_display = bowl_team_season_display.sort_values(by='Wickets', ascending=False)
+                st.dataframe(
+                    bowl_team_season_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Team": st.column_config.Column("Team", pinned=True)
+                    }
+                )
         # Opposition Stats Subtab
         with bowling_subtabs[2]:
             bowl_team_opponent_df = compute_team_bowling_opponent(filtered_bowl_df)
@@ -1020,7 +1129,19 @@ def display_team_view():
             if bowl_team_opponent_df.empty:
                 st.info("No opposition bowling stats to display.")
             else:
-                st.dataframe(bowl_team_opponent_df, use_container_width=True, hide_index=True)
+                # Match career columns exactly (remove Opposition in visible table)
+                bowl_team_opponent_display = _standardize_bowling_display(bowl_team_opponent_df, ['Team'], keep_remaining=False)
+                # Sort bowling opposition by Wickets descending
+                if 'Wickets' in bowl_team_opponent_display.columns:
+                    bowl_team_opponent_display = bowl_team_opponent_display.sort_values(by='Wickets', ascending=False)
+                st.dataframe(
+                    bowl_team_opponent_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Team": st.column_config.Column("Team", pinned=True)
+                    }
+                )
         # Location Stats Subtab
         with bowling_subtabs[3]:
             location_summary = compute_team_bowling_location(filtered_bowl_df)
@@ -1028,7 +1149,19 @@ def display_team_view():
             if location_summary.empty:
                 st.info("No location bowling stats to display.")
             else:
-                st.dataframe(location_summary, use_container_width=True, hide_index=True)
+                # Match career columns exactly (remove Location in visible table)
+                location_display = _standardize_bowling_display(location_summary, ['Team'], keep_remaining=False)
+                # Sort bowling location by Wickets descending
+                if 'Wickets' in location_display.columns:
+                    location_display = location_display.sort_values(by='Wickets', ascending=False)
+                st.dataframe(
+                    location_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Team": st.column_config.Column("Team", pinned=True)
+                    }
+                )
         # Team Position Stats Subtab
         with bowling_subtabs[4]:
             team_position_summary = compute_team_bowling_position(filtered_bowl_df)
@@ -1036,7 +1169,19 @@ def display_team_view():
             if team_position_summary.empty:
                 st.info("No position bowling stats to display.")
             else:
-                st.dataframe(team_position_summary, use_container_width=True, hide_index=True)
+                # Match career columns exactly (remove Position in visible table)
+                team_position_display = _standardize_bowling_display(team_position_summary, ['Team'], keep_remaining=False)
+                # Sort bowling position by Wickets descending
+                if 'Wickets' in team_position_display.columns:
+                    team_position_display = team_position_display.sort_values(by='Wickets', ascending=False)
+                st.dataframe(
+                    team_position_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Team": st.column_config.Column("Team", pinned=True)
+                    }
+                )
 
     # Rank Tab - Combined Season Stats
     with tab3:
@@ -1082,9 +1227,10 @@ def display_team_view():
             # Call the cached ranking function
             combined_df = compute_team_rankings(bat_team_season_df, bowl_team_season_df)
             
-            # Display the styled dataframe
+            # Display the styled dataframe sorted by Performance Index (desc)
+            combined_df_display = combined_df.sort_values('Performance Index', ascending=False)
             st.dataframe(
-                combined_df,  # or whatever your rankings DataFrame variable is
+                combined_df_display,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
@@ -1560,6 +1706,7 @@ def compute_team_rankings(bat_season_df, bowl_season_df):
         'SR_x': 'Batting SR',
         'Avg_y': 'Bowling Avg',
         'SR_y': 'Bowling SR',
+        'Strike Rate': 'Bowling SR',
         'Matches_x': 'Bat_Matches',
         'Matches_y': 'Bowl_Matches',
         'Runs_x': 'Runs',
@@ -1602,6 +1749,8 @@ def compute_team_rankings(bat_season_df, bowl_season_df):
     if 'Bowling SR' not in combined_df.columns or combined_df['Bowling SR'].isnull().all():
         if 'SR_y' in combined_df.columns:
             combined_df['Bowling SR'] = combined_df['SR_y']
+        elif 'Strike Rate' in combined_df.columns:
+            combined_df['Bowling SR'] = combined_df['Strike Rate']
         elif 'Bowl_SR' in combined_df.columns:
             combined_df['Bowling SR'] = combined_df['Bowl_SR']
         else:
