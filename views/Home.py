@@ -7,9 +7,6 @@ import traceback
 import pandas as pd
 import tempfile
 import time
-import zipfile
-import io
-import gc # Import garbage collector
 
 # Import your original, working processing functions (NO CHANGES NEEDED HERE)
 # Make sure these files (match.py, etc.) are in your GitHub repo.
@@ -18,49 +15,15 @@ from game import process_game_stats
 from bat import process_bat_stats
 from bowl import process_bowl_stats
 
-# --- HELPER FUNCTIONS ---
+# --- CONFIGURATION (NEW) ---
+# Calibrated based on user feedback (1664 files took ~112s).
+# This value represents the average processing time per scorecard in seconds.
+# You can adjust this value if you find the estimate is consistently off
+# on your machine. A lower value (e.g., 0.06) means a faster estimate.
+PROCESSING_TIME_PER_FILE = 0.065
 
-def optimize_df_memory(df, verbose=False):
-    """
-    Iterates through all columns of a DataFrame and modifies data types
-    to reduce memory usage. This is CRITICAL for large datasets.
-    """
-    start_mem = df.memory_usage().sum() / 1024**2
-    if verbose: print(f'Memory usage before optimization: {start_mem:.2f} MB')
 
-    for col in df.columns:
-        col_type = df[col].dtype
-        if col_type != object and col_type.name != 'category' and 'datetime' not in col_type.name:
-            c_min = df[col].min()
-            c_max = df[col].max()
-            if str(col_type)[:3] == 'int':
-                if pd.isna(c_min) or pd.isna(c_max): continue
-                if c_min > 0 and c_max < 255:
-                    df[col] = df[col].astype('uint8')
-                elif c_min > -128 and c_max < 128:
-                    df[col] = df[col].astype('int8')
-                elif c_min > -32768 and c_max < 32768:
-                    df[col] = df[col].astype('int16')
-                elif c_min > -2147483648 and c_max < 2147483648:
-                    df[col] = df[col].astype('int32')
-                else:
-                    df[col] = df[col].astype('int64')
-            else:
-                if pd.isna(c_min) or pd.isna(c_max): continue
-                if c_min > -3.4e38 and c_max < 3.4e38:
-                    df[col] = df[col].astype('float32')
-                else:
-                    df[col] = df[col].astype('float64')
-        elif col_type == 'object':
-            # Convert to category if the number of unique values is less than 50%
-            if len(df[col].unique()) / len(df[col]) < 0.5:
-                df[col] = df[col].astype('category')
-
-    end_mem = df.memory_usage().sum() / 1024**2
-    if verbose: print(f'Memory usage after optimization: {end_mem:.2f} MB')
-    if verbose: print(f'Decreased by {100 * (start_mem - end_mem) / start_mem:.1f}%')
-    return df
-
+# --- HELPER FUNCTIONS (FROM YOUR ORIGINAL FILE) ---
 def process_duplicates(bat_df):
     """Your original duplicate processing logic."""
     # (Your original, working code for this function goes here. No changes needed.)
@@ -182,33 +145,44 @@ def process_zip_data(_uploaded_file_bytes):
 def show_processing_results(total_files, duplicates_result, processing_time=None):
     # Your original function here...
     time_text = f"{processing_time:.1f} seconds" if processing_time and processing_time < 60 else f"{int(processing_time // 60)}m {processing_time % 60:.1f}s"
-    
-    st.markdown(f"""
+
+    st.markdown(
+        f"""
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 15px; text-align: center; margin: 20px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
             <h2 style="color: white; margin: 0;">🎉 Processing Complete!</h2>
             <p style="color: white; margin: 10px 0; font-size: 18px;">Successfully processed {total_files} scorecards in {time_text}</p>
             <p style="color: white; margin: 5px 0; font-size: 14px; opacity: 0.9;">Your cricket data is ready to explore!</p>
         </div>
-    """, unsafe_allow_html=True)
-    
+        """,
+        unsafe_allow_html=True,
+    )
+
     if not duplicates_result['has_duplicates']:
-        st.markdown("""
+        st.markdown(
+            """
             <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0; box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
                 <h3 style="color: white; margin: 0;">✅ Data Quality Check</h3>
                 <p style="color: white; margin: 10px 0;">Excellent! No duplicate players detected. Your data is clean and ready for analysis.</p>
             </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
     else:
-        st.markdown("""
+        st.markdown(
+            """
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 20px; border-radius: 15px; text-align: center; margin: 20px 0; box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
                 <h3 style="color: white; margin: 0;">⚠️ Duplicate Players Detected</h3>
                 <p style="color: white; margin: 10px 0;"><strong>Quick Fix:</strong> In Cricket Captain, edit player profiles and add initials to distinguish players with similar names.</p>
             </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
         if not duplicates_result['multi_team'].empty:
-            st.markdown("### 🔄 Multi-Team Players"); st.dataframe(duplicates_result['multi_team'], use_container_width=True)
+            st.markdown("### 🔄 Multi-Team Players")
+            st.dataframe(duplicates_result['multi_team'], use_container_width=True)
         if not duplicates_result['team_duplicates'].empty:
-            st.markdown("### 👥 Team Duplicates"); st.dataframe(duplicates_result['team_duplicates'], use_container_width=True)
+            st.markdown("### 👥 Team Duplicates")
+            st.dataframe(duplicates_result['team_duplicates'], use_container_width=True)
 
 
 def show_error(message, traceback_info=None):
@@ -222,11 +196,66 @@ def show_error(message, traceback_info=None):
     if traceback_info:
         with st.expander("🔧 Technical Details"): st.code(traceback_info)
 
+def load_data(uploaded_files):
+    """The reliable data loading engine that uses your original scripts and UI."""
+    total_files = len(uploaded_files)
+    start_time = time.time()
+    
+    progress_container = st.container()
+    with progress_container:
+        st.markdown("""
+            <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px; margin: 20px 0;">
+                <h3 style="color: white; margin: 0; text-align: center;">🏏 Processing Cricket Data</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+    
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            status_text.text(f"📁 Preparing {total_files} files...")
+            for i, uploaded_file in enumerate(uploaded_files):
+                file_path = os.path.join(temp_dir, uploaded_file.name)
+                with open(file_path, 'wb') as f: f.write(uploaded_file.getbuffer())
+                progress_bar.progress((i + 1) / total_files * 0.2)
+            
+            status_text.text("🔄 Processing match data..."); progress_bar.progress(0.3)
+            match_df = process_match_data(temp_dir)
+            if match_df is None or match_df.empty: raise ValueError("match.py failed to produce data.")
 
-# --- MAIN APP UI & LOGIC ---
+            status_text.text("📊 Processing game statistics..."); progress_bar.progress(0.5)
+            game_df = process_game_stats(temp_dir, match_df)
+            if game_df is None or game_df.empty: raise ValueError("game.py failed to produce data.")
+            
+            status_text.text("🎯 Processing bowling statistics..."); progress_bar.progress(0.7)
+            bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
+            
+            status_text.text("🏏 Processing batting statistics..."); progress_bar.progress(0.9)
+            bat_df = process_bat_stats(temp_dir, game_df, match_df)
+            if bat_df is None or bat_df.empty: raise ValueError("bat.py failed to produce data.")
 
-# Your entire page styling and markdown sections go here...
-# ... (copy-paste your st.markdown blocks for the title, header, instructions, etc.)
+            status_text.text("🔍 Checking for duplicates..."); progress_bar.progress(0.95)
+            duplicates_result = process_duplicates(bat_df)
+
+            st.session_state['match_df'] = match_df
+            st.session_state['game_df'] = game_df
+            st.session_state['bowl_df'] = bowl_df
+            st.session_state['bat_df'] = bat_df
+            st.session_state['data_loaded'] = True
+            
+            progress_bar.progress(1.0)
+            end_time = time.time()
+            
+            progress_container.empty() 
+            show_processing_results(total_files, duplicates_result, end_time - start_time)
+            st.info("Navigate to other views from the sidebar to see your stats.")
+
+    except Exception as e:
+        progress_container.empty()
+        show_error(f"A critical error occurred during processing: {e}", traceback.format_exc())
+
+# --- UI & PAGE LOGIC (YOUR FULL, ORIGINAL UI) ---
+
 st.markdown("""
 <style>
     .main > div { padding-top: 2rem; }
@@ -276,8 +305,8 @@ st.markdown("""
 
 st.markdown("""
     <div style="background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
-        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.24</span><br>
-        <span style="color: white; font-size: 16px;">New Team Rankings scatter charts + Match Impact breakdown by win/loss/draw for batting performance insights</span>
+        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.23</span><br>
+        <span style="color: white; font-size: 16px;">25% faster scorecard loading and up to 75% speed boost for data-heavy tabs with smart caching for batting and bowling tabs</span>
     </div>
 """, unsafe_allow_html=True)
 
@@ -305,142 +334,45 @@ with st.expander("📋 How to Use This Dashboard", expanded=False):
     st.markdown("##### 📂 Save Folder Locations:")
     st.markdown("- **Windows:** `C:\\Users\\[USERNAME]\\AppData\\Roaming\\Childish Things\\Cricket Captain 2025`")
     st.markdown("- **Mac:** `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`")
+    st.markdown("**Step 4:** Use the file browser below to select your .txt scorecard files")
+    st.caption("💡 Tip: Select all files with Ctrl+A (Windows) or Cmd+A (Mac)")
+    st.markdown("**Step 5:** Click 'Process Scorecards' and explore your data in the various tabs")
 
+st.markdown("### 📁 Upload Your Scorecard Files")
+uploaded_files = st.file_uploader(
+    "Select your Cricket Captain 2025 scorecard files (.txt)",
+    type=['txt'], accept_multiple_files=True,
+    help="Browse and select multiple .txt files from your Cricket Captain saves folder"
+)
 
-st.markdown("### 📁 Upload Your Scorecards")
+if uploaded_files:
+    # --- UPDATED CALCULATION ---
+    # Use the more accurate constant defined at the top of the file
+    estimated_time = len(uploaded_files) * PROCESSING_TIME_PER_FILE
+    
+    # Improved display logic for the time estimate
+    if estimated_time < 60:
+        time_estimate_str = f"~{max(1, round(estimated_time))} seconds" # Show at least 1 second
+    else:
+        minutes = int(estimated_time // 60)
+        seconds = int(estimated_time % 60)
+        time_estimate_str = f"~{minutes}m {seconds}s" if minutes > 0 else f"~{seconds}s"
 
-# Initialize session state to manage the UI flow
-if 'upload_choice' not in st.session_state:
-    st.session_state.upload_choice = None
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
+            <strong>📊 Files Selected:</strong> {len(uploaded_files)} scorecard files ready for processing<br>
+            <strong>⏱️ Estimated Time:</strong> {time_estimate_str}
+        </div>
+    """, unsafe_allow_html=True)
 
-# --- Step 1: Show Selection Cards ---
-if st.session_state.upload_choice is None:
-    st.markdown("##### **Step 1:** Choose your upload method", help="Select the option that matches the number of files you have.")
-    col1, col2 = st.columns(2)
-    with col1:
-        with st.container():
-            st.markdown(
-                """
-                <div class="selection-card">
-                    <h3>📂 Small Batch</h3>
-                    <p>Best for a few seasons or <strong>fewer than 1500</strong> individual scorecard files.</p>
-                </div>
-                """, unsafe_allow_html=True
-            )
-            if st.button("Select Small Batch", use_container_width=True, key="small_batch_btn"):
-                st.session_state.upload_choice = 'small'
-                st.session_state.upload_mode = 'small' # <-- ADD THIS LINE
-                st.rerun()
-    with col2:
-        with st.container():
-            st.markdown(
-                """
-                <div class="selection-card">
-                    <h3>📦 Large Batch (ZIP)</h3>
-                    <p><strong>Recommended.</strong> Required for long-term saves or <strong>more than 1500</strong> files.</p>
-                </div>
-                """, unsafe_allow_html=True
-            )
-            if st.button("Select Large Batch (ZIP)", use_container_width=True, key="large_batch_btn"):
-                st.session_state.upload_choice = 'large'
-                st.session_state.upload_mode = 'large' # <-- ADD THIS LINE
-                st.rerun()
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    if st.button("🚀 Process Scorecards", use_container_width=True):
+        if uploaded_files:
+            load_data(uploaded_files)
+        else:
+            st.warning("⚠️ Please select your scorecard files first")
 
-# --- Step 2: Show the Correct File Uploader ---
-else:
-    uploaded_files = None
-    if st.session_state.upload_choice == 'small':
-        st.markdown("##### **Step 2:** Upload your .txt files")
-        uploaded_files = st.file_uploader(
-            "Select all your .txt scorecard files",
-            type=['txt'],
-            accept_multiple_files=True
-        )
-    elif st.session_state.upload_choice == 'large':
-        st.markdown("##### **Step 2:** Upload your .zip file")
-        uploaded_files = st.file_uploader(
-            "Select a single ZIP file containing your scorecards",
-            type=['zip'],
-            accept_multiple_files=False
-        )
-
-    # Button to go back and change the method
-    if st.button("‹ Change Upload Method"):
-        st.session_state.upload_choice = None
-        st.rerun()
-
-    # --- Step 3: Processing Logic ---
-    if uploaded_files:
-        if isinstance(uploaded_files, list) and len(uploaded_files) > 0:
-            st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
-                    <strong>📂 Files Selected:</strong> {len(uploaded_files)} .txt files<br>
-                    <strong>Ready to process!</strong>
-                </div>
-            """, unsafe_allow_html=True)
-        elif not isinstance(uploaded_files, list):
-             st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
-                    <strong>📦 ZIP File Selected:</strong> {uploaded_files.name}<br>
-                    <strong>Ready to process!</strong>
-                </div>
-            """, unsafe_allow_html=True)
-
-        col1_proc, col2_proc, col3_proc = st.columns([1, 2, 1])
-        with col2_proc:
-            if st.button("🚀 Process Scorecards", use_container_width=True):
-                # ADD THIS CHECK to be safe
-                if st.session_state.upload_choice == 'small':
-                    st.session_state.upload_mode = 'small'
-                elif st.session_state.upload_choice == 'large':
-                    st.session_state.upload_mode = 'large'
-                
-                zip_bytes_to_process = None
-
-                # Prepare the zip bytes based on the upload method
-                if st.session_state.upload_choice == 'small':
-                    if len(uploaded_files) > 1500:
-                        st.error("❌ Too many files selected. Please use the 'Large Batch (ZIP)' method for more than 1500 files.")
-                    else:
-                        zip_buffer = io.BytesIO()
-                        uploaded_names = []
-                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                            for file in uploaded_files:
-                                zf.writestr(file.name, file.getvalue())
-                                uploaded_names.append(file.name)
-                        st.info(f"Debug: Files zipped for processing: {uploaded_names}")
-                        zip_bytes_to_process = zip_buffer.getvalue()
-                
-                elif st.session_state.upload_choice == 'large':
-                    zip_bytes_to_process = uploaded_files.getvalue()
-
-                # Process the data
-                if zip_bytes_to_process:
-                    start_time = time.time()
-                    with st.spinner("Analyzing thousands of scorecards... this might take a minute for the first run."):
-                        results = process_zip_data(zip_bytes_to_process)
-                    end_time = time.time()
-
-                    if results.get("error"):
-                        show_error(results["error"], results.get("traceback"))
-                    else:
-                        st.session_state['match_df'] = results['match_df']
-                        st.session_state['game_df'] = results['game_df']
-                        st.session_state['bowl_df'] = results['bowl_df']
-                        st.session_state['bat_df'] = results['bat_df']
-                        st.session_state['processed_match_df'] = results['match_df']
-                        st.session_state['processed_game_df'] = results['game_df']
-                        st.session_state['processed_bowl_df'] = results['bowl_df']
-                        st.session_state['processed_bat_df'] = results['bat_df']
-                        st.session_state['data_loaded'] = True
-                        
-                        show_processing_results(results['total_files'], results['duplicates_result'], end_time - start_time)
-                        st.info("Navigate to other pages from the sidebar to explore your stats.")
-                        st.balloons()
-    elif st.session_state.upload_choice:
-        st.info("Please select your files using the uploader above to continue.")
-
-# ... (The rest of your UI, like "Helpful Resources", goes here unchanged)
 st.markdown("---")
 # ... copy-paste the rest of your UI code here ...
 st.markdown("### 🎥 Helpful Resources")
