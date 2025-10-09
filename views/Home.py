@@ -350,9 +350,9 @@ with col_txt:
         """
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 15px; margin-bottom: 10px; box-shadow: 0 8px 25px rgba(0,0,0,0.1);">
             <strong>When to use:</strong> Less than 1200 scorecards.<br>
-            <strong>Step 4:</strong> Use the file browser below to select your .txt scorecard files.<br>
+            <strong>Use the file browser below to select your .txt scorecard files.<br>
             <strong>💡 Tip:</strong> Click <em>Browse files</em>, then press <code>Ctrl+A</code> (Windows) or <code>Cmd+A</code> (Mac) to select all scorecard .txt files.<br>
-            <strong>Step 5:</strong> Click 'Process Scorecards' and explore your data in the various tabs.
+            <strongStep 5:</strong> Click 'Process Scorecards' and explore your data in the various tabs.
         </div>
         """,
         unsafe_allow_html=True,
