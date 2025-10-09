@@ -108,6 +108,356 @@ def get_filtered_options(df, column, selected_filters=None):
     
     return ['All'] + sorted(filtered_df[column].unique().tolist())
 
+@st.cache_data
+def compute_bowl_career_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+
+    match_wickets = df.groupby(['Name', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby('Name').size().reset_index(name='10W')
+
+    bowlcareer_df = df.groupby('Name').agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+
+    bowlcareer_df.columns = ['Name', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+
+    # --- Safe Calculations ---
+    overs_series = (bowlcareer_df['Balls'] // 6) + (bowlcareer_df['Balls'] % 6) / 10
+    bowlcareer_df['Overs'] = overs_series.round(1)
+    
+    wickets_safe = bowlcareer_df['Wickets'].replace(0, np.nan)
+    matches_safe = bowlcareer_df['Matches'].replace(0, np.nan)
+    overs_safe = bowlcareer_df['Overs'].replace(0, np.nan)
+    
+    bowlcareer_df['Strike Rate'] = (bowlcareer_df['Balls'] / wickets_safe).round(2).fillna(0)
+    bowlcareer_df['Economy Rate'] = (bowlcareer_df['Runs'] / overs_safe).round(2).fillna(0)
+    bowlcareer_df['Avg'] = (bowlcareer_df['Runs'] / wickets_safe).round(2).fillna(0)
+    bowlcareer_df['WPM'] = (bowlcareer_df['Wickets'] / matches_safe).round(2).fillna(0)
+    
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby('Name').size().reset_index(name='5W')
+    bowlcareer_df = bowlcareer_df.merge(five_wickets, on='Name', how='left').fillna({'5W': 0})
+    bowlcareer_df = bowlcareer_df.merge(ten_wickets, on='Name', how='left').fillna({'10W': 0})
+    
+    pom_counts = df[df['Player_of_the_Match'] == df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
+    bowlcareer_df = bowlcareer_df.merge(pom_counts, on='Name', how='left').fillna({'POM': 0})
+
+    for col in ['5W', '10W', 'POM']:
+        bowlcareer_df[col] = bowlcareer_df[col].astype(int)
+
+    final_df = bowlcareer_df[[
+        'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
+        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
+    ]].sort_values('Wickets', ascending=False)
+    
+    return final_df
+
+@st.cache_data
+def compute_bowl_format_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    # Group by Name and Match_Format
+    format_df = df.groupby(['Name', 'Match_Format']).agg(
+        Matches=('File Name', 'nunique'),
+        Bowler_Balls=('Bowler_Balls', 'sum'),
+        Bowler_Runs=('Bowler_Runs', 'sum'),
+        Bowler_Wkts=('Bowler_Wkts', 'sum'),
+        Overs=('Overs', 'sum'),
+        Maidens=('Maidens', 'sum') if 'Maidens' in df.columns else ('Bowler_Balls', 'sum'),
+        FiveW=('FiveW', 'sum') if 'FiveW' in df.columns else ('Bowler_Balls', 'sum'),
+        TenW=('TenW', 'sum') if 'TenW' in df.columns else ('Bowler_Balls', 'sum'),
+        Avg_Runs_Conceded=('Total_Runs', 'sum') if 'Total_Runs' in df.columns else ('Bowler_Runs', 'sum')
+    ).reset_index()
+    wickets_safe = format_df['Bowler_Wkts'].replace(0, np.nan)
+    balls_safe = format_df['Bowler_Balls'].replace(0, np.nan)
+    runs_safe = format_df['Bowler_Runs'].replace(0, np.nan)
+    overs_safe = format_df['Overs'].replace(0, np.nan)
+    format_df['Strike Rate'] = (format_df['Bowler_Balls'] / wickets_safe).round(2).fillna(0)
+    format_df['Economy Rate'] = (format_df['Bowler_Runs'] / (format_df['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+    format_df['Average'] = (format_df['Bowler_Runs'] / wickets_safe).round(2).fillna(0)
+    format_df['WPM'] = (format_df['Bowler_Wkts'] / format_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
+    return format_df
+
+@st.cache_data
+def compute_bowl_season_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    # Group by Name and Year
+    season_df = df.groupby(['Name', 'Year']).agg(
+        Matches=('File Name', 'nunique'),
+        Bowler_Balls=('Bowler_Balls', 'sum'),
+        Bowler_Runs=('Bowler_Runs', 'sum'),
+        Bowler_Wkts=('Bowler_Wkts', 'sum'),
+        Overs=('Overs', 'sum'),
+        Maidens=('Maidens', 'sum') if 'Maidens' in df.columns else ('Bowler_Balls', 'sum'),
+        FiveW=('FiveW', 'sum') if 'FiveW' in df.columns else ('Bowler_Balls', 'sum'),
+        TenW=('TenW', 'sum') if 'TenW' in df.columns else ('Bowler_Balls', 'sum'),
+        Avg_Runs_Conceded=('Total_Runs', 'sum') if 'Total_Runs' in df.columns else ('Bowler_Runs', 'sum')
+    ).reset_index()
+    wickets_safe = season_df['Bowler_Wkts'].replace(0, np.nan)
+    balls_safe = season_df['Bowler_Balls'].replace(0, np.nan)
+    runs_safe = season_df['Bowler_Runs'].replace(0, np.nan)
+    overs_safe = season_df['Overs'].replace(0, np.nan)
+    season_df['Strike Rate'] = (season_df['Bowler_Balls'] / wickets_safe).round(2).fillna(0)
+    season_df['Economy Rate'] = (season_df['Bowler_Runs'] / (season_df['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+    season_df['Average'] = (season_df['Bowler_Runs'] / wickets_safe).round(2).fillna(0)
+    season_df['WPM'] = (season_df['Bowler_Wkts'] / season_df['Matches'].replace(0, np.nan)).round(2).fillna(0)
+    return season_df
+
+@st.cache_data
+def compute_bowl_opponent_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    # Calculate statistics dataframe for opponents
+    opponent_summary = df.groupby(['Name', 'Bat_Team']).agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+    opponent_summary.columns = ['Name', 'Opposition', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+    overs_series = (opponent_summary['Balls'] // 6) + (opponent_summary['Balls'] % 6) / 10
+    opponent_summary['Overs'] = overs_series.round(1)
+    wickets_safe = opponent_summary['Wickets'].replace(0, np.nan)
+    matches_safe = opponent_summary['Matches'].replace(0, np.nan)
+    overs_safe = opponent_summary['Overs'].replace(0, np.nan)
+    opponent_summary['Strike Rate'] = (opponent_summary['Balls'] / wickets_safe).round(2).fillna(0)
+    opponent_summary['Economy Rate'] = (opponent_summary['Runs'] / overs_safe).round(2).fillna(0)
+    opponent_summary['Average'] = (opponent_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    opponent_summary['WPM'] = (opponent_summary['Wickets'] / matches_safe).round(2).fillna(0)
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Bat_Team']).size().reset_index(name='5W')
+    opponent_summary = opponent_summary.merge(five_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Name', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Bat_Team']).size().reset_index(name='10W')
+    opponent_summary = opponent_summary.merge(ten_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left').fillna({'10W': 0})
+    opponent_summary['5W'] = opponent_summary['5W'].astype(int)
+    opponent_summary['10W'] = opponent_summary['10W'].astype(int)
+    final_df = opponent_summary[[
+        'Name', 'Opposition', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
+        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
+    ]].sort_values(by='Wickets', ascending=False)
+    return final_df
+
+@st.cache_data
+def compute_bowl_location_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    location_summary = df.groupby(['Name', 'Home_Team']).agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+    location_summary.columns = ['Name', 'Location', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+    overs_series = (location_summary['Balls'] // 6) + (location_summary['Balls'] % 6) / 10
+    location_summary['Overs'] = overs_series.round(1)
+    wickets_safe = location_summary['Wickets'].replace(0, np.nan)
+    matches_safe = location_summary['Matches'].replace(0, np.nan)
+    overs_safe = location_summary['Overs'].replace(0, np.nan)
+    location_summary['Strike Rate'] = (location_summary['Balls'] / wickets_safe).round(2).fillna(0)
+    location_summary['Economy Rate'] = (location_summary['Runs'] / overs_safe).round(2).fillna(0)
+    location_summary['Average'] = (location_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    location_summary['WPM'] = (location_summary['Wickets'] / matches_safe).round(2).fillna(0)
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Home_Team']).size().reset_index(name='5W')
+    location_summary = location_summary.merge(five_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Name', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Home_Team']).size().reset_index(name='10W')
+    location_summary = location_summary.merge(ten_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left').fillna({'10W': 0})
+    location_summary['5W'] = location_summary['5W'].astype(int)
+    location_summary['10W'] = location_summary['10W'].astype(int)
+    final_df = location_summary[[
+        'Name', 'Location', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
+        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
+    ]].sort_values(by='Wickets', ascending=False)
+    return final_df
+
+@st.cache_data
+def compute_bowl_innings_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    innings_summary = df.groupby(['Name', 'Innings']).agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+    innings_summary.columns = ['Name', 'Innings', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+    overs_series = (innings_summary['Balls'] // 6) + (innings_summary['Balls'] % 6) / 10
+    innings_summary['Overs'] = overs_series.round(1)
+    wickets_safe = innings_summary['Wickets'].replace(0, np.nan)
+    matches_safe = innings_summary['Matches'].replace(0, np.nan)
+    overs_safe = innings_summary['Overs'].replace(0, np.nan)
+    innings_summary['Strike Rate'] = (innings_summary['Balls'] / wickets_safe).round(2).fillna(0)
+    innings_summary['Economy Rate'] = (innings_summary['Runs'] / overs_safe).round(2).fillna(0)
+    innings_summary['Average'] = (innings_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    innings_summary['WPM'] = (innings_summary['Wickets'] / matches_safe).round(2).fillna(0)
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']).size().reset_index(name='5W')
+    innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Name', 'Innings', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Innings']).size().reset_index(name='10W')
+    innings_summary = innings_summary.merge(ten_wickets, on=['Name', 'Innings'], how='left').fillna({'10W': 0})
+    innings_summary['5W'] = innings_summary['5W'].astype(int)
+    innings_summary['10W'] = innings_summary['10W'].astype(int)
+    final_df = innings_summary[[
+        'Name', 'Innings', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
+        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
+    ]].sort_values(by='Wickets', ascending=False)
+    return final_df
+
+@st.cache_data
+def compute_bowl_position_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    position_summary = df.groupby(['Name', 'Position']).agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+    position_summary.columns = ['Name', 'Position', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+    overs_series = (position_summary['Balls'] // 6) + (position_summary['Balls'] % 6) / 10
+    position_summary['Overs'] = overs_series.round(1)
+    wickets_safe = position_summary['Wickets'].replace(0, np.nan)
+    matches_safe = position_summary['Matches'].replace(0, np.nan)
+    overs_safe = position_summary['Overs'].replace(0, np.nan)
+    position_summary['Strike Rate'] = (position_summary['Balls'] / wickets_safe).round(2).fillna(0)
+    position_summary['Economy Rate'] = (position_summary['Runs'] / overs_safe).round(2).fillna(0)
+    position_summary['Average'] = (position_summary['Runs'] / wickets_safe).round(2).fillna(0)
+    position_summary['WPM'] = (position_summary['Wickets'] / matches_safe).round(2).fillna(0)
+    five_wickets = df[df['Bowler_Wkts'] >= 5].groupby(['Name', 'Position']).size().reset_index(name='5W')
+    position_summary = position_summary.merge(five_wickets, on=['Name', 'Position'], how='left').fillna({'5W': 0})
+    match_wickets = df.groupby(['Name', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
+    ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Position']).size().reset_index(name='10W')
+    position_summary = position_summary.merge(ten_wickets, on=['Name', 'Position'], how='left').fillna({'10W': 0})
+    position_summary['5W'] = position_summary['5W'].astype(int)
+    position_summary['10W'] = position_summary['10W'].astype(int)
+    final_df = position_summary[[
+        'Name', 'Position', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
+        'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
+    ]].sort_values(by='Wickets', ascending=False)
+    return final_df
+
+@st.cache_data
+def compute_bowl_latest_innings(df):
+    if df.empty:
+        return pd.DataFrame()
+    latest_innings = df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
+        'Bowl_Team': 'first',
+        'Bat_Team': 'first',
+        'Overs': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum',
+        'File Name': 'first'
+    }).reset_index()
+    latest_innings = latest_innings.rename(columns={
+        'Match_Format': 'Format',
+        'Bowl_Team': 'Team',
+        'Bat_Team': 'Opponent',
+        'Overs': 'Overs',
+        'Maidens': 'Maidens',
+        'Bowler_Runs': 'Runs',
+        'Bowler_Wkts': 'Wickets',
+        'File Name': 'File Name'
+    })
+    latest_innings['Date'] = pd.to_datetime(latest_innings['Date'], errors='coerce')
+    latest_innings = latest_innings.sort_values(by='Date', ascending=False).head(20)
+    latest_innings['Date'] = latest_innings['Date'].dt.strftime('%d/%m/%Y')
+    return latest_innings[['Name', 'Format', 'Date', 'Innings', 'Team', 'Opponent', 'Overs', 'Maidens', 'Runs', 'Wickets', 'File Name']]
+
+@st.cache_data
+def compute_bowl_cumulative_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    df = df.sort_values(by=['Name', 'Match_Format', 'Date'])
+    match_level_df = df.groupby(['Name', 'Match_Format', 'Date', 'File Name']).agg({
+        'Bowler_Balls': 'sum', 'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
+    }).reset_index()
+    # Cumulative Matches: true count of matches per player/format
+    match_level_df['Cumulative Matches'] = match_level_df.groupby(['Name', 'Match_Format']).cumcount() + 1
+    match_level_df['Cumulative Runs'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Runs'].cumsum()
+    match_level_df['Cumulative Balls'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Balls'].cumsum()
+    match_level_df['Cumulative Wickets'] = match_level_df.groupby(['Name', 'Match_Format'])['Bowler_Wkts'].cumsum()
+    match_level_df['Cumulative Avg'] = (match_level_df['Cumulative Runs'] / match_level_df['Cumulative Wickets'].replace(0, np.nan)).fillna(0).round(2)
+    match_level_df['Cumulative SR'] = (match_level_df['Cumulative Balls'] / match_level_df['Cumulative Wickets'].replace(0, np.nan)).fillna(0).round(2)
+    match_level_df['Cumulative Econ'] = (match_level_df['Cumulative Runs'] / (match_level_df['Cumulative Balls'].replace(0, np.nan) / 6)).fillna(0).round(2)
+    return match_level_df.sort_values(by='Date', ascending=False)
+
+@st.cache_data
+def compute_bowl_block_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    df = df.sort_values(by=['Name', 'Match_Format', 'Date'])
+    # Create innings number and innings range
+    df['Innings_Number'] = df.groupby(['Name', 'Match_Format']).cumcount() + 1
+    df['Innings_Range'] = (((df['Innings_Number'] - 1) // 20) * 20).astype(str) + '-' + (((df['Innings_Number'] - 1) // 20) * 20 + 19).astype(str)
+    df['Range_Start'] = ((df['Innings_Number'] - 1) // 20) * 20
+    # Group by blocks and calculate statistics
+    block_stats_df = df.groupby(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg({
+        'Innings_Number': 'count',
+        'Bowler_Balls': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum',
+        'Date': ['first', 'last']
+    }).reset_index()
+    # Flatten the column names
+    block_stats_df.columns = ['Name', 'Match_Format', 'Innings_Range', 'Range_Start',
+                            'Innings', 'Balls', 'Runs', 'Wickets',
+                            'First_Date', 'Last_Date']
+    # Calculate statistics for each block
+    block_stats_df['Overs'] = (block_stats_df['Balls'] // 6) + (block_stats_df['Balls'] % 6) / 10
+    block_stats_df['Average'] = (block_stats_df['Runs'] / block_stats_df['Wickets']).round(2)
+    block_stats_df['Strike_Rate'] = (block_stats_df['Balls'] / block_stats_df['Wickets']).round(2)
+    block_stats_df['Economy'] = (block_stats_df['Runs'] / block_stats_df['Overs']).round(2)
+    # Format dates properly before creating date range
+    block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
+    block_stats_df['Last_Date'] = pd.to_datetime(block_stats_df['Last_Date']).dt.strftime('%d/%m/%Y')
+    # Create date range column
+    block_stats_df['Date_Range'] = block_stats_df['First_Date'] + ' to ' + block_stats_df['Last_Date']
+    # Sort the DataFrame
+    block_stats_df = block_stats_df.sort_values(['Name', 'Match_Format', 'Range_Start'])
+    # Select and order final columns
+    final_columns = [
+        'Name', 'Match_Format', 'Innings_Range', 'Date_Range',
+        'Innings', 'Overs', 'Runs', 'Wickets',
+        'Average', 'Strike_Rate', 'Economy'
+    ]
+    block_stats_df = block_stats_df[final_columns]
+    # Handle any infinities and NaN values
+    block_stats_df = block_stats_df.replace([np.inf, -np.inf], np.nan)
+    return block_stats_df
+
+@st.cache_data
+def compute_bowl_homeaway_stats(df):
+    if df.empty:
+        return pd.DataFrame()
+    homeaway_stats = df.groupby(['Name', 'HomeOrAway']).agg({
+        'File Name': 'nunique',
+        'Bowler_Balls': 'sum',
+        'Maidens': 'sum',
+        'Bowler_Runs': 'sum',
+        'Bowler_Wkts': 'sum'
+    }).reset_index()
+    homeaway_stats.columns = ['Name', 'HomeOrAway', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+    overs_series = (homeaway_stats['Balls'] // 6) + (homeaway_stats['Balls'] % 6) / 10
+    homeaway_stats['Overs'] = overs_series.round(1)
+    wickets_safe = homeaway_stats['Wickets'].replace(0, np.nan)
+    matches_safe = homeaway_stats['Matches'].replace(0, np.nan)
+    overs_safe = homeaway_stats['Overs'].replace(0, np.nan)
+    homeaway_stats['Strike Rate'] = (homeaway_stats['Balls'] / wickets_safe).round(2).fillna(0)
+    homeaway_stats['Economy Rate'] = (homeaway_stats['Runs'] / overs_safe).round(2).fillna(0)
+    homeaway_stats['Average'] = (homeaway_stats['Runs'] / wickets_safe).round(2).fillna(0)
+    homeaway_stats['WPM'] = (homeaway_stats['Wickets'] / matches_safe).round(2).fillna(0)
+    return homeaway_stats
+
 def display_bowl_view():
     if 'bowl_df' in st.session_state:
         # Get the bowling dataframe with safer date parsing
@@ -442,57 +792,14 @@ def display_bowl_view():
         # Create tabs for different views with clean, short names
         tabs = main_container.tabs([
             "Career", "Format", "Season", "Latest", "Opponent", 
-            "Location", "Innings", "Position", "Cumulative", 
-            "Block", "Home/Away", "Records"
+            "Location", "Innings", "Position", "Home/Away",
+            "Cumulative", "Block"
         ])
 
         ###-------------------------------------CAREER STATS-------------------------------------###
         # Career Stats Tab
         with tabs[0]:
-            # Calculate career statistics
-            match_wickets = filtered_df.groupby(['Name', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby('Name').size().reset_index(name='10W')
-
-            bowlcareer_df = filtered_df.groupby('Name').agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            bowlcareer_df.columns = ['Name', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate career metrics
-            bowlcareer_df['Overs'] = (bowlcareer_df['Balls'] // 6) + (bowlcareer_df['Balls'] % 6) / 10
-            bowlcareer_df['Strike Rate'] = (bowlcareer_df['Balls'] / bowlcareer_df['Wickets']).round(2)
-            bowlcareer_df['Economy Rate'] = (bowlcareer_df['Runs'] / bowlcareer_df['Overs']).round(2)
-            bowlcareer_df['Avg'] = (bowlcareer_df['Runs'] / bowlcareer_df['Wickets']).round(2)
-
-            # Add additional statistics
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby('Name').size().reset_index(name='5W')
-            bowlcareer_df = bowlcareer_df.merge(five_wickets, on='Name', how='left')
-            bowlcareer_df['5W'] = bowlcareer_df['5W'].fillna(0).astype(int)
-            
-            bowlcareer_df = bowlcareer_df.merge(ten_wickets, on='Name', how='left')
-            bowlcareer_df['10W'] = bowlcareer_df['10W'].fillna(0).astype(int)
-
-            bowlcareer_df['WPM'] = (bowlcareer_df['Wickets'] / bowlcareer_df['Matches']).round(2)
-
-            pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
-            bowlcareer_df = bowlcareer_df.merge(pom_counts, on='Name', how='left')
-            bowlcareer_df['POM'] = bowlcareer_df['POM'].fillna(0).astype(int)
-
-            bowlcareer_df = bowlcareer_df.replace([np.inf, -np.inf], np.nan)
-
-            # Final column ordering
-            bowlcareer_df = bowlcareer_df[[
-                'Name', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-            ]]
-            
-            # Sort by Wickets (descending)
-            bowlcareer_df = bowlcareer_df.sort_values('Wickets', ascending=False)
+            bowlcareer_df = compute_bowl_career_stats(filtered_df)
 
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -502,2350 +809,670 @@ def display_bowl_view():
                 <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎳 Career Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
-            st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
+            
+            if bowlcareer_df.empty:
+                st.info("No career statistics to display for the current selection.")
+            else:
+                st.dataframe(bowlcareer_df, use_container_width=True, hide_index=True)
 
-            # Create a new figure for the scatter plot
-            scatter_fig = go.Figure()
-
-            for name in bowlcareer_df['Name'].unique():
-                player_stats = bowlcareer_df[bowlcareer_df['Name'] == name]
-                
-                # Get bowling statistics
-                economy_rate = player_stats['Economy Rate'].iloc[0]
-                strike_rate = player_stats['Strike Rate'].iloc[0]
-                wickets = player_stats['Wickets'].iloc[0]
-                
-                # Add scatter point for the player
-                scatter_fig.add_trace(go.Scatter(
-                    x=[economy_rate],
-                    y=[strike_rate],
-                    mode='markers+text',
-                    text=[name],
-                    textposition='top center',
-                    marker=dict(size=10),
-                    name=name,
-                    hovertemplate=(
-                        f"<b>{name}</b><br><br>"
-                        f"Economy Rate: {economy_rate:.2f}<br>"
-                        f"Strike Rate: {strike_rate:.2f}<br>"
-                        f"Wickets: {wickets}<br>"
-                        "<extra></extra>"
-                    )
-                ))
-
-            # Display the title using Streamlit's markdown
-            st.markdown(
-                "<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate Analysis</h3>",
-                unsafe_allow_html=True
-            )
-
-            # Update layout
-            scatter_fig.update_layout(
-                xaxis_title="Economy Rate",
-                yaxis_title="Strike Rate",
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                showlegend=False
-            )
-
-            # Show plot
-            st.plotly_chart(scatter_fig, use_container_width=True)
+                # Defensive scatter plot for Economy Rate vs Strike Rate, only for players with >0 wickets
+                if not bowlcareer_df.empty and 'Economy Rate' in bowlcareer_df.columns and 'Strike Rate' in bowlcareer_df.columns and 'Wickets' in bowlcareer_df.columns:
+                    plot_df = bowlcareer_df[bowlcareer_df['Wickets'] > 0]
+                    if not plot_df.empty:
+                        scatter_fig = go.Figure()
+                        for name in plot_df['Name'].unique():
+                            player_stats = plot_df[plot_df['Name'] == name]
+                            economy_rate = player_stats['Economy Rate'].iloc[0]
+                            strike_rate = player_stats['Strike Rate'].iloc[0]
+                            wickets = player_stats['Wickets'].iloc[0]
+                            scatter_fig.add_trace(go.Scatter(
+                                x=[economy_rate],
+                                y=[strike_rate],
+                                mode='markers+text',
+                                text=[name],
+                                textposition='top center',
+                                marker=dict(size=10),
+                                name=name,
+                                hovertemplate=(
+                                    f"<b>{name}</b><br><br>"
+                                    f"Economy Rate: {economy_rate:.2f}<br>"
+                                    f"Strike Rate: {strike_rate:.2f}<br>"
+                                    f"Wickets: {wickets}<br>"
+                                    "<extra></extra>"
+                                )
+                            ))
+                        scatter_fig.update_layout(
+                            xaxis_title="Economy Rate",
+                            yaxis_title="Strike Rate",
+                            height=500,
+                            font=dict(size=12),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            showlegend=False
+                        )
+                        st.markdown("""
+                        <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                                    padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                    box-shadow: 0 6px 24px rgba(54, 209, 220, 0.3);
+                                    border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Economy Rate vs Strike Rate Analysis</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.plotly_chart(scatter_fig, use_container_width=True)
+                    else:
+                        st.info("No players with wickets to display in the Economy Rate vs Strike Rate Analysis.")
+                else:
+                    st.info("Not enough data to display the Economy Rate vs Strike Rate Analysis.")
 
         ###-------------------------------------FORMAT STATS-------------------------------------###
         # Format Stats Tab
         with tabs[1]:
-            # Calculate format statistics
-            match_wickets = filtered_df.groupby(['Name', 'Match_Format', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Match_Format']).size().reset_index(name='10W')
-
-            bowlformat_df = filtered_df.groupby(['Name', 'Match_Format']).agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            bowlformat_df.columns = ['Name', 'Match_Format', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate format metrics
-            bowlformat_df['Overs'] = (bowlformat_df['Balls'] // 6) + (bowlformat_df['Balls'] % 6) / 10
-            bowlformat_df['Strike Rate'] = (bowlformat_df['Balls'] / bowlformat_df['Wickets']).round(2)
-            bowlformat_df['Economy Rate'] = (bowlformat_df['Runs'] / bowlformat_df['Overs']).round(2)
-
-            # Add additional statistics
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Match_Format']).size().reset_index(name='5W')
-            bowlformat_df = bowlformat_df.merge(five_wickets, on=['Name', 'Match_Format'], how='left')
-            bowlformat_df['5W'] = bowlformat_df['5W'].fillna(0).astype(int)
-            
-            bowlformat_df = bowlformat_df.merge(ten_wickets, on=['Name', 'Match_Format'], how='left')
-            bowlformat_df['10W'] = bowlformat_df['10W'].fillna(0).astype(int)
-
-            bowlformat_df['WPM'] = (bowlformat_df['Wickets'] / bowlformat_df['Matches']).round(2)
-
-            pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby(['Name', 'Match_Format'])['File Name'].nunique().reset_index(name='POM')
-            bowlformat_df = bowlformat_df.merge(pom_counts, on=['Name', 'Match_Format'], how='left')
-            bowlformat_df['POM'] = bowlformat_df['POM'].fillna(0).astype(int)
-
-            bowlformat_df = bowlformat_df.replace([np.inf, -np.inf], np.nan)
-            bowlformat_df = bowlformat_df.rename(columns={'Match_Format': 'Format'})
-
-            # Final column ordering
-            bowlformat_df = bowlformat_df[[
-                'Name', 'Format', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-            ]]
-            
-            # Sort by Wickets (descending)
-            bowlformat_df = bowlformat_df.sort_values('Wickets', ascending=False)
-
+            format_df = compute_bowl_format_stats(filtered_df)
             st.markdown("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
                         padding: 1rem; margin: 1rem 0; border-radius: 15px; 
                         box-shadow: 0 8px 32px rgba(240, 147, 251, 0.3);
                         border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📋 Format Record</h3>
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📋 Format Statistics</h3>
             </div>
             """, unsafe_allow_html=True)
-            st.dataframe(bowlformat_df, use_container_width=True, hide_index=True)
+            if format_df.empty:
+                st.info("No format statistics to display for the current selection.")
+            else:
+                st.dataframe(format_df, use_container_width=True, hide_index=True)
+                # --- Modern UI Section Header for Graphs ---
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Format Performance Trends by Season</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                col1, col2, col3 = st.columns(3)
+                # Get unique formats from filtered data
+                unique_formats = sorted(filtered_df['Match_Format'].unique())
+                # Define format colors
+                format_colors = {
+                    'Test Match': '#28a745',              # Green
+                    'One Day International': '#dc3545',    # Red
+                    '20 Over International': '#ffc107',    # Yellow/Amber
+                    'First Class': '#6610f2',              # Purple
+                    'List A': '#fd7e14',                   # Orange
+                    'T20': '#17a2b8'                       # Cyan
+                }
+                # Prepare totals per year/format
+                totals = filtered_df.groupby(['Match_Format', 'Year']).agg({
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Wkts': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                totals['Average'] = (totals['Bowler_Runs'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                totals['Economy Rate'] = (totals['Bowler_Runs'] / (totals['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+                totals['Strike Rate'] = (totals['Bowler_Balls'] / totals['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                # Build a consistent color map for all formats present
+                color_map = {fmt: format_colors.get(fmt, f'#{hash(fmt) & 0xFFFFFF:06x}') for fmt in unique_formats}
+                # Average per Season by Format
+                with col1:
+                    st.subheader("Average per Season by Format")
+                    fig_avg = go.Figure()
+                    for format_name in unique_formats:
+                        format_data = totals[totals['Match_Format'] == format_name]
+                        color = color_map[format_name]
+                        fig_avg.add_trace(go.Scatter(
+                            x=format_data['Year'],
+                            y=format_data['Average'],
+                            mode='lines+markers',
+                            name=format_name,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_avg.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Average",
+                        font=dict(size=12)
+                    )
+                    fig_avg.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_avg, use_container_width=True)
+                # Economy Rate per Season by Format
+                with col2:
+                    st.subheader("Economy Rate per Season by Format")
+                    fig_econ = go.Figure()
+                    for format_name in unique_formats:
+                        format_data = totals[totals['Match_Format'] == format_name]
+                        color = color_map[format_name]
+                        fig_econ.add_trace(go.Scatter(
+                            x=format_data['Year'],
+                            y=format_data['Economy Rate'],
+                            mode='lines+markers',
+                            name=format_name,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_econ.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Economy Rate",
+                        font=dict(size=12)
+                    )
+                    fig_econ.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_econ, use_container_width=True)
+                # Strike Rate per Season by Format
+                with col3:
+                    st.subheader("Strike Rate per Season by Format")
+                    fig_sr = go.Figure()
+                    for format_name in unique_formats:
+                        format_data = totals[totals['Match_Format'] == format_name]
+                        color = color_map[format_name]
+                        fig_sr.add_trace(go.Scatter(
+                            x=format_data['Year'],
+                            y=format_data['Strike Rate'],
+                            mode='lines+markers',
+                            name=format_name,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_sr.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Strike Rate",
+                        font=dict(size=12)
+                    )
+                    fig_sr.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_sr, use_container_width=True)
 
         ###-------------------------------------SEASON STATS-------------------------------------###
         # Season Stats Tab
         with tabs[2]:
-            # Calculate season statistics
-            match_wickets = filtered_df.groupby(['Name', 'Year', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Year']).size().reset_index(name='10W')
-
-            bowlseason_df = filtered_df.groupby(['Name', 'Year']).agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            bowlseason_df.columns = ['Name', 'Year', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate season metrics
-            bowlseason_df['Overs'] = (bowlseason_df['Balls'] // 6) + (bowlseason_df['Balls'] % 6) / 10
-            bowlseason_df['Strike Rate'] = (bowlseason_df['Balls'] / bowlseason_df['Wickets']).round(2)
-            bowlseason_df['Economy Rate'] = (bowlseason_df['Runs'] / bowlseason_df['Overs']).round(2)
-
-            # Add additional statistics
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Year']).size().reset_index(name='5W')
-            bowlseason_df = bowlseason_df.merge(five_wickets, on=['Name', 'Year'], how='left')
-            bowlseason_df['5W'] = bowlseason_df['5W'].fillna(0).astype(int)
-            
-            bowlseason_df = bowlseason_df.merge(ten_wickets, on=['Name', 'Year'], how='left')
-            bowlseason_df['10W'] = bowlseason_df['10W'].fillna(0).astype(int)
-
-            bowlseason_df['WPM'] = (bowlseason_df['Wickets'] / bowlseason_df['Matches']).round(2)
-
-            pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby(['Name', 'Year'])['File Name'].nunique().reset_index(name='POM')
-            bowlseason_df = bowlseason_df.merge(pom_counts, on=['Name', 'Year'], how='left')
-            bowlseason_df['POM'] = bowlseason_df['POM'].fillna(0).astype(int)
-
-            bowlseason_df = bowlseason_df.replace([np.inf, -np.inf], np.nan)
-            
-            # Final column ordering
-            bowlseason_df = bowlseason_df[[
-                'Name', 'Year', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-            ]]
-            
-            # Sort by Wickets (descending)
-            bowlseason_df = bowlseason_df.sort_values('Wickets', ascending=False)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Season Statistics</h3>", unsafe_allow_html=True)
-            st.dataframe(bowlseason_df, use_container_width=True, hide_index=True)
-
-            ###-------------------------------------SEASON GRAPHS----------------------------------------###
-            # Create subplots for Bowling Average, Strike Rate, and Economy Rate
-            fig = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate"))
-
-            # Handle 'All' selection
-            if 'All' in name_choice:
-                all_players_stats = filtered_df.groupby('Year').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-
-                all_players_stats['Avg'] = (all_players_stats['Bowler_Runs'] / all_players_stats['Bowler_Wkts']).round(2).fillna(0)
-                all_players_stats['SR'] = (all_players_stats['Bowler_Balls'] / all_players_stats['Bowler_Wkts']).round(2).fillna(0)
-                all_players_stats['Econ'] = (all_players_stats['Bowler_Runs'] / (all_players_stats['Bowler_Balls']/6)).round(2).fillna(0)
-
-                # Use streamlit red if only 'All' selected, black if names also selected
-                all_color = '#f84e4e' if not individual_players else 'black'
-
-                # Add traces for 'All'
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['Avg'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8)
-                ), row=1, col=1)
-
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['SR'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8),
-                    showlegend=False
-                ), row=1, col=2)
-                
-                fig.add_trace(go.Scatter(
-                    x=all_players_stats['Year'], 
-                    y=all_players_stats['Econ'], 
-                    mode='lines+markers', 
-                    name='All Players',
-                    legendgroup='All',
-                    marker=dict(color=all_color, size=8),
-                    showlegend=False
-                ), row=1, col=3)
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_stats = filtered_df[filtered_df['Name'] == name]
-                player_yearly_stats = player_stats.groupby('Year').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-
-                player_yearly_stats['Avg'] = (player_yearly_stats['Bowler_Runs'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                player_yearly_stats['SR'] = (player_yearly_stats['Bowler_Balls'] / player_yearly_stats['Bowler_Wkts']).round(2).fillna(0)
-                player_yearly_stats['Econ'] = (player_yearly_stats['Bowler_Runs'] / (player_yearly_stats['Bowler_Balls']/6)).round(2).fillna(0)
-
-                # First player gets streamlit red, others get random colors
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                # Add bowling average trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['Avg'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=True
-                ), row=1, col=1)
-
-                # Add strike rate trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['SR'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=2)
-                
-                # Add economy rate trace
-                fig.add_trace(go.Bar(
-                    x=player_yearly_stats['Year'], 
-                    y=player_yearly_stats['Econ'], 
-                    name=name,
-                    legendgroup=name,
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=3)
-
-            # Update layout
-            fig.update_layout(
-                title="<b>Season Performance Metrics</b>",
-                title_x=0.5,
-                showlegend=True,
-                yaxis_title="Average (Runs/Wicket)",
-                yaxis2_title="Strike Rate (Balls/Wicket)",
-                yaxis3_title="Economy Rate (Runs/Over)",
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                )
-            )
-
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Year")
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Create wickets per year chart
-            fig = go.Figure()
-            
-            # Add wickets per year for 'All' if selected
-            if 'All' in name_choice:
-                wickets_all = filtered_df.groupby('Year')['Bowler_Wkts'].sum().reset_index()
-                all_color = '#f84e4e' if not individual_players else 'black'
-                
-                fig.add_trace(
-                    go.Bar(
-                        x=wickets_all['Year'], 
-                        y=wickets_all['Bowler_Wkts'],
-                        name='All Players',
-                        marker_color=all_color
-                    )
-                )
-
-            # Add individual player wickets
-            for i, name in enumerate(individual_players):
-                player_wickets = filtered_df[filtered_df['Name'] == name].groupby('Year')['Bowler_Wkts'].sum().reset_index()
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                
-                fig.add_trace(
-                    go.Bar(
-                        x=player_wickets['Year'], 
-                        y=player_wickets['Bowler_Wkts'],
-                        name=name,
-                        marker_color=color
-                    )
-                )
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year</h3>", unsafe_allow_html=True)
-
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                xaxis_title='Year',
-                yaxis_title='Wickets',
-                margin=dict(l=50, r=50, t=70, b=50),
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                barmode='group'
-            )
-
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            st.plotly_chart(fig, use_container_width=True)
+            season_df = compute_bowl_season_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(240, 147, 251, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📅 Season Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if season_df.empty:
+                st.info("No season statistics to display for the current selection.")
+            else:
+                st.dataframe(season_df, use_container_width=True, hide_index=True)
+                # --- Modern UI Section Header for Graphs ---
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(240, 147, 251, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Bowling Average, Strike Rate & Economy Rate Per Season</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                # --- Three Column Layout for Graphs ---
+                col1, col2, col3 = st.columns(3)
+                # Use actual column names from season_df for totals
+                # Try to find the correct columns for runs, wickets, balls
+                # Print or inspect season_df.columns if unsure
+                # For now, try 'Runs', 'Wickets', 'Balls'
+                # If not present, fallback to 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Balls'
+                cols = season_df.columns
+                runs_col = 'Runs' if 'Runs' in cols else ('Bowler_Runs' if 'Bowler_Runs' in cols else None)
+                wickets_col = 'Wickets' if 'Wickets' in cols else ('Bowler_Wkts' if 'Bowler_Wkts' in cols else None)
+                balls_col = 'Balls' if 'Balls' in cols else ('Bowler_Balls' if 'Bowler_Balls' in cols else None)
+                if not (runs_col and wickets_col and balls_col):
+                    st.error("Could not find the correct columns for runs, wickets, and balls in season_df.")
+                else:
+                    totals = season_df.groupby('Year').agg({
+                        runs_col: 'sum',
+                        wickets_col: 'sum',
+                        balls_col: 'sum'
+                    }).reset_index()
+                    totals['Average'] = (totals[runs_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
+                    totals['Strike Rate'] = (totals[balls_col] / totals[wickets_col].replace(0, np.nan)).round(2).fillna(0)
+                    totals['Economy Rate'] = (totals[runs_col] / (totals[balls_col].replace(0, np.nan) / 6)).round(2).fillna(0)
+                    for col, metric, ytitle in zip([col1, col2, col3], ['Average', 'Strike Rate', 'Economy Rate'], ["Bowling Average", "Strike Rate", "Economy Rate"]):
+                        with col:
+                            st.subheader(ytitle)
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=totals['Year'],
+                                y=totals[metric],
+                                mode='lines+markers',
+                                name='All Players',
+                                line=dict(color='#f04f53'),
+                                marker=dict(color='#f04f53', size=8),
+                                showlegend=False
+                            ))
+                            fig.update_layout(
+                                height=350,
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                xaxis_title="Year",
+                                yaxis_title=ytitle,
+                                font=dict(size=12)
+                            )
+                            fig.update_xaxes(tickmode='linear', dtick=1)
+                            st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------LATEST INNINGS-------------------------------------###
         # Latest Innings Tab
         with tabs[3]:
-            # Create latest innings dataframe first to get the last 20 innings
-            latest_inns_df = filtered_df.groupby(['Name', 'Match_Format', 'Date', 'Innings']).agg({
-                'Bowl_Team': 'first',
-                'Bat_Team': 'first',
-                'Overs': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum',
-                'File Name': 'first'  # Include the File Name for match counting
-            }).reset_index()
-
-            # Rename columns
-            latest_inns_df = latest_inns_df.rename(columns={
-                'Match_Format': 'Format',
-                'Bowl_Team': 'Team',
-                'Bat_Team': 'Opponent',
-                'Bowler_Runs': 'Runs',
-                'Bowler_Wkts': 'Wickets'
-            })
-
-            # Process and sort dates
-            latest_inns_df['Date'] = pd.to_datetime(latest_inns_df['Date'])
-            latest_inns_df = latest_inns_df.sort_values(by='Date', ascending=False).head(20)
-            
-            # Create a list of file names from the last 20 innings to filter the original dataframe
-            last_20_match_files = latest_inns_df['File Name'].unique().tolist()
-            
-            # Filter the original dataframe to include only matches from the last 20 innings
-            last_20_df = filtered_df[filtered_df['File Name'].isin(last_20_match_files)]
-            
-            # Calculate metrics from only these 20 innings
-            total_matches = last_20_df['File Name'].nunique()
-            total_innings = len(latest_inns_df)
-            total_wickets = latest_inns_df['Wickets'].sum()
-            total_runs = latest_inns_df['Runs'].sum()
-            total_balls = last_20_df['Bowler_Balls'].sum()  # Calculate from original df for accurate ball count
-            total_overs = (total_balls // 6) + (total_balls % 6) / 10
-            total_maidens = latest_inns_df['Maidens'].sum()
-            
-            # Calculate strike rate and economy with safety checks
-            strike_rate = (total_balls / total_wickets) if total_wickets > 0 else 0
-            economy_rate = (total_runs / total_overs) if total_overs > 0 else 0
-            bowling_avg = (total_runs / total_wickets) if total_wickets > 0 else 0
-            
-            # Count number of 5-wicket hauls in the last 20 innings
-            five_wicket_hauls = len(latest_inns_df[latest_inns_df['Wickets'] >= 5])
-            
-            # Format date in the dataframe for display
-            latest_inns_df['Date'] = latest_inns_df['Date'].dt.strftime('%d/%m/%Y')
-            
-            # Format Overs to 1 decimal place
-            latest_inns_df['Overs'] = latest_inns_df['Overs'].apply(lambda x: f"{x:.1f}")
-            
-            # Display all metrics in a single row with borders
-            col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
-            
-            with col1:
-                st.metric("Matches", f"{total_matches}", border=True)
-            with col2:
-                st.metric("Innings", f"{total_innings}", border=True)
-            with col3:
-                st.metric("Wickets", f"{total_wickets}", border=True)
-            with col4:
-                st.metric("Average", f"{bowling_avg:.2f}", border=True)
-            with col5:
-                st.metric("Strike Rate", f"{strike_rate:.2f}", border=True)
-            with col6:
-                st.metric("Economy", f"{economy_rate:.2f}", border=True)
-            with col7:
-                st.metric("5 Wicket Hauls", f"{five_wicket_hauls}", border=True)
-            with col8:
-                st.metric("Maidens", f"{total_maidens}", border=True)
-
-            # Reorder columns for display - remove File Name from display
-            display_inns_df = latest_inns_df[[
-                'Name', 'Format', 'Date', 'Innings', 'Team', 'Opponent',
-                'Overs', 'Maidens', 'Runs', 'Wickets'
-            ]]
-
-            # Apply conditional formatting
-            def color_wickets(value):
-                if value == 0:
-                    return 'background-color: #DE6A73'  # Light Red
-                elif value <= 2:
-                    return 'background-color: #DEAD68'  # Light Yellow
-                elif value <= 4:
-                    return 'background-color: #6977DE'  # Light Blue
-                else:
-                    return 'background-color: #69DE85'  # Light Green
-
-            # Style the dataframe
-            styled_df = display_inns_df.style.applymap(color_wickets, subset=['Wickets'])
-
-            # Display section header and dataframe
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Last 20 Bowling Innings</h3>", unsafe_allow_html=True)
-            st.dataframe(styled_df, height=575, use_container_width=True, hide_index=True)
-            
-            # Create summary dataframe with bowling stats at the bottom of the tab
-            try:
-                # Calculate the player summary from the last 20 innings data only, now including Format
-                player_summary = filtered_df[filtered_df['File Name'].isin(last_20_match_files)].groupby(['Name', 'Match_Format']).agg({
-                    'File Name': 'nunique',  # Matches
-                    'Bowler_Balls': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Maidens': 'sum'
-                }).reset_index()
-                
-                if not player_summary.empty:
-                    # Rename Match_Format to Format for consistency
-                    player_summary.columns = ['Name', 'Format', 'Matches', 'Balls', 'Runs', 'Wickets', 'Maidens']
-                    
-                    # Calculate additional metrics with safety checks
-                    player_summary['Overs'] = (player_summary['Balls'] // 6) + (player_summary['Balls'] % 6) / 10
-                    # Add safe division for these metrics
-                    player_summary['Average'] = (player_summary['Runs'] / player_summary['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                    player_summary['Strike Rate'] = (player_summary['Balls'] / player_summary['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                    player_summary['Economy'] = (player_summary['Runs'] / player_summary['Overs']).replace([np.inf, -np.inf], np.nan).round(2)
-                    
-                    # Count 5W innings per player and format
-                    fiveW_counts = filtered_df[
-                        (filtered_df['File Name'].isin(last_20_match_files)) & 
-                        (filtered_df['Bowler_Wkts'] >= 5)
-                    ].groupby(['Name', 'Match_Format']).size().reset_index(name='5W')
-                    
-                    player_summary = player_summary.merge(fiveW_counts, 
-                                                         left_on=['Name', 'Format'], 
-                                                         right_on=['Name', 'Match_Format'], 
-                                                         how='left')
-                    
-                    # Drop duplicate Match_Format column if it exists
-                    if 'Match_Format' in player_summary.columns:
-                        player_summary = player_summary.drop(columns=['Match_Format'])
-                        
-                    player_summary['5W'] = player_summary['5W'].fillna(0).astype(int)
-                    
-                    # Replace NaN with empty or "N/A"
-                    player_summary = player_summary.fillna("N/A")
-                    
-                    # Add an "All Formats" summary row for each player
-                    all_formats_summary = filtered_df[filtered_df['File Name'].isin(last_20_match_files)].groupby(['Name']).agg({
-                        'File Name': 'nunique',  # Matches
-                        'Bowler_Balls': 'sum',
-                        'Bowler_Runs': 'sum',
-                        'Bowler_Wkts': 'sum',
-                        'Maidens': 'sum'
-                    }).reset_index()
-                    
-                    all_formats_summary['Format'] = 'All Formats'
-                    all_formats_summary.columns = ['Name', 'Matches', 'Balls', 'Runs', 'Wickets', 'Maidens', 'Format']
-                    
-                    # Calculate metrics for All Formats
-                    all_formats_summary['Overs'] = (all_formats_summary['Balls'] // 6) + (all_formats_summary['Balls'] % 6) / 10
-                    all_formats_summary['Average'] = (all_formats_summary['Runs'] / all_formats_summary['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                    all_formats_summary['Strike Rate'] = (all_formats_summary['Balls'] / all_formats_summary['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                    all_formats_summary['Economy'] = (all_formats_summary['Runs'] / all_formats_summary['Overs']).replace([np.inf, -np.inf], np.nan).round(2)
-                    
-                    # Count 5W for All Formats
-                    fiveW_all = filtered_df[
-                        (filtered_df['File Name'].isin(last_20_match_files)) & 
-                        (filtered_df['Bowler_Wkts'] >= 5)
-                    ].groupby(['Name']).size().reset_index(name='5W')
-                    
-                    all_formats_summary = all_formats_summary.merge(fiveW_all, on=['Name'], how='left')
-                    all_formats_summary['5W'] = all_formats_summary['5W'].fillna(0).astype(int)
-                    
-                    # Ensure column order matches player_summary
-                    all_formats_summary = all_formats_summary[[
-                        'Name', 'Format', 'Matches', 'Balls', 'Runs', 'Wickets', 'Maidens',
-                        'Overs', 'Average', 'Strike Rate', 'Economy', '5W'
-                    ]]
-                    
-                    # Combine format-specific and all formats summaries
-                    player_summary = pd.concat([player_summary, all_formats_summary])
-                    
-                    # Sort by Name and Format (with All Formats appearing first)
-                    player_summary['Format_Order'] = player_summary['Format'].map(lambda x: 0 if x == 'All Formats' else 1)
-                    player_summary = player_summary.sort_values(['Name', 'Format_Order', 'Format']).drop(columns=['Format_Order'])
-                    
-                    # Replace NaN with empty or "N/A"
-                    player_summary = player_summary.fillna("N/A")
-                    
-                    # Display the summary dataframe at the bottom of the tab
-                    st.markdown("<h3 style='color:#f04f53; text-align: center;'>Player Bowling Summary by Format (Last 20 Innings)</h3>", unsafe_allow_html=True)
-                    st.dataframe(player_summary[[
-                        'Name', 'Format', 'Matches', 'Overs', 'Maidens', 'Runs', 'Wickets', 
-                        'Average', 'Strike Rate', 'Economy', '5W'
-                    ]], use_container_width=True, hide_index=True)
-                else:
-                    st.warning("No player summary data available for the selected criteria.")
-            except Exception as e:
-                st.error(f"Error generating player summary: {str(e)}")
+            latest_innings = compute_bowl_latest_innings(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Latest 20 Bowling Innings</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if latest_innings.empty:
+                st.info("No latest innings to display for the current selection.")
+            else:
+                st.dataframe(latest_innings, use_container_width=True, hide_index=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(250, 112, 154, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Summary Statistics</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+                with col1:
+                    st.metric("Matches", latest_innings['File Name'].nunique())
+                with col2:
+                    st.metric("Innings", latest_innings['Innings'].nunique())
+                with col3:
+                    st.metric("Wickets", latest_innings['Wickets'].sum())
+                with col4:
+                    st.metric("Runs", latest_innings['Runs'].sum())
+                with col5:
+                    st.metric("Overs", latest_innings['Overs'].sum())
+                with col6:
+                    st.metric("Maidens", latest_innings['Maidens'].sum())
+                with col7:
+                    avg = (latest_innings['Runs'].sum() / latest_innings['Wickets'].replace(0, np.nan).sum()) if latest_innings['Wickets'].sum() > 0 else 0
+                    st.metric("Average", f"{avg:.2f}")
 
         ###-------------------------------------OPPONENT STATS-------------------------------------###
-        # Opponent Stats Tab
+        # Opponent Stats Tab  
         with tabs[4]:
-            # Calculate statistics dataframe for opponents
-            opponent_summary = filtered_df.groupby(['Name', 'Bat_Team']).agg({
-                'File Name': 'nunique',      # Matches
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
+            opponent_summary = compute_bowl_opponent_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(168, 202, 186, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Opposition Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
-            opponent_summary.columns = ['Name', 'Opposition', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
+            if opponent_summary.empty:
+                st.info("No opponent statistics to display for the current selection.")
+            else:
+                st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
 
-            # Calculate metrics
-            opponent_summary['Overs'] = (opponent_summary['Balls'] // 6) + (opponent_summary['Balls'] % 6) / 10
-            opponent_summary['Strike Rate'] = (opponent_summary['Balls'] / opponent_summary['Wickets']).round(2)
-            opponent_summary['Economy Rate'] = (opponent_summary['Runs'] / opponent_summary['Overs']).round(2)
-            opponent_summary['WPM'] = (opponent_summary['Wickets'] / opponent_summary['Matches']).round(2)
-            opponent_summary['Average'] = (opponent_summary['Runs'] / opponent_summary['Wickets']).round(2)
-
-            # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Bat_Team']).size().reset_index(name='5W')
-            opponent_summary = opponent_summary.merge(five_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left')
-            opponent_summary['5W'] = opponent_summary['5W'].fillna(0).astype(int)
-
-            # Count 10W matches
-            match_wickets = filtered_df.groupby(['Name', 'Bat_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Bat_Team']).size().reset_index(name='10W')
-            opponent_summary = opponent_summary.merge(ten_wickets, left_on=['Name', 'Opposition'], right_on=['Name', 'Bat_Team'], how='left')
-            opponent_summary['10W'] = opponent_summary['10W'].fillna(0).astype(int)
-
-            # Handle infinities and NaNs
-            opponent_summary = opponent_summary.replace([np.inf, -np.inf], np.nan)
-            # Final column ordering
-            opponent_summary = opponent_summary[[
-                'Name', 'Opposition', 'Matches', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-            ]]
-
-            # Sort by Wickets high to low
-            opponent_summary = opponent_summary.sort_values(by='Wickets', ascending=False)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Opposition Statistics</h3>", unsafe_allow_html=True)
-            
-            # Display the dataframe first (full width)
-            st.dataframe(opponent_summary, use_container_width=True, hide_index=True)
-
-            # Create opponent averages graph
-            fig = go.Figure()
-
-            # Calculate and show 'All' stats if it's selected
-            if 'All' in name_choice:
-                all_opponent_stats = filtered_df.groupby(['Bat_Team']).agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-
-                all_opponent_stats['Overs'] = (all_opponent_stats['Bowler_Balls'] // 6) + (all_opponent_stats['Bowler_Balls'] % 6)/10
-                all_opponent_stats['Average'] = (all_opponent_stats['Bowler_Runs'] / all_opponent_stats['Bowler_Wkts']).round(2).fillna(0)
-                all_opponent_stats['Strike_Rate'] = (all_opponent_stats['Bowler_Balls'] / all_opponent_stats['Bowler_Wkts']).round(2).fillna(0)
-                all_opponent_stats['Economy_Rate'] = (all_opponent_stats['Bowler_Runs'] / all_opponent_stats['Overs']).round(2).fillna(0)
-
-                all_color = '#f84e4e' if not individual_players else 'black'
+                # --- Plotting Logic ---
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(168, 202, 186, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Opponent Team</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                fig.add_trace(
-                    go.Bar(
-                        x=all_opponent_stats['Bat_Team'],
-                        y=all_opponent_stats['Average'],
-                        name='All Players',
-                        marker_color=all_color,
-                        text=all_opponent_stats['Average'],
-                        textposition='auto',
-                        customdata=np.stack([
-                            all_opponent_stats['Bowler_Wkts'],
-                            all_opponent_stats['Strike_Rate'],
-                            all_opponent_stats['Economy_Rate']
-                        ], axis=-1),
-                        hovertemplate=(
-                            'Team: %{x}<br>'
-                            'Average: %{y}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]}<br>'
-                            'Economy: %{customdata[2]}<extra></extra>'
-                        )
-                    )
-                )
-
-            # Add individual player traces with tooltips
-            for i, name in enumerate(individual_players):
-                player_data = filtered_df[filtered_df['Name'] == name].groupby('Bat_Team').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-
-                player_data['Overs'] = (player_data['Bowler_Balls'] // 6) + (player_data['Bowler_Balls'] % 6)/10
-                player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2).fillna(0)
-                player_data['Strike_Rate'] = (player_data['Bowler_Balls'] / player_data['Bowler_Wkts']).round(2).fillna(0)
-                player_data['Economy_Rate'] = (player_data['Bowler_Runs'] / player_data['Overs']).round(2).fillna(0)
-
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                fig.add_trace(
-                    go.Bar(
-                        x=player_data['Bat_Team'],
-                        y=player_data['Average'],
+                fig = go.Figure()
+                for name in opponent_summary['Name'].unique():
+                    player_data = opponent_summary[opponent_summary['Name'] == name]
+                    fig.add_trace(go.Bar(
+                        x=player_data['Opposition'], 
+                        y=player_data['Average'], 
                         name=name,
-                        marker_color=color,
-                        text=player_data['Bowler_Wkts'],
-                        textposition='auto',
-                        customdata=np.stack([
-                            player_data['Bowler_Wkts'],
-                            player_data['Strike_Rate'],
-                            player_data['Economy_Rate']
-                        ], axis=-1),
-                        hovertemplate=(
-                            'Team: %{x}<br>'
-                            'Average: %{y}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]}<br>'
-                            'Economy: %{customdata[2]}<extra></extra>'
-                        )
-                    )
-                )
-
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average vs Opponent Team</h3>", unsafe_allow_html=True)
-
-            # Update layout
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                xaxis_title="Opposition Team",
-                yaxis_title="Average",
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                xaxis={'categoryorder': 'total ascending'},
-                barmode='group'
-            )
-
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
+                    ))
+                fig.update_layout(barmode='group', xaxis_title="Opposition Team", yaxis_title="Average")
+                st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------LOCATION STATS-------------------------------------###
         # Location Stats Tab
         with tabs[5]:
-            # Calculate statistics dataframe for locations
-            location_summary = filtered_df.groupby(['Name', 'Home_Team']).agg({
-                'File Name': 'nunique',      # Matches
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            location_summary.columns = ['Name', 'Location', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate metrics
-            location_summary['Overs'] = (location_summary['Balls'] // 6) + (location_summary['Balls'] % 6) / 10
-            location_summary['Strike Rate'] = (location_summary['Balls'] / location_summary['Wickets']).round(2)
-            location_summary['Economy Rate'] = (location_summary['Runs'] / location_summary['Overs']).round(2)
-            location_summary['WPM'] = (location_summary['Wickets'] / location_summary['Matches']).round(2)
-            location_summary['Average'] = (location_summary['Runs'] / location_summary['Wickets']).round(2)  # Add average here
-
-            # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Home_Team']).size().reset_index(name='5W')
-            location_summary = location_summary.merge(five_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left')
-            location_summary['5W'] = location_summary['5W'].fillna(0).astype(int)
-
-            # Count 10W matches
-            match_wickets = filtered_df.groupby(['Name', 'Home_Team', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Home_Team']).size().reset_index(name='10W')
-            location_summary = location_summary.merge(ten_wickets, left_on=['Name', 'Location'], right_on=['Name', 'Home_Team'], how='left')
-            location_summary['10W'] = location_summary['10W'].fillna(0).astype(int)
-
-            # Handle infinities and NaNs
-            location_summary = location_summary.replace([np.inf, -np.inf], np.nan)
-
-            # Final column ordering
-            location_summary = location_summary[[
-                'Name', 'Location', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-            ]]
-            location_summary = location_summary.sort_values('Wickets', ascending=False)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Location Statistics</h3>", unsafe_allow_html=True)
-            
-            # Display the dataframe first (full width)
-            st.dataframe(location_summary, use_container_width=True, hide_index=True)
-
-            # Create location averages graph
-            fig = go.Figure()
-
-            # Add 'All' trace first if selected
-            if 'All' in name_choice:
-                all_location_stats = filtered_df.groupby(['Home_Team']).agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum'
-                }).reset_index()
-                
-                all_location_stats['Average'] = (all_location_stats['Bowler_Runs'] / all_location_stats['Bowler_Wkts']).round(2)
-                
-                all_color = '#f84e4e' if not individual_players else 'black'
-                
-                fig.add_trace(
-                    go.Bar(
-                        x=all_location_stats['Home_Team'],
-                        y=all_location_stats['Average'],
-                        name='All Players',
-                        marker_color=all_color,
-                        text=all_location_stats['Bowler_Wkts'],
-                        textposition='auto'
-                    )
-                )
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_data = filtered_df[filtered_df['Name'] == name].groupby('Home_Team').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum'
-                }).reset_index()
-                
-                player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
-                
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                
-                fig.add_trace(
-                    go.Bar(
-                        x=player_data['Home_Team'],
+            location_summary = compute_bowl_location_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Location Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if location_summary.empty:
+                st.info("No location statistics to display for the current selection.")
+            else:
+                st.dataframe(location_summary, use_container_width=True, hide_index=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(71, 118, 230, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Location</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                fig = go.Figure()
+                for name in location_summary['Name'].unique():
+                    player_data = location_summary[location_summary['Name'] == name]
+                    fig.add_trace(go.Bar(
+                        x=player_data['Location'],
                         y=player_data['Average'],
                         name=name,
-                        marker_color=color,
-                        text=player_data['Bowler_Wkts'],
-                        textposition='auto'
-                    )
-                )
-
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Location</h3>", unsafe_allow_html=True)
-
-            # Update layout
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                xaxis_title="Location",
-                yaxis_title="Average",
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                xaxis={'categoryorder':'total ascending'},
-                barmode='group'
-            )
-
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
+                    ))
+                fig.update_layout(barmode='group', xaxis_title="Location", yaxis_title="Average")
+                st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------INNINGS STATS-------------------------------------###
         # Innings Stats Tab
         with tabs[6]:
-            # Calculate statistics dataframe for innings
-            innings_summary = filtered_df.groupby(['Name', 'Innings']).agg({
-                'File Name': 'nunique',      # Matches
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            innings_summary.columns = ['Name', 'Innings', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate metrics
-            innings_summary['Overs'] = (innings_summary['Balls'] // 6) + (innings_summary['Balls'] % 6) / 10
-            innings_summary['Average'] = (innings_summary['Runs'] / innings_summary['Wickets']).round(2)  # Add bowling average
-            innings_summary['Strike Rate'] = (innings_summary['Balls'] / innings_summary['Wickets']).round(2)
-            innings_summary['Economy Rate'] = (innings_summary['Runs'] / innings_summary['Overs']).round(2)
-            innings_summary['WPM'] = (innings_summary['Wickets'] / innings_summary['Matches']).round(2)
-
-            # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Innings']). size().reset_index(name='5W')
-            innings_summary = innings_summary.merge(five_wickets, on=['Name', 'Innings'], how='left')
-            innings_summary['5W'] = innings_summary['5W'].fillna(0).astype(int)
-
-            # Count 10W matches
-            match_wickets = filtered_df.groupby(['Name', 'Innings', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Innings']).size().reset_index(name='10W')
-            innings_summary = innings_summary.merge(ten_wickets, on=['Name', 'Innings'], how='left')
-            innings_summary['10W'] = innings_summary['10W'].fillna(0).astype(int)
-
-            # Handle infinities and NaNs
-            innings_summary = innings_summary.replace([np.inf, -np.inf], np.nan)
-
-            # Final column ordering
-            innings_summary = innings_summary[[
-                'Name', 'Innings', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-            ]]
-            
-            # Sort by Wickets (descending)
-            innings_summary = innings_summary.sort_values('Wickets', ascending=False)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Innings Statistics</h3>", unsafe_allow_html=True)
-            
-            # Display the dataframe first (full width)
-            st.dataframe(innings_summary, use_container_width=True, hide_index=True)
-
-            # Create innings average graph
-            fig = go.Figure()
-            
-            # Add 'All' trace first if selected
-            if 'All' in name_choice:
-                all_innings_stats = filtered_df.groupby('Innings').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                # Calculate metrics
-                all_innings_stats['Average'] = (all_innings_stats['Bowler_Runs'] / all_innings_stats['Bowler_Wkts']).round(2)
-                all_innings_stats['Strike_Rate'] = (all_innings_stats['Bowler_Balls'] / all_innings_stats['Bowler_Wkts']).round(2)
-                all_innings_stats['Economy_Rate'] = (all_innings_stats['Bowler_Runs'] / (all_innings_stats['Bowler_Balls']/6)).round(2)
-                
-                all_color = '#f84e4e' if not individual_players else 'black'
-                
-                fig.add_trace(
-                    go.Bar(
-                        y=all_innings_stats['Innings'],
-                        x=all_innings_stats['Average'],
-                        name='All Players',
-                        marker_color=all_color,
-                        text=all_innings_stats['Average'].round(2),
-                        textposition='auto',
-                        orientation='h',
-                        customdata=np.stack((
-                            all_innings_stats['Bowler_Wkts'],
-                            all_innings_stats['Strike_Rate'],
-                            all_innings_stats['Economy_Rate']
-                        ), axis=-1),
-                        hovertemplate=(
-                            'Innings: %{y}<br>'
-                            'Average: %{x:.2f}<br>'
-                            'Wickets: %{customdata[0]}<br>'
-                            'Strike Rate: %{customdata[1]:.2f}<br>'
-                            'Economy Rate: %{customdata[2]:.2f}<extra></extra>'
-                        )
-                    )
-                )
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_data = filtered_df[filtered_df['Name'] == name].groupby('Innings').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum'
-                }).reset_index()
-                
-                player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
-                
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                fig.add_trace(
-                    go.Bar(
-                        y=player_data['Innings'],  # Switched to y axis
-                        x=player_data['Average'],  # Switched to x axis
+            innings_summary = compute_bowl_innings_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(54, 209, 220, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Innings Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if innings_summary.empty:
+                st.info("No innings statistics to display for the current selection.")
+            else:
+                st.dataframe(innings_summary, use_container_width=True, hide_index=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(54, 209, 220, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Innings</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                fig = go.Figure()
+                for name in innings_summary['Name'].unique():
+                    player_data = innings_summary[innings_summary['Name'] == name]
+                    fig.add_trace(go.Bar(
+                        x=player_data['Innings'],
+                        y=player_data['Average'],
                         name=name,
-                        marker_color=color,
-                        text=player_data['Bowler_Wkts'],
-                        textposition='auto',
-                        orientation='h'  # Make bars horizontal
-                    )
-                )
-
-            # Display chart title
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Average by Innings Number</h3>", unsafe_allow_html=True)
-
-            # Update layout
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                yaxis_title="Innings",  # Switched axis titles
-                xaxis_title="Average",
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                yaxis={
-                    'type': 'category'
-                },
-                barmode='group'
-            )
-
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            # Display the bar chart (full width)
-            st.plotly_chart(fig, use_container_width=True)
+                    ))
+                fig.update_layout(barmode='group', xaxis_title="Innings", yaxis_title="Average")
+                st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------POSITION STATS-------------------------------------###
         # Position Stats Tab
         with tabs[7]:
-            # Calculate statistics dataframe for position
-            position_summary = filtered_df.groupby(['Name', 'Position']).agg({
-                'File Name': 'nunique',      # Matches
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
-
-            position_summary.columns = ['Name', 'Position', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-            # Calculate metrics
-            position_summary['Overs'] = (position_summary['Balls'] // 6) + (position_summary['Balls'] % 6) / 10
-            position_summary['Average'] = (position_summary['Runs'] / position_summary['Wickets']).round(2)  # Added Average
-            position_summary['Strike Rate'] = (position_summary['Balls'] / position_summary['Wickets']).round(2)
-            position_summary['Economy Rate'] = (position_summary['Runs'] / position_summary['Overs']).round(2)
-            position_summary['WPM'] = (position_summary['Wickets'] / position_summary['Matches']).round(2)
-
-            # Count 5W innings
-            five_wickets = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'Position']).size().reset_index(name='5W')
-            position_summary = position_summary.merge(five_wickets, on=['Name', 'Position'], how='left')
-            position_summary['5W'] = position_summary['5W'].fillna(0).astype(int)
-
-            # Count 10W matches
-            match_wickets = filtered_df.groupby(['Name', 'Position', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            ten_wickets = match_wickets[match_wickets['Bowler_Wkts'] >= 10].groupby(['Name', 'Position']).size().reset_index(name='10W')
-            position_summary = position_summary.merge(ten_wickets, on=['Name', 'Position'], how='left')
-            position_summary['10W'] = position_summary['10W'].fillna(0).astype(int)
-
-            # Handle infinities and NaNs
-            position_summary = position_summary.replace([np.inf, -np.inf], np.nan)
-
-            # Final column ordering
-            position_summary = position_summary[[
-                'Name', 'Position', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Average',
-                'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM'
-            ]]
-            
-            # Sort by Wickets (descending)
-            position_summary = position_summary.sort_values('Wickets', ascending=False)
-
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Position Statistics</h3>", unsafe_allow_html=True)
-            
-            # Display the dataframe first (full width)
-            st.dataframe(position_summary, use_container_width=True, hide_index=True)
-
-            # Create position metrics graphs (Average, Strike Rate, Economy Rate)
-            fig = make_subplots(rows=1, cols=3, subplot_titles=("Average by Bowling Position", "Strike Rate by Bowling Position", "Economy Rate by Bowling Position"))
-
-            # Add 'All' trace first if selected
-            if 'All' in name_choice:
-                all_position_stats = filtered_df.groupby(['Position']).agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                all_position_stats['Average'] = (all_position_stats['Bowler_Runs'] / all_position_stats['Bowler_Wkts']).round(2)
-                all_position_stats['Strike_Rate'] = (all_position_stats['Bowler_Balls'] / all_position_stats['Bowler_Wkts']).round(2)
-                all_position_stats['Economy_Rate'] = (all_position_stats['Bowler_Runs'] / (all_position_stats['Bowler_Balls']/6)).round(2)
-                all_position_stats['Position'] = all_position_stats['Position'].astype(int)
-                
-                all_color = '#f84e4e' if not individual_players else 'black'
-                
-                # Add Average trace
-                fig.add_trace(go.Bar(
-                    y=all_position_stats['Position'],
-                    x=all_position_stats['Average'],
-                    name='All Players',
-                    orientation='h',
-                    marker_color=all_color,
-                    showlegend=True,
-                    legendgroup='All Players',
-                    text=all_position_stats['Average'].round(2),
-                    textposition='auto'
-                ), row=1, col=1)
-                
-                # Add Strike Rate trace
-                fig.add_trace(go.Bar(
-                    y=all_position_stats['Position'],
-                    x=all_position_stats['Strike_Rate'],
-                    name='All Players',
-                    orientation='h',
-                    marker_color=all_color,
-                    showlegend=False,
-                    legendgroup='All Players',
-                    text=all_position_stats['Strike_Rate'].round(2),
-                    textposition='auto'
-                ), row=1, col=2)
-                
-                # Add Economy Rate trace
-                fig.add_trace(go.Bar(
-                    y=all_position_stats['Position'],
-                    x=all_position_stats['Economy_Rate'],
-                    name='All Players',
-                    orientation='h',
-                    marker_color=all_color,
-                    showlegend=False,
-                    legendgroup='All Players',
-                    text=all_position_stats['Economy_Rate'].round(2),
-                    textposition='auto'
-                ), row=1, col=3)
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_data = filtered_df[filtered_df['Name'] == name].groupby('Position').agg({
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                if not player_data.empty:
-                    player_data['Average'] = (player_data['Bowler_Runs'] / player_data['Bowler_Wkts']).round(2)
-                    player_data['Strike_Rate'] = (player_data['Bowler_Balls'] / player_data['Bowler_Wkts']).round(2)
-                    player_data['Economy_Rate'] = (player_data['Bowler_Runs'] / (player_data['Bowler_Balls']/6)).round(2)
-                    player_data['Position'] = player_data['Position'].astype(int)
-                    
-                    color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                    
-                    # Add Average trace
-                    fig.add_trace(go.Bar(
-                        y=player_data['Position'],
-                        x=player_data['Average'],
-                        name=name,
-                        orientation='h',
-                        marker_color=color,
-                        showlegend=True,
-                        legendgroup=name,
-                        text=player_data['Average'].round(2),
-                        textposition='auto'
-                    ), row=1, col=1)
-                    
-                    # Add Strike Rate trace
-                    fig.add_trace(go.Bar(
-                        y=player_data['Position'],
-                        x=player_data['Strike_Rate'],
-                        name=name,
-                        orientation='h',
-                        marker_color=color,
-                        showlegend=False,
-                        legendgroup=name,
-                        text=player_data['Strike_Rate'].round(2),
-                        textposition='auto'
-                    ), row=1, col=2)
-                    
-                    # Add Economy Rate trace
-                    fig.add_trace(go.Bar(
-                        y=player_data['Position'],
-                        x=player_data['Economy_Rate'],
-                        name=name,
-                        orientation='h',
-                        marker_color=color,
-                        showlegend=False,
-                        legendgroup=name,
-                        text=player_data['Economy_Rate'].round(2),
-                        textposition='auto'
-                    ), row=1, col=3)
-
-            # Update layout
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                barmode='group'
-            )
-
-            # Update x-axis titles for each subplot
-            fig.update_xaxes(title_text="Average", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=1)
-            fig.update_xaxes(title_text="Strike Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=2)
-            fig.update_xaxes(title_text="Economy Rate", showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=3)
-            
-            # Update y-axis for all subplots
-            for col in range(1, 4):
-                fig.update_yaxes(
-                    title_text="Position",
-                    showgrid=True, 
-                    gridwidth=1, 
-                    gridcolor='rgba(128, 128, 128, 0.2)',
-                    categoryorder='array',
-                    categoryarray=list(range(1,12)),
-                    dtick=1,
-                    row=1, col=col
-                )
-
-            # Display the bar charts (full width)
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Create scatter plot for Economy Rate vs Strike Rate by Position
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("<h3 style='color:#f04f53; text-align: center;'>Economy Rate vs Strike Rate by Position</h3>", unsafe_allow_html=True)
-            
-            fig_scatter = go.Figure()
-
-            # Create scatter plot data from the position_summary DataFrame
-            scatter_data = position_summary.copy()
-            
-            # Remove any rows with NaN values for the metrics we're plotting
-            scatter_data = scatter_data.dropna(subset=['Economy Rate', 'Strike Rate'])
-            
-            # Get unique players and assign colors
-            unique_players = scatter_data['Name'].unique()
-            
-            for i, player in enumerate(unique_players):
-                player_data = scatter_data[scatter_data['Name'] == player]
-                
-                # First player gets streamlit red, others get random colors
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                
-                fig_scatter.add_trace(go.Scatter(
-                    x=player_data['Economy Rate'],
-                    y=player_data['Strike Rate'],
-                    mode='markers+text',
-                    name=player,
-                    marker=dict(
-                        size=12,
-                        color=color,
-                        opacity=0.8,
-                        line=dict(width=2, color='white')
-                    ),
-                    text=[f"{player} ({pos})" for pos in player_data['Position']],
-                    textposition='top center',
-                    textfont=dict(
-                        size=10,
-                        color=color
-                    ),
-                    customdata=np.stack([
-                        player_data['Position'],
-                        player_data['Wickets'],
-                        player_data['Average'],
-                        player_data['Matches']
-                    ], axis=-1),
-                    hovertemplate=(
-                        '<b>%{fullData.name}</b><br>'
-                        'Position: %{customdata[0]}<br>'
-                        'Economy Rate: %{x:.2f}<br>'
-                        'Strike Rate: %{y:.2f}<br>'
-                        'Wickets: %{customdata[1]}<br>'
-                        'Average: %{customdata[2]:.2f}<br>'
-                        'Matches: %{customdata[3]}<extra></extra>'
-                    )
-                ))
-
-            # Update layout for scatter plot
-            fig_scatter.update_layout(
-                showlegend=True,
-                height=500,
-                xaxis_title="Economy Rate (Runs/Over)",
-                yaxis_title="Strike Rate (Balls/Wicket)",
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                hovermode='closest'
-            )
-
-            # Add gridlines
-            fig_scatter.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig_scatter.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-            # Display the scatter plot
-            st.plotly_chart(fig_scatter, use_container_width=True)
-
-        ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
-        # Cumulative Stats Tab
-        with tabs[8]:
-            # Create initial df_bowl from filtered bowl_df
-            df_bowl = filtered_df.copy()
-
-            # Convert the 'Date' column to datetime format for proper chronological sorting
-            df_bowl['Date'] = pd.to_datetime(df_bowl['Date'], format='%d %b %Y').dt.date
-
-            # Sort the DataFrame by 'Name', 'Match_Format', and the 'Date' column
-            df_bowl = df_bowl.sort_values(by=['Name', 'Match_Format', 'Date'])
-
-            # Only process if there is data for the selected player
-            if not df_bowl.empty:
-                # Sort by Name and Date to ensure chronological order
-                df_bowl = df_bowl.sort_values(by=['Name', 'Match_Format', 'Date'])
-
-                # Create innings number starting from 1 for each player and format
-                df_bowl['Innings_Number'] = df_bowl.groupby(['Name', 'Match_Format']).cumcount() + 1
-
-                # Calculate cumulative sums
-                df_bowl['Cumulative Balls'] = df_bowl.groupby(['Name', 'Match_Format'])['Bowler_Balls'].cumsum()
-                df_bowl['Cumulative Runs'] = df_bowl.groupby(['Name', 'Match_Format'])['Bowler_Runs'].cumsum()
-                df_bowl['Cumulative Wickets'] = df_bowl.groupby(['Name', 'Match_Format'])['Bowler_Wkts'].cumsum()
-
-                # Calculate cumulative overs
-                df_bowl['Cumulative Overs'] = (df_bowl['Cumulative Balls'] // 6) + (df_bowl['Cumulative Balls'] % 6) / 10
-
-                # Calculate cumulative metrics
-                df_bowl['Cumulative SR'] = (df_bowl['Cumulative Balls'] / df_bowl['Cumulative Wickets'].replace(0, np.nan)).round(2)
-                df_bowl['Cumulative Econ'] = (df_bowl['Cumulative Runs'] / df_bowl['Cumulative Overs'].replace(0, np.nan)).round(2)
-                df_bowl['Cumulative Average'] = (df_bowl['Cumulative Runs'] / df_bowl['Cumulative Wickets'].replace(0, np.nan)).round(2)
-
-                # Convert Bowler_Balls to Overs format
-                df_bowl['Overs'] = (df_bowl['Bowler_Balls'] // 6) + (df_bowl['Bowler_Balls'] % 6) / 10
-
-                # Create new columns with desired names
-                df_bowl['Runs'] = df_bowl['Bowler_Runs']
-                df_bowl['Wkts'] = df_bowl['Bowler_Wkts']
-                df_bowl['Econ'] = df_bowl['Bowler_Econ']
-
-                # Drop unwanted columns
-                columns_to_drop = [
-                    'Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets', 
-                    'Competition', 'Player_of_the_Match', 'Bowled', '5ws', '10ws',
-                    'Runs_Per_Over', 'Balls_Per_Wicket', 'File Name',
-                    'Dot_Ball_Percentage', 'Strike_Rate', 'Average', 'Year',
-                    'Cumulative Balls', 'Bowler_Balls', 'Bowler_Runs', 'Bowler_Wkts',
-                    'Bowler_Econ', 'Bowler_Overs'
-                ]
-                
-                # Drop columns if they exist
-                df_bowl = df_bowl.drop(columns=[col for col in columns_to_drop if col in df_bowl.columns])
-
-                # Reorder columns
-                column_order = [
-                    'Date', 'Home_Team', 'Away_Team', 'Name', 'Innings', 'Position',
-                    'Overs', 'Runs', 'Wkts', 'Econ', 'Innings_Number',
-                    'Cumulative Overs', 'Cumulative Runs', 'Cumulative Wickets',
-                    'Cumulative Average', 'Cumulative SR', 'Cumulative Econ'
-                ]
-                
-                     # Only include columns that exist in the DataFrame
-                final_columns = [col for col in column_order if col in df_bowl.columns]
-                df_bowl = df_bowl[final_columns]
-             # Handle infinities and NaNs
-                df_bowl = df_bowl.replace([np.inf, -np.inf], np.nan)
-
-                # Display the bowling statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Cumulative Bowling Statistics</h3>", unsafe_allow_html=True)
-                st.dataframe(df_bowl, use_container_width=True, hide_index=True)
+            position_summary = compute_bowl_position_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(131, 96, 195, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Position Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if position_summary.empty:
+                st.info("No position statistics to display for the current selection.")
             else:
-                st.warning("No bowling data available for the selected player.")
-
-            ###----------------------GRAPHS--------------------------###
-            # Create subplots for Cumulative Average, Strike Rate, and Economy
-            fig = make_subplots(rows=1, cols=3, subplot_titles=("Cumulative Average", "Cumulative Strike Rate", "Cumulative Economy"))
-
-            # Get list of individual players (excluding 'All')
-            individual_players = [name for name in name_choice if name != 'All']
-
-            # Add individual player traces
-            for i, name in enumerate(individual_players):
-                player_stats = df_bowl[df_bowl['Name'] == name].sort_values('Innings_Number')
-                
-                # First player gets streamlit red, others get random colors
-                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                # Add Cumulative Average trace
-                fig.add_trace(go.Scatter(
-                    x=player_stats['Innings_Number'],
-                    y=player_stats['Cumulative Average'],
-                    name=name,
-                    legendgroup=name,
-                    mode='lines+markers',
-                    marker_color=color,
-                    showlegend=True
-                ), row=1, col=1)
-
-                # Add Cumulative Strike Rate trace
-                fig.add_trace(go.Scatter(
-                    x=player_stats['Innings_Number'],
-                    y=player_stats['Cumulative SR'],
-                    name=name,
-                    legendgroup=name,
-                    mode='lines+markers',
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=2)
-
-                # Add Cumulative Economy trace
-                fig.add_trace(go.Scatter(
-                    x=player_stats['Innings_Number'],
-                    y=player_stats['Cumulative Econ'],
-                    name=name,
-                    legendgroup=name,
-                    mode='lines+markers',
-                    marker_color=color,
-                    showlegend=False
-                ), row=1, col=3)
-
-            # Update layout
-            fig.update_layout(
-                showlegend=True,
-                height=500,
-                font=dict(size=12),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                yaxis_title="Average (Runs/Wicket)",
-                yaxis2_title="Strike Rate (Balls/Wicket)",
-                yaxis3_title="Economy Rate (Runs/Over)",
-                xaxis_title="Innings Number",
-                xaxis2_title="Innings Number",
-                xaxis3_title="Innings Number"
-            )
-
-            # Add gridlines and update axes
-            for i in range(1, 4):
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=i)
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', row=1, col=i)
-
-            # Display the figure
-            st.plotly_chart(fig, use_container_width=True)
-
-        ###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
-        # Block Stats Tab
-        with tabs[9]:
-            # Create DataFrame for block stats from filtered_df (notice this is at the same level as other main sections)
-            df_blockbowl = filtered_df.copy()
-
-            # Only process if there is data for the selected player
-            if not df_blockbowl.empty:
-                # Sort by Name and Date to ensure chronological order
-                df_blockbowl = df_blockbowl.sort_values(by=['Name', 'Match_Format', 'Date'])
-
-                # Create innings number and innings range
-                df_blockbowl['Innings_Number'] = df_blockbowl.groupby(['Name', 'Match_Format']).cumcount() + 1
-                df_blockbowl['Innings_Range'] = (((df_blockbowl['Innings_Number'] - 1) // 20) * 20).astype(str) + '-' + \
-                                        ((((df_blockbowl['Innings_Number'] - 1) // 20) * 20 + 19)).astype(str)
-                df_blockbowl['Range_Start'] = ((df_blockbowl['Innings_Number'] - 1) // 20) * 20
-
-                # Group by blocks and calculate statistics
-                block_stats_df = df_blockbowl.groupby(['Name', 'Match_Format', 'Innings_Range', 'Range_Start']).agg({
-                    'Innings_Number': 'count',
-                    'Bowler_Balls': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Wkts': 'sum',
-                    'Date': ['first', 'last']
-                }).reset_index()
-
-                # Flatten the column names
-                block_stats_df.columns = ['Name', 'Match_Format', 'Innings_Range', 'Range_Start',
-                                        'Innings', 'Balls', 'Runs', 'Wickets',
-                                        'First_Date', 'Last_Date']
-
-                # Calculate statistics for each block
-                block_stats_df['Overs'] = (block_stats_df['Balls'] // 6) + (block_stats_df['Balls'] % 6) / 10
-                block_stats_df['Average'] = (block_stats_df['Runs'] / block_stats_df['Wickets']).round(2)
-                block_stats_df['Strike_Rate'] = (block_stats_df['Balls'] / block_stats_df['Wickets']).round(2)
-                block_stats_df['Economy'] = (block_stats_df['Runs'] / block_stats_df['Overs']).round(2)
-
-                # Format dates properly before creating date range
-                block_stats_df['First_Date'] = pd.to_datetime(block_stats_df['First_Date']).dt.strftime('%d/%m/%Y')
-                block_stats_df['Last_Date'] = pd.to_datetime(block_stats_df['Last_Date']).dt.strftime('%d/%m/%Y')
-                
-                # Create date range column
-                block_stats_df['Date_Range'] = block_stats_df['First_Date'] + ' to ' + block_stats_df['Last_Date']
-
-                # Sort the DataFrame
-                block_stats_df = block_stats_df.sort_values(['Name', 'Match_Format', 'Range_Start'])
-
-                # Select and order final columns
-                final_columns = [
-                    'Name', 'Match_Format', 'Innings_Range', 'Date_Range',
-                    'Innings', 'Overs', 'Runs', 'Wickets',
-                    'Average', 'Strike_Rate', 'Economy'
-                ]
-                block_stats_df = block_stats_df[final_columns]
-
-                # Handle any infinities and NaN values
-                block_stats_df = block_stats_df.replace([np.inf, -np.inf], np.nan)
-
-                # Store the final DataFrame
-                df_blocks = block_stats_df.copy()
-
-                # Display the block statistics
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Block Statistics (Groups of 20 Innings)</h3>", unsafe_allow_html=True)
-                st.dataframe(df_blocks, use_container_width=True, hide_index=True)
-
-                # Create the figure for bowling averages by innings range
+                st.dataframe(position_summary, use_container_width=True, hide_index=True)
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #8360c3 0%, #2ebf91 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(131, 96, 195, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Average vs Position</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 fig = go.Figure()
-
-                # Handle 'All' selection
-                if 'All' in name_choice:
-                    all_blocks = df_blocks.groupby('Innings_Range').agg({
-                        'Runs': 'sum',
-                        'Wickets': 'sum'
-                    }).reset_index()
-                    
-                    all_blocks['Average'] = (all_blocks['Runs'] / all_blocks['Wickets']).round(2)
-                    
-                    all_blocks = all_blocks.sort_values('Innings_Range', 
-                        key=lambda x: [int(i.split('-')[0]) for i in x])
-                    
-                    all_color = '#f84e4e' if not individual_players else 'black'
-                    
-                    fig.add_trace(
-                        go.Bar(
-                            x=all_blocks['Innings_Range'],
-                            y=all_blocks['Average'],
-                            name='All Players',
-                            marker_color=all_color
-                        )
-                    )
-
-                # Add individual player traces
-                for i, name in enumerate(individual_players):
-                    player_blocks = df_blocks[df_blocks['Name'] == name].sort_values('Innings_Range', 
-                        key=lambda x: [int(i.split('-')[0]) for i in x])
-                    
-                    color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-                    
-                    fig.add_trace(
-                        go.Bar(
-                            x=player_blocks['Innings_Range'],
-                            y=player_blocks['Average'],
-                            name=name,
-                            marker_color=color
-                        )
-                    )
-
-                # Update layout
-                fig.update_layout(
-                    showlegend=True,
-                    height=500,
-                    xaxis_title='Innings Range',
-                    yaxis_title='Bowling Average',
-                    margin=dict(l=50, r=50, t=70, b=50),
-                    font=dict(size=12),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    barmode='group',
-                    xaxis={'categoryorder': 'array', 
-                        'categoryarray': sorted(df_blocks['Innings_Range'].unique(), 
-                                            key=lambda x: int(x.split('-')[0]))}
-                )
-
-                # Add gridlines
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-                # Display title and graph
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Bowling Average by Innings Block</h3>", unsafe_allow_html=True)
+                for name in position_summary['Name'].unique():
+                    player_data = position_summary[position_summary['Name'] == name]
+                    fig.add_trace(go.Bar(
+                        x=player_data['Position'],
+                        y=player_data['Average'],
+                        name=name,
+                    ))
+                fig.update_layout(barmode='group', xaxis_title="Position", yaxis_title="Average")
                 st.plotly_chart(fig, use_container_width=True)
 
         ###-------------------------------------HOME/AWAY STATS-------------------------------------###
         # Home/Away Stats Tab
-        with tabs[10]: # New tab index
-            # Calculate home/away statistics
-            match_wickets_ha = filtered_df.groupby(['Name', 'HomeOrAway', 'File Name'])['Bowler_Wkts'].sum().reset_index()
-            # ten_wickets_ha calculation moved down
+        with tabs[8]:
+            homeaway_stats_df = compute_bowl_homeaway_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(255, 126, 95, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Home/Away Bowling Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if homeaway_stats_df.empty:
+                st.info("No Home/Away statistics to display for the current selection.")
+            else:
+                st.dataframe(homeaway_stats_df, use_container_width=True, hide_index=True)
+                # --- Modern UI Section Header for Graphs ---
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); 
+                            padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                            box-shadow: 0 6px 24px rgba(255, 126, 95, 0.25);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Home/Away Performance Trends by Year</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                col1, col2, col3 = st.columns(3)
+                # Prepare yearly stats by Home/Away
+                yearly_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
+                    'Bowler_Runs': 'sum',
+                    'Bowler_Wkts': 'sum',
+                    'Bowler_Balls': 'sum'
+                }).reset_index()
+                yearly_ha['Average'] = (yearly_ha['Bowler_Runs'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                yearly_ha['Economy Rate'] = (yearly_ha['Bowler_Runs'] / (yearly_ha['Bowler_Balls'].replace(0, np.nan) / 6)).round(2).fillna(0)
+                yearly_ha['Strike Rate'] = (yearly_ha['Bowler_Balls'] / yearly_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
+                ha_colors = {'Home': '#1f77b4', 'Away': '#d62728', 'Neutral': '#2ca02c'}
+                # Average by Year
+                with col1:
+                    st.subheader("Average by Year")
+                    fig_avg = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_avg.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Average'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_avg.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Average",
+                        font=dict(size=12)
+                    )
+                    fig_avg.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_avg, use_container_width=True)
+                # Economy Rate by Year
+                with col2:
+                    st.subheader("Economy Rate by Year")
+                    fig_econ = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_econ.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Economy Rate'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_econ.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Economy Rate",
+                        font=dict(size=12)
+                    )
+                    fig_econ.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_econ, use_container_width=True)
+                # Strike Rate by Year
+                with col3:
+                    st.subheader("Strike Rate by Year")
+                    fig_sr = go.Figure()
+                    for ha in yearly_ha['HomeOrAway'].unique():
+                        ha_data = yearly_ha[yearly_ha['HomeOrAway'] == ha]
+                        color = ha_colors.get(ha, f'#{hash(ha) & 0xFFFFFF:06x}')
+                        fig_sr.add_trace(go.Scatter(
+                            x=ha_data['Year'],
+                            y=ha_data['Strike Rate'],
+                            mode='lines+markers',
+                            name=ha,
+                            line=dict(color=color),
+                            marker=dict(color=color, size=8)
+                        ))
+                    fig_sr.update_layout(
+                        height=350,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="top", y=1.15, xanchor="center", x=0.5),
+                        xaxis_title="Year",
+                        yaxis_title="Strike Rate",
+                        font=dict(size=12)
+                    )
+                    fig_sr.update_xaxes(tickmode='linear', dtick=1)
+                    st.plotly_chart(fig_sr, use_container_width=True)
 
-            bowlhomeaway_df = filtered_df.groupby(['Name', 'HomeOrAway']).agg({
-                'File Name': 'nunique',
-                'Bowler_Balls': 'sum',
-                'Maidens': 'sum',
-                'Bowler_Runs': 'sum',
-                'Bowler_Wkts': 'sum'
-            }).reset_index()
+        ###--------------------------------------CUMULATIVE BOWLING STATS------------------------------------------#######
+        # Cumulative Stats Tab
+        with tabs[9]:
+            cumulative_stats = compute_bowl_cumulative_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(17, 153, 142, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Cumulative Bowling Statistics</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            if cumulative_stats.empty:
+                st.info("No cumulative statistics to display for the current selection.")
+            else:
+                st.dataframe(cumulative_stats, use_container_width=True, hide_index=True)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.subheader("Cumulative Average")
+                    fig1 = go.Figure()
+                    for name in cumulative_stats['Name'].unique():
+                        player_data = cumulative_stats[cumulative_stats['Name'] == name]
+                        fig1.add_trace(go.Scatter(x=player_data['Cumulative Matches'], y=player_data['Cumulative Avg'], mode='lines', name=name))
+                    fig1.update_layout(xaxis_title='Cumulative Matches', yaxis_title='Cumulative Average')
+                    st.plotly_chart(fig1, use_container_width=True)
+                with col2:
+                    st.subheader("Cumulative Strike Rate")
+                    fig2 = go.Figure()
+                    for name in cumulative_stats['Name'].unique():
+                        player_data = cumulative_stats[cumulative_stats['Name'] == name]
+                        fig2.add_trace(go.Scatter(x=player_data['Cumulative Matches'], y=player_data['Cumulative SR'], mode='lines', name=name))
+                    fig2.update_layout(xaxis_title='Cumulative Matches', yaxis_title='Cumulative Strike Rate')
+                    st.plotly_chart(fig2, use_container_width=True)
+                with col3:
+                    st.subheader("Cumulative Economy Rate")
+                    fig3 = go.Figure()
+                    for name in cumulative_stats['Name'].unique():
+                        player_data = cumulative_stats[cumulative_stats['Name'] == name]
+                        fig3.add_trace(go.Scatter(x=player_data['Cumulative Matches'], y=player_data['Cumulative Econ'], mode='lines', name=name))
+                    fig3.update_layout(xaxis_title='Cumulative Matches', yaxis_title='Cumulative Economy Rate')
+                    st.plotly_chart(fig3, use_container_width=True)
 
-            # Check if bowlhomeaway_df is empty or HomeOrAway column is missing after initial group by
-            if bowlhomeaway_df.empty or 'HomeOrAway' not in bowlhomeaway_df.columns:
-                st.warning("No Home/Away data available for the selected filters.")
-                # Create an empty structure or skip the rest of the tab
-                bowlhomeaway_df = pd.DataFrame(columns=[ # Define expected columns
-                    'Name', 'Home/Away', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
-                    'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-                ])
-                # Skip further processing for this tab if no base data
-                st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
-
-            else: # Proceed if bowlhomeaway_df is valid
-
-                bowlhomeaway_df.columns = ['Name', 'Home/Away', 'Matches', 'Balls', 'M/D', 'Runs', 'Wickets']
-
-                # Calculate home/away metrics
-                bowlhomeaway_df['Overs'] = (bowlhomeaway_df['Balls'] // 6) + (bowlhomeaway_df['Balls'] % 6) / 10
-                bowlhomeaway_df['Avg'] = (bowlhomeaway_df['Runs'] / bowlhomeaway_df['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                bowlhomeaway_df['Strike Rate'] = (bowlhomeaway_df['Balls'] / bowlhomeaway_df['Wickets']).replace([np.inf, -np.inf], np.nan).round(2)
-                bowlhomeaway_df['Economy Rate'] = (bowlhomeaway_df['Runs'] / bowlhomeaway_df['Overs'].replace(0, np.nan)).replace([np.inf, -np.inf], np.nan).round(2)
-
-
-                # Add additional statistics safely
-                five_wickets_ha = filtered_df[filtered_df['Bowler_Wkts'] >= 5].groupby(['Name', 'HomeOrAway']).size().reset_index(name='5W')
-                # Check if 'HomeOrAway' exists in both dataframes before merging
-                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in five_wickets_ha.columns:
-                    bowlhomeaway_df = bowlhomeaway_df.merge(five_wickets_ha, on=['Name', 'HomeOrAway'], how='left')
-                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no 5W found)
-                    bowlhomeaway_df['5W'] = 0
-                else: # HomeOrAway missing from the main aggregated df, add 5W column anyway
-                    bowlhomeaway_df['5W'] = 0
-                bowlhomeaway_df['5W'] = bowlhomeaway_df['5W'].fillna(0).astype(int)
-
-
-                # Safely merge 10W stats
-                ten_wickets_ha = match_wickets_ha[match_wickets_ha['Bowler_Wkts'] >= 10].groupby(['Name', 'HomeOrAway']).size().reset_index(name='10W')
-                # Check if 'HomeOrAway' exists in both dataframes before merging
-                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in ten_wickets_ha.columns:
-                    bowlhomeaway_df = bowlhomeaway_df.merge(ten_wickets_ha, on=['Name', 'HomeOrAway'], how='left')
-                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no 10W found)
-                    bowlhomeaway_df['10W'] = 0
-                else: # HomeOrAway missing from the main aggregated df, add 10W column anyway
-                    bowlhomeaway_df['10W'] = 0
-                bowlhomeaway_df['10W'] = bowlhomeaway_df['10W'].fillna(0).astype(int)
-
-
-                bowlhomeaway_df['WPM'] = (bowlhomeaway_df['Wickets'] / bowlhomeaway_df['Matches']).replace([np.inf, -np.inf], np.nan).round(2)
-
-                pom_counts_ha = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby(['Name', 'HomeOrAway'])['File Name'].nunique().reset_index(name='POM')
-                # Safely merge POM stats
-                if 'HomeOrAway' in bowlhomeaway_df.columns and 'HomeOrAway' in pom_counts_ha.columns:
-                    bowlhomeaway_df = bowlhomeaway_df.merge(pom_counts_ha, on=['Name', 'HomeOrAway'], how='left')
-                elif 'HomeOrAway' in bowlhomeaway_df.columns: # Exists in left, but not right (no POM found)
-                    bowlhomeaway_df['POM'] = 0
-                else: # HomeOrAway missing from the main aggregated df, add POM column anyway
-                    bowlhomeaway_df['POM'] = 0
-                bowlhomeaway_df['POM'] = bowlhomeaway_df['POM'].fillna(0).astype(int)
-
-
-                bowlhomeaway_df = bowlhomeaway_df.replace([np.inf, -np.inf], np.nan)
-
-                # Final column ordering
-                bowlhomeaway_df = bowlhomeaway_df[[
-                    'Name', 'Home/Away', 'Matches', 'Balls', 'Overs', 'M/D', 'Runs', 'Wickets', 'Avg',
-                    'Strike Rate', 'Economy Rate', '5W', '10W', 'WPM', 'POM'
-                ]]
-                
-                # Sort by Wickets (descending)
-                bowlhomeaway_df = bowlhomeaway_df.sort_values('Wickets', ascending=False)
-
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Home/Away Statistics</h3>", unsafe_allow_html=True)
-                st.dataframe(bowlhomeaway_df, use_container_width=True, hide_index=True)
-
-                ###-------------------------------------HOME/AWAY GRAPHS----------------------------------------###
-                # Create subplots for Bowling Average, Strike Rate, and Economy Rate by Home/Away
-                fig_ha_metrics = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate"))
-
-                # Handle 'All' selection
-                if 'All' in name_choice:
-                    # Check if HomeOrAway column exists and has data before grouping
-                    if 'HomeOrAway' in filtered_df.columns and not filtered_df['HomeOrAway'].isnull().all():
-                        all_players_ha_stats = filtered_df.groupby('HomeOrAway').agg({
-                            'Bowler_Runs': 'sum',
-                            'Bowler_Wkts': 'sum',
-                            'Bowler_Balls': 'sum'
-                        }).reset_index()
-
-                        # Proceed only if all_players_ha_stats is not empty
-                        if not all_players_ha_stats.empty:
-                            all_players_ha_stats['Avg'] = (all_players_ha_stats['Bowler_Runs'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                            all_players_ha_stats['SR'] = (all_players_ha_stats['Bowler_Balls'] / all_players_ha_stats['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                            # Ensure Bowler_Balls/6 is not zero before division
-                            all_players_ha_stats['Econ'] = (all_players_ha_stats['Bowler_Runs'] / (all_players_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
-
-                            all_color = '#f84e4e' if not individual_players else 'black'
-
-                            # Add traces for 'All' - Home and Away separately
-                            for ha_status in ['Home', 'Away']:
-                                data_subset = all_players_ha_stats[all_players_ha_stats['HomeOrAway'] == ha_status]
-                                if not data_subset.empty:
-                                    line_style = 'solid' if ha_status == 'Home' else 'dash'
-                                    legend_name = f'All Players - {ha_status}'
-                                    show_legend_main = True # Show both Home and Away in legend for the first plot
-
-                                    fig_ha_metrics.add_trace(go.Bar(
-                                        x=[ha_status],
-                                        y=data_subset['Avg'],
-                                        name=legend_name,
-                                        legendgroup='All',
-                                        marker_color=all_color,
-                                        showlegend=show_legend_main # Apply change here
-                                    ), row=1, col=1)
-
-                                    fig_ha_metrics.add_trace(go.Bar(
-                                        x=[ha_status],
-                                        y=data_subset['SR'],
-                                        name=legend_name, # Name needed for hover, but legend entry hidden
-                                        legendgroup='All',
-                                        marker_color=all_color,
-                                        showlegend=False # Keep False for SR plot
-                                    ), row=1, col=2)
-
-                                    fig_ha_metrics.add_trace(go.Bar(
-                                        x=[ha_status],
-                                        y=data_subset['Econ'],
-                                        name=legend_name, # Name needed for hover, but legend entry hidden
-                                        legendgroup='All',
-                                        marker_color=all_color,
-                                        showlegend=False # Keep False for Econ plot
-                                    ), row=1, col=3)
-                    else:
-                        st.warning("Not enough data to display 'All Players' Home/Away metrics.")
-
-
-                # Add individual player traces
-                for i, name in enumerate(individual_players):
-                     # Check if HomeOrAway column exists and has data for the player before grouping
-                    player_df_ha = filtered_df[(filtered_df['Name'] == name) & ('HomeOrAway' in filtered_df.columns) & (filtered_df['HomeOrAway'].notnull())]
-                    if not player_df_ha.empty:
-                        player_ha_stats = player_df_ha.groupby('HomeOrAway').agg({
-                            'Bowler_Runs': 'sum',
-                            'Bowler_Wkts': 'sum',
-                            'Bowler_Balls': 'sum'
-                        }).reset_index()
-
-                        # Proceed only if player_ha_stats is not empty
-                        if not player_ha_stats.empty:
-                            player_ha_stats['Avg'] = (player_ha_stats['Bowler_Runs'] / player_ha_stats['Bowler_Wkts']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-                            player_ha_stats['SR'] = (player_ha_stats['Bowler_Balls'] / player_ha_stats['Bowler_Wkts']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-                            # Ensure Bowler_Balls/6 is not zero before division
-                            player_ha_stats['Econ'] = (player_ha_stats['Bowler_Runs'] / (player_ha_stats['Bowler_Balls']/6).replace(0, np.nan)).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-
-
-                            color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=player_ha_stats['HomeOrAway'],
-                                y=player_ha_stats['Avg'],
-                                name=name,
-                                legendgroup=name,
-                                marker_color=color,
-                                showlegend=True
-                            ), row=1, col=1)
-
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=player_ha_stats['HomeOrAway'],
-                                y=player_ha_stats['SR'],
-                                name=name,
-                                legendgroup=name,
-                                marker_color=color,
-                                showlegend=False
-                            ), row=1, col=2)
-
-                            fig_ha_metrics.add_trace(go.Bar(
-                                x=player_ha_stats['HomeOrAway'],
-                                y=player_ha_stats['Econ'],
-                                name=name,
-                                legendgroup=name,
-                                marker_color=color,
-                                showlegend=False
-                            ), row=1, col=3)
-                    # else: # Optional: Add a warning if a specific player has no Home/Away data
-                    #     st.warning(f"Not enough data to display Home/Away metrics for {name}.")
-
-
-                # Update layout
-                fig_ha_metrics.update_layout(
-                    title="<b>Home/Away Performance Metrics</b>",
-                    title_x=0.5,
-                    showlegend=True,
-                    yaxis_title="Average (Runs/Wicket)",
-                    yaxis2_title="Strike Rate (Balls/Wicket)",
-                    yaxis3_title="Economy Rate (Runs/Over)",
-                    height=500,
-                    font=dict(size=12),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    barmode='group',
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top", # Anchor legend to its top
-                        y=-0.15,       # Position below the plot area (adjust as needed)
-                        xanchor="center",
-                        x=0.5
+        ###--------------------------------------BOWLING BLOCK STATS------------------------------------------#######
+        # Block Stats Tab
+        with tabs[10]:
+            block_stats_df = compute_bowl_block_stats(filtered_df)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(30, 60, 114, 0.4);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">Block Statistics (Groups of 20 Innings)</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.dataframe(block_stats_df, use_container_width=True, hide_index=True)
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                        box-shadow: 0 6px 24px rgba(30, 60, 114, 0.25);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">Bowling Average by Innings Block</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            fig = go.Figure()
+            # Handle 'All' selection
+            if 'All' in name_choice:
+                all_blocks = block_stats_df.groupby('Innings_Range').agg({
+                    'Runs': 'sum',
+                    'Wickets': 'sum'
+                }).reset_index()
+                all_blocks['Average'] = (all_blocks['Runs'] / all_blocks['Wickets']).round(2)
+                all_blocks = all_blocks.sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
+                all_color = '#f84e4e' if not individual_players else 'black'
+                fig.add_trace(
+                    go.Bar(
+                        x=all_blocks['Innings_Range'],
+                        y=all_blocks['Average'],
+                        name='All Players',
+                        marker_color=all_color
                     )
                 )
-
-                fig_ha_metrics.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Home/Away")
-                fig_ha_metrics.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-                st.plotly_chart(fig_ha_metrics, use_container_width=True)
-
-                # Create wickets per Home/Away chart
-                fig_ha_wickets = go.Figure()
-
-                # Add wickets per Home/Away for 'All' if selected
-                if 'All' in name_choice:
-                     # Check if HomeOrAway column exists and has data before grouping
-                    if 'HomeOrAway' in filtered_df.columns and not filtered_df['HomeOrAway'].isnull().all():
-                        wickets_all_ha = filtered_df.groupby('HomeOrAway')['Bowler_Wkts'].sum().reset_index()
-                        # Proceed only if wickets_all_ha is not empty
-                        if not wickets_all_ha.empty:
-                            all_color = '#f84e4e' if not individual_players else 'black'
-
-                            fig_ha_wickets.add_trace(
-                                go.Bar(
-                                    x=wickets_all_ha['HomeOrAway'],
-                                    y=wickets_all_ha['Bowler_Wkts'],
-                                    name='All Players',
-                                    marker_color=all_color
-                                )
-                            )
-                    # else: # Optional warning handled in the metrics chart already
-                    #     pass
-
-
-                # Add individual player wickets
-                for i, name in enumerate(individual_players):
-                    # Check if HomeOrAway column exists and has data for the player before grouping
-                    player_df_ha_wickets = filtered_df[(filtered_df['Name'] == name) & ('HomeOrAway' in filtered_df.columns) & (filtered_df['HomeOrAway'].notnull())]
-                    if not player_df_ha_wickets.empty:
-                        player_wickets_ha = player_df_ha_wickets.groupby('HomeOrAway')['Bowler_Wkts'].sum().reset_index()
-                        # Proceed only if player_wickets_ha is not empty
-                        if not player_wickets_ha.empty:
-                            color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                            fig_ha_wickets.add_trace(
-                                go.Bar(
-                                    x=player_wickets_ha['HomeOrAway'],
-                                    y=player_wickets_ha['Bowler_Wkts'],
-                                    name=name,
-                                    marker_color=color
-                                )
-                            )
-                    # else: # Optional warning handled in the metrics chart already
-                    #     pass
-
-
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Home vs Away</h3>", unsafe_allow_html=True)
-
-                fig_ha_wickets.update_layout(
-                    showlegend=True,
-                    height=500,
-                    xaxis_title='Home/Away',
-                    yaxis_title='Wickets',
-                    margin=dict(l=50, r=50, t=70, b=50),
-                    font=dict(size=12),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    barmode='group'
-                )
-
-                fig_ha_wickets.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-                fig_ha_wickets.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-                st.plotly_chart(fig_ha_wickets, use_container_width=True)
-
-                ###-------------------------------------SEASON GRAPHS (Modified for Home/Away)----------------------------------------###
-                st.markdown("<hr>", unsafe_allow_html=True) # Add a separator
-                st.markdown("<h2 style='color:#f04f53; text-align: center;'>Season Trends (Home vs Away)</h2>", unsafe_allow_html=True) # Updated Title
-
-                # Create subplots for Bowling Average, Strike Rate, and Economy Rate
-                fig_season_metrics_ha = make_subplots(rows=1, cols=3, subplot_titles=("Bowling Average", "Strike Rate", "Economy Rate")) # Renamed fig
-
-                # Handle 'All' selection
-                if 'All' in name_choice:
-                    # Group by Year and HomeOrAway
-                    all_players_stats_ha = filtered_df.groupby(['Year', 'HomeOrAway']).agg({
-                        'Bowler_Runs': 'sum',
-                        'Bowler_Wkts': 'sum',
-                        'Bowler_Balls': 'sum'
-                    }).reset_index()
-
-                    # Check for division by zero or NaN results
-                    all_players_stats_ha['Avg'] = (all_players_stats_ha['Bowler_Runs'] / all_players_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    all_players_stats_ha['SR'] = (all_players_stats_ha['Bowler_Balls'] / all_players_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    all_players_stats_ha['Econ'] = (all_players_stats_ha['Bowler_Runs'] / (all_players_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
-
-                    # Use streamlit red if only 'All' selected, black if names also selected
-                    all_color = '#f84e4e' if not individual_players else 'black'
-
-                    # Add traces for 'All' - Home and Away separately
-                    for ha_status in ['Home', 'Away']:
-                        data_subset = all_players_stats_ha[all_players_stats_ha['HomeOrAway'] == ha_status]
-                        if not data_subset.empty:
-                            line_style = 'solid' if ha_status == 'Home' else 'dash'
-                            legend_name = f'All Players - {ha_status}'
-                            show_legend_main = True # Show both Home and Away in legend for the first plot
-
-                            if 'Year' in data_subset.columns:
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Avg'],
-                                    mode='lines+markers',
-                                    name=legend_name,
-                                    legendgroup='All',
-                                    line=dict(color=all_color, dash=line_style),
-                                    marker=dict(color=all_color, size=8),
-                                    showlegend=show_legend_main # Apply change here
-                                ), row=1, col=1)
-
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['SR'],
-                                    mode='lines+markers',
-                                    name=legend_name, # Name needed for hover, but legend entry hidden
-                                    legendgroup='All',
-                                    line=dict(color=all_color, dash=line_style),
-                                    marker=dict(color=all_color, size=8),
-                                    showlegend=False # Keep False for SR plot
-                                ), row=1, col=2)
-
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Econ'],
-                                    mode='lines+markers',
-                                    name=legend_name, # Name needed for hover, but legend entry hidden
-                                    legendgroup='All',
-                                    line=dict(color=all_color, dash=line_style),
-                                    marker=dict(color=all_color, size=8),
-                                    showlegend=False # Keep False for Econ plot
-                                ), row=1, col=3)
-                            else:
-                                st.warning("Year column not available for All players. Cannot display season trends.")
-
-                # Add individual player traces
-                for i, name in enumerate(individual_players):
-                    player_stats = filtered_df[filtered_df['Name'] == name]
-                    # Group by Year and HomeOrAway
-                    player_yearly_stats_ha = player_stats.groupby(['Year', 'HomeOrAway']).agg({
-                        'Bowler_Runs': 'sum',
-                        'Bowler_Wkts': 'sum',
-                        'Bowler_Balls': 'sum'
-                    }).reset_index()
-
-                    # Check for division by zero or NaN results
-                    player_yearly_stats_ha['Avg'] = (player_yearly_stats_ha['Bowler_Runs'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    player_yearly_stats_ha['SR'] = (player_yearly_stats_ha['Bowler_Balls'] / player_yearly_stats_ha['Bowler_Wkts'].replace(0, np.nan)).round(2).fillna(0)
-                    player_yearly_stats_ha['Econ'] = (player_yearly_stats_ha['Bowler_Runs'] / (player_yearly_stats_ha['Bowler_Balls']/6).replace(0, np.nan)).round(2).fillna(0)
-
-                    # First player gets streamlit red, others get random colors
-                    base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                    # Add traces for player - Home and Away separately
-                    for ha_status in ['Home', 'Away']:
-                        data_subset = player_yearly_stats_ha[player_yearly_stats_ha['HomeOrAway'] == ha_status]
-                        if not data_subset.empty:
-                            line_style = 'solid' if ha_status == 'Home' else 'dash'
-                            legend_name = f'{name} - {ha_status}'
-                            show_legend_main = True # Show both Home and Away in legend for the first plot
-
-                            # Add bowling average trace
-                            if 'Year' in data_subset.columns:
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Avg'],
-                                    mode='lines+markers',
-                                    name=legend_name,
-                                    legendgroup=name, # Group by player name
-                                    line=dict(color=base_color, dash=line_style),
-                                    marker=dict(color=base_color, size=8),
-                                    showlegend=show_legend_main # Apply change here
-                                ), row=1, col=1)
-
-                                # Add strike rate trace
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['SR'],
-                                    mode='lines+markers',
-                                    name=legend_name, # Name needed for hover, but legend entry hidden
-                                    legendgroup=name,
-                                    line=dict(color=base_color, dash=line_style),
-                                    marker=dict(color=base_color, size=8),
-                                    showlegend=False # Keep False for SR plot
-                                ), row=1, col=2)
-
-                                # Add economy rate trace
-                                fig_season_metrics_ha.add_trace(go.Scatter(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Econ'],
-                                    mode='lines+markers',
-                                    name=legend_name, # Name needed for hover, but legend entry hidden
-                                    legendgroup=name,
-                                    line=dict(color=base_color, dash=line_style),
-                                    marker=dict(color=base_color, size=8),
-                                    showlegend=False # Keep False for Econ plot
-                                ), row=1, col=3)
-                            else:
-                                st.warning(f"Year column not available for player {name}. Cannot display season trends.")
-
-                # Update layout
-                fig_season_metrics_ha.update_layout( # Use renamed fig
-                    title="<b>Season Performance Metrics (Home vs Away)</b>", # Updated title
-                    title_x=0.5,
-                    showlegend=True,
-                    yaxis_title="Average (Runs/Wicket)",
-                    yaxis2_title="Strike Rate (Balls/Wicket)",
-                    yaxis3_title="Economy Rate (Runs/Over)",
-                    height=550, # Increased height slightly for legend space
-                    font=dict(size=12),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top", # Anchor legend to its top
-                        y=-0.15,       # Position below the plot area (adjust as needed)
-                        xanchor="center",
-                        x=0.5
+            # Add individual player traces
+            for i, name in enumerate(individual_players):
+                player_blocks = block_stats_df[block_stats_df['Name'] == name].sort_values('Innings_Range', key=lambda x: [int(i.split('-')[0]) for i in x])
+                color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
+                fig.add_trace(
+                    go.Bar(
+                        x=player_blocks['Innings_Range'],
+                        y=player_blocks['Average'],
+                        name=name,
+                        marker_color=color
                     )
                 )
-
-                fig_season_metrics_ha.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)', title_text="Year")
-                fig_season_metrics_ha.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
-
-                st.plotly_chart(fig_season_metrics_ha, use_container_width=True) # Use renamed fig
-
-                # Create wickets per year chart (Home vs Away)
-                fig_season_wickets_ha = go.Figure() # Renamed variable
-
-                # Add wickets per year for 'All' if selected
-                if 'All' in name_choice:
-                    # Group by Year and HomeOrAway
-                    wickets_all_ha = filtered_df.groupby(['Year', 'HomeOrAway'])['Bowler_Wkts'].sum().reset_index()
-                    all_color = '#f84e4e' if not individual_players else 'black'
-
-                    # Add traces for 'All' - Home and Away separately
-                    for ha_status in ['Home', 'Away']:
-                        data_subset = wickets_all_ha[wickets_all_ha['HomeOrAway'] == ha_status]
-                        if not data_subset.empty:
-                            legend_name = f'All Players - {ha_status}'
-                            show_legend_main = True # Show both Home and Away in legend
-
-                            fig_season_wickets_ha.add_trace( # Use renamed variable
-                                go.Bar(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Bowler_Wkts'],
-                                    name=legend_name,
-                                    legendgroup='All', # Group by 'All'
-                                    marker_color=all_color,
-                                    opacity=1.0 if ha_status == 'Home' else 0.7, # Differentiate Home/Away bars
-                                    showlegend=show_legend_main # Apply change here
-                                )
-                            )
-
-                # Add individual player wickets
-                for i, name in enumerate(individual_players):
-                    # Group by Year and HomeOrAway
-                    player_wickets_ha = filtered_df[filtered_df['Name'] == name].groupby(['Year', 'HomeOrAway'])['Bowler_Wkts'].sum().reset_index()
-                    base_color = '#f84e4e' if i == 0 else f'#{random.randint(0, 0xFFFFFF):06x}'
-
-                    # Add traces for player - Home and Away separately
-                    for ha_status in ['Home', 'Away']:
-                        data_subset = player_wickets_ha[player_wickets_ha['HomeOrAway'] == ha_status]
-                        if not data_subset.empty:
-                            legend_name = f'{name} - {ha_status}'
-                            show_legend_main = True # Show both Home and Away in legend
-
-                            fig_season_wickets_ha.add_trace( # Use renamed variable
-                                go.Bar(
-                                    x=data_subset['Year'],
-                                    y=data_subset['Bowler_Wkts'],
-                                    name=legend_name,
-                                    legendgroup=name, # Group by player name
-                                    marker_color=base_color,
-                                    opacity=1.0 if ha_status == 'Home' else 0.7, # Differentiate Home/Away bars
-                                    showlegend=show_legend_main # Apply change here
-                                )
-                            )
-
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Wickets Per Year (Home vs Away)</h3>", unsafe_allow_html=True) # Updated title
-
-                fig_season_wickets_ha.update_layout( # Use renamed variable
-                    showlegend=True,
-                    height=550, # Increased height slightly for legend space
-                    xaxis_title='Year',
-                    yaxis_title='Wickets',
-                    margin=dict(l=50, r=50, t=70, b=50),
-                    font=dict(size=12),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    barmode='group', # Keep as group to see Home/Away side-by-side per player/year
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top", # Anchor legend to its top
-                        y=-0.15,       # Position below the plot area (adjust as needed)
-                        xanchor="center",
-                        x=0.5
-                    )
-                )
-
-                fig_season_wickets_ha.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)') # Use renamed variable
-                fig_season_wickets_ha.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)') # Use renamed variable
-
-                st.plotly_chart(fig_season_wickets_ha, use_container_width=True) # Use renamed variable
-
-        ###-------------------------------------RECORDS TAB-------------------------------------###
-        # Records Tab
-        with tabs[11]:
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Bowling Records</h2>", unsafe_allow_html=True)
-            
-            # Create columns for layout
-            col1, col2 = st.columns(2)
-
-            with col1:
-                # --- Best Bowling in an Innings ---
-                # Select relevant columns and sort by Wickets (descending) then Runs (ascending)
-                best_bowling_df = filtered_df[['Name', 'Bowl_Team', 'Bowler_Wkts', 'Bowler_Runs', 'Bowler_Balls', 'Bat_Team', 'Year']].copy()
-                
-                # Calculate overs correctly from balls
-                best_bowling_df['Overs'] = (best_bowling_df['Bowler_Balls'] // 6) + (best_bowling_df['Bowler_Balls'] % 6) / 10
-                best_bowling_df['Overs'] = best_bowling_df['Overs'].round(1)  # Round to 1 decimal place
-                
-                best_bowling_df = best_bowling_df.sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True]).head(10)
-                
-                # Calculate bowling figures string (e.g., "5/32")
-                best_bowling_df['Bowling_Figures'] = best_bowling_df['Bowler_Wkts'].astype(str) + '/' + best_bowling_df['Bowler_Runs'].astype(str)
-
-                # Add Rank column
-                best_bowling_df.insert(0, 'Rank', range(1, 1 + len(best_bowling_df)))
-
-                # Rename columns
-                best_bowling_df = best_bowling_df.rename(columns={'Bat_Team': 'Opponent', 'Bowl_Team': 'Team'})
-
-                # Reorder columns
-                best_bowling_df = best_bowling_df[['Rank', 'Name', 'Team', 'Bowling_Figures', 'Overs', 'Opponent', 'Year']]
-
-                # Display the Best Bowling header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling in an Innings</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(best_bowling_df, use_container_width=True, hide_index=True)
-
-            with col2:
-                # --- Most Economical Spells (min overs by format) ---
-                # Make a copy of the filtered dataframe with only needed columns to avoid any issues
-                eco_df = filtered_df[['Name', 'Bowl_Team', 'Match_Format', 'Bowler_Runs', 'Bowler_Balls', 'Bowler_Wkts', 'Bat_Team', 'Year']].copy()
-                
-                # Set minimum overs required based on format
-                def min_overs_required(format_name):
-                    if format_name in ['T20', 'T20 Over International', '20 Over International']:
-                        return 4  # T20 formats: min 4 overs
-                    elif format_name in ['One Day International', 'List A']:
-                        return 10  # ODI formats: min 10 overs
-                    else:
-                        return 15  # Test/FC formats: min 15 overs
-
-                # Add column for minimum overs
-                eco_df['Min_Overs'] = eco_df['Match_Format'].apply(min_overs_required)
-                
-                # Calculate overs properly from balls
-                eco_df['Overs'] = (eco_df['Bowler_Balls'] // 6) + (eco_df['Bowler_Balls'] % 6) / 10
-                eco_df['Overs'] = eco_df['Overs'].round(1)  # Round to 1 decimal place
-
-                # Filter for spells meeting minimum over requirements
-                eco_df = eco_df[eco_df['Overs'] >= eco_df['Min_Overs']]
-                
-                # Calculate economy rate - using correctly calculated overs value
-                eco_df['Economy'] = (eco_df['Bowler_Runs'] / eco_df['Overs']).round(2)
-                
-                # Sort by Economy (ascending)
-                eco_df = eco_df.sort_values(by='Economy', ascending=True).head(10)
-                
-                # Add Rank column
-                eco_df.insert(0, 'Rank', range(1, 1 + len(eco_df)))
-                
-                # Create the final dataframe for display with properly renamed columns
-                display_df = pd.DataFrame({
-                    'Rank': eco_df['Rank'],
-                    'Name': eco_df['Name'],
-                    'Team': eco_df['Bowl_Team'],  # Add Team column
-                    'Economy': eco_df['Economy'],
-                    'Overs': eco_df['Overs'],
-                    'Runs': eco_df['Bowler_Runs'],
-                    'Wickets': eco_df['Bowler_Wkts'],
-                    'Opponent': eco_df['Bat_Team'],
-                    'Format': eco_df['Match_Format'],
-                    'Year': eco_df['Year']
-                })
-
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Economical Spells</h3>", unsafe_allow_html=True)
-                # Display the final dataframe
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-            # Match bowling records section
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Match Bowling Records</h2>", unsafe_allow_html=True)
-            
-            # Create columns for layout - use two columns now
-            col3, col4 = st.columns(2)
-
-            with col3:
-                # --- Best Match Bowling Figures ---
-                # Group by player, match file and calculate total wickets and runs
-                match_bowling = filtered_df.groupby(['Name', 'File Name', 'Bat_Team', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum',  # Use Bowler_Balls instead of Overs
-                    'Year': 'first',
-                    'Bowl_Team': 'first'  # Add Bowl_Team for display
-                }).reset_index()
-                
-                # Calculate overs from balls
-                match_bowling['Overs'] = (match_bowling['Bowler_Balls'] // 6) + (match_bowling['Bowler_Balls'] % 6) / 10
-                match_bowling['Overs'] = match_bowling['Overs'].round(1)  # Round to 1 decimal place
-                
-                # Sort by wickets (descending) then runs (ascending)
-                match_bowling = match_bowling.sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True]).head(10)
-                
-                # Calculate match bowling figures
-                match_bowling['Match_Figures'] = match_bowling['Bowler_Wkts'].astype(str) + '/' + match_bowling['Bowler_Runs'].astype(str)
-                
-                # Add rank column
-                match_bowling.insert(0, 'Rank', range(1, 1 + len(match_bowling)))
-                
-                # Rename columns
-                match_bowling = match_bowling.rename(columns={
-                    'Bat_Team': 'Opponent', 
-                    'Bowl_Team': 'Team',
-                    'Bowler_Wkts': 'Wickets',
-                    'Bowler_Runs': 'Runs',
-                    'Match_Format': 'Format'
-                })
-                
-                # Select and reorder columns - drop Bowler_Balls from display
-                match_bowling_df = match_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Wickets', 'Overs', 'Runs', 'Opponent', 'Format', 'Year']]
-
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Match Bowling Figures</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(match_bowling_df, use_container_width=True, hide_index=True)
-
-            with col4:
-                # --- Most Expensive Bowling Figures ---
-                # Use the same grouped data but sort by most runs (descending)
-                # Group by player, match file and calculate total wickets and runs
-                expensive_bowling = filtered_df.groupby(['Name', 'File Name', 'Bat_Team', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum',
-                    'Year': 'first',
-                    'Bowl_Team': 'first'
-                }).reset_index()
-                
-                # Calculate overs from balls
-                expensive_bowling['Overs'] = (expensive_bowling['Bowler_Balls'] // 6) + (expensive_bowling['Bowler_Balls'] % 6) / 10
-                expensive_bowling['Overs'] = expensive_bowling['Overs'].round(1)
-                
-                # Sort by runs (descending) - most expensive first
-                expensive_bowling = expensive_bowling.sort_values(by='Bowler_Runs', ascending=False).head(10)
-                
-                # Calculate match bowling figures
-                expensive_bowling['Match_Figures'] = expensive_bowling['Bowler_Wkts'].astype(str) + '/' + expensive_bowling['Bowler_Runs'].astype(str)
-                
-                # Add rank column
-                expensive_bowling.insert(0, 'Rank', range(1, 1 + len(expensive_bowling)))
-                
-                # Rename columns
-                expensive_bowling = expensive_bowling.rename(columns={
-                    'Bat_Team': 'Opponent',
-                    'Bowl_Team': 'Team',
-                    'Bowler_Wkts': 'Wickets',
-                    'Bowler_Runs': 'Runs',
-                    'Match_Format': 'Format'
-                })
-                
-                # Select and reorder columns
-                expensive_bowling_df = expensive_bowling[['Rank', 'Name', 'Team', 'Match_Figures', 'Overs', 'Runs', 'Wickets', 'Opponent', 'Format', 'Year']]
-                
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Expensive Bowling Figures</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(expensive_bowling_df, use_container_width=True, hide_index=True)
-
-            # Seasonal Records Section
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("<h2 style='color:#f04f53; text-align: center;'>Seasonal Bests (by Format)</h2>", unsafe_allow_html=True)
-            
-            # Create two rows with two columns each for the four seasonal stats
-            row1_col1, row1_col2 = st.columns(2)
-            row2_col1, row2_col2 = st.columns(2)
-
-            with row1_col1:
-                # --- Most Wickets in a Season by Format ---
-                # Group by player, year, format
-                season_wickets = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'File Name': 'nunique',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                # Calculate average and economy - ensure proper overs calculation from balls
-                season_wickets['Overs'] = (season_wickets['Bowler_Balls'] // 6) + (season_wickets['Bowler_Balls'] % 6) / 10
-                season_wickets['Average'] = (season_wickets['Bowler_Runs'] / season_wickets['Bowler_Wkts']).round(2)
-                season_wickets['Economy'] = (season_wickets['Bowler_Runs'] / season_wickets['Overs']).round(2)
-                
-                # Sort by wickets and get top seasons
-                season_wickets = season_wickets.sort_values(by='Bowler_Wkts', ascending=False).head(10)
-                
-                # Add rank column
-                season_wickets.insert(0, 'Rank', range(1, 1 + len(season_wickets)))
-                
-                # Rename columns
-                season_wickets = season_wickets.rename(columns={
-                    'Match_Format': 'Format',
-                    'Bowler_Wkts': 'Wickets',
-                    'File Name': 'Matches',
-                    'Bowler_Runs': 'Runs'
-                })
-                
-                # Select and reorder columns
-                season_wickets_df = season_wickets[['Rank', 'Name', 'Year', 'Format', 'Matches', 'Wickets', 'Average', 'Economy']]
-
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Most Wickets in a Season</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(season_wickets_df, use_container_width=True, hide_index=True)
-
-            with row1_col2:
-                # --- Best Bowling Average in a Season (min 15 wickets) ---
-                # Group by player, year, format
-                season_avg = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'File Name': 'nunique',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                # Filter for at least 15 wickets
-                season_avg = season_avg[season_avg['Bowler_Wkts'] >= 15]
-                
-                # Calculate average and economy - ensure proper overs calculation
-                season_avg['Overs'] = (season_avg['Bowler_Balls'] // 6) + (season_avg['Bowler_Balls'] % 6) / 10
-                season_avg['Average'] = (season_avg['Bowler_Runs'] / season_avg['Bowler_Wkts']).round(2)
-                season_avg['SR'] = (season_avg['Bowler_Balls'] / season_avg['Bowler_Wkts']).round(2)
-                
-                # Sort by average (ascending)
-                season_avg = season_avg.sort_values(by='Average', ascending=True).head(10)
-                
-                # Add rank column
-                season_avg.insert(0, 'Rank', range(1, 1 + len(season_avg)))
-                
-                # Rename columns
-                season_avg = season_avg.rename(columns={
-                    'Match_Format': 'Format',
-                    'Bowler_Wkts': 'Wickets',
-                    'File Name': 'Matches',
-                    'Bowler_Runs': 'Runs'
-                })
-                
-                # Select and reorder columns
-                season_avg_df = season_avg[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Average', 'SR', 'Matches']]
-
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Bowling Average in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(season_avg_df, use_container_width=True, hide_index=True)
-                
-            with row2_col1:
-                # --- Best Strike Rate in a Season (min 15 wickets) ---
-                # Group by player, year, format
-                season_sr = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'File Name': 'nunique',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                # Filter for at least 15 wickets
-                season_sr = season_sr[season_sr['Bowler_Wkts'] >= 15]
-                
-                # Calculate average and economy - ensure proper overs calculation
-                season_sr['Overs'] = (season_sr['Bowler_Balls'] // 6) + (season_sr['Bowler_Balls'] % 6) / 10
-                season_sr['Average'] = (season_sr['Bowler_Runs'] / season_sr['Bowler_Wkts']).round(2)
-                season_sr['SR'] = (season_sr['Bowler_Balls'] / season_sr['Bowler_Wkts']).round(2)
-                
-                # Sort by strike rate (ascending)
-                season_sr = season_sr.sort_values(by='SR', ascending=True).head(10)
-                
-                # Add rank column
-                season_sr.insert(0, 'Rank', range(1, 1 + len(season_sr)))
-                
-                # Rename columns
-                season_sr = season_sr.rename(columns={
-                    'Match_Format': 'Format',
-                    'Bowler_Wkts': 'Wickets',
-                    'File Name': 'Matches',
-                    'Bowler_Runs': 'Runs',
-                    'SR': 'Strike Rate'
-                })
-                
-                # Select and reorder columns
-                season_sr_df = season_sr[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Strike Rate', 'Average', 'Matches']]
-
-                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Strike Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(season_sr_df, use_container_width=True, hide_index=True)
-                
-            with row2_col2:
-                # --- Best Economy Rate in a Season (min 15 wickets) ---
-                # Group by player, year, format
-                season_econ = filtered_df.groupby(['Name', 'Year', 'Match_Format']).agg({
-                    'Bowler_Wkts': 'sum',
-                    'File Name': 'nunique',
-                    'Bowler_Runs': 'sum',
-                    'Bowler_Balls': 'sum'
-                }).reset_index()
-                
-                # Filter for at least 15 wickets
-                season_econ = season_econ[season_econ['Bowler_Wkts'] >= 15]
-                
-                # Calculate average and economy - ensure proper overs calculation
-                season_econ['Overs'] = (season_econ['Bowler_Balls'] // 6) + (season_econ['Bowler_Balls'] % 6) / 10
-                season_econ['Economy'] = (season_econ['Bowler_Runs'] / season_econ['Overs']).round(2)
-                season_econ['Average'] = (season_econ['Bowler_Runs'] / season_econ['Bowler_Wkts']).round(2)
-                season_econ['SR'] = (season_econ['Bowler_Balls'] / season_econ['Bowler_Wkts']).round(2)
-                
-                # Sort by economy rate (ascending)
-                season_econ = season_econ.sort_values(by='Economy', ascending=True).head(10)
-                
-                # Add rank column
-                season_econ.insert(0, 'Rank', range(1, 1 + len(season_econ)))
-                
-                # Rename columns
-                season_econ = season_econ.rename(columns={
-                    'Match_Format': 'Format',
-                    'Bowler_Wkts': 'Wickets',
-                    'File Name': 'Matches',
-                    'Bowler_Runs': 'Runs'
-                })
-                
-                # Select and reorder columns
-                season_econ_df = season_econ[['Rank', 'Name', 'Year', 'Format', 'Wickets', 'Economy', 'Average', 'Matches']]                # Display the header
-                st.markdown("<h3 style='color:#f04f53; text-align: center;'>Best Economy Rate in a Season (Min 15 Wickets)</h3>", unsafe_allow_html=True)
-                # Display the dataframe
-                st.dataframe(season_econ_df, use_container_width=True, hide_index=True)
+            fig.update_layout(
+                showlegend=True,
+                height=500,
+                xaxis_title='Innings Range',
+                yaxis_title='Bowling Average',
+                margin=dict(l=50, r=50, t=70, b=50),
+                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                barmode='group',
+                xaxis={'categoryorder': 'array', 'categoryarray': sorted(block_stats_df['Innings_Range'].unique(), key=lambda x: int(x.split('-')[0]))}
+            )
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128, 128, 128, 0.2)')
+            st.plotly_chart(fig, use_container_width=True)
 
     else:
         st.error("No bowling data available. Please upload scorecards first.")
 
 # Display the bowling view
 display_bowl_view()
- 

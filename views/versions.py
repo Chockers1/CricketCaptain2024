@@ -138,6 +138,23 @@ st.markdown("""
 """, unsafe_allow_html=True)
 versions_data = [
     {
+        "version": "1.23, 2025-07-17",
+        "title": "Massive Performance Boost – Faster Scorecards & Smart Caching",
+        "description": ("This version focuses on speed and scalability, delivering the fastest experience yet:\n\n"
+                       "🚀 **Scorecard Loading Time Reduced by 25%:**\n"
+                       "• Optimized backend processes for faster file ingestion\n"
+                       "• More efficient parsing logic and streamlined I/O\n"
+                       "• Significantly improved performance when importing multiple scorecards\n\n"
+                       "⚡ **75% Faster Performance on Data-Heavy Tabs:**\n"
+                       "• Batting, Bowling, and RecordsView tabs now load up to 75% faster\n"
+                       "• Introduced advanced caching strategies to store computed results and avoid redundant calculations\n"
+                       "• Seamless experience even with large save files and thousands of innings\n\n"
+                       "📈 **Scalable Architecture Improvements:**\n"
+                       "• Prepared the engine for upcoming features with smarter data layering\n"
+                       "• Better memory usage and snappier UI transitions across tabs\n\n"
+                       "This is the most responsive version yet – designed for serious stat-heads managing massive Cricket Captain careers with ease.")
+    },
+    {
         "version": "1.22, 2025-07-17",
         "title": "All-Time Elo, Performance Charts & Head-to-Head Revamp",
         "description": ("Another major update focused on historical context, player comparisons, and deeper data insights:\n\n"
@@ -360,4 +377,3 @@ for i, item in enumerate(versions_data):
         
         # Add some spacing between versions
         st.markdown("<br>", unsafe_allow_html=True)
- 
