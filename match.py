@@ -53,7 +53,7 @@ def process_match_data(directory_path):
                 match_format = 'ODI'
             elif '20 Over International' in line_3 or 'World Cup 20' in line_3 or '20 Over Tournament' in line_3 or 'Asia Trophy 20' in line_3 or 'Int20 Tournament' in line_3:
                 match_format = 'T20I'
-            elif '20 Over Trophy' in line_3 or '20 Over League' in line_3 or 'Domestic 20 Over' in line_3 or 'Provincial 20 Over' in line_3 or 'Super Trophy' in line_3 or 'Vitality Blast' in line_3 or 'Big Bash League' in line_3 or 'T20 Blast' in line_3:   
+            elif '20 Over Trophy' in line_3 or '20 Over League' in line_3 or 'Domestic 20 Over' in line_3 or 'Provincial 20 Over' in line_3 or 'Super Trophy' in line_3 or 'Vitality Blast' in line_3 or 'Big Bash League' in line_3 or 'T20 Blast' in line_3 or 'Super Cup' in line_3:    
                 match_format = 'T20'
             elif 'Test Championship Final' in line_3:
                 match_format = 'Test Match'
