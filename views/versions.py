@@ -138,6 +138,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 versions_data = [
     {
+        "version": "1.24, 2025-10-10",
+        "title": "Smarter Imports, Cleaner Tabs, and Expanded Scorecard Support",
+    "description": ("This update builds on the speed and scalability of v1.23 — introducing seamless support for large datasets, smarter format detection, and cleaner analytics across every tab:\n\n"
+               "🗂 **ZIP Scorecard Import (Up to 1200 Files):**\n"
+               "• You can now upload ZIP files containing hundreds or even thousands of scorecards.\n"
+               "• Works perfectly with all data tabs — no extra steps needed.\n"
+               "• Ideal for users leveraging Cricket Captain’s auto-save feature to analyse entire career histories.\n"
+               "• The classic .txt upload method remains available for lighter loads.\n\n"
+               "🏏 **Smarter Format Recognition:**\n"
+               "• Updated Pakistan Super Cup to display as T20 format (instead of Unknown).\n"
+               "• Ensures accurate records and comparisons across competitions.\n\n"
+               "📊 **Head-to-Head Enhancements:**\n"
+               "• Added Asia Trophy (T20 and ODI) as tournaments in the Head-to-Head records section, showing historical winners over time.\n\n"
+               "📈 **Elo Rating Improvements:**\n"
+               "• Added a new Domestic / International filter, allowing Elo ratings to be compared within the correct competitive context.\n\n"
+               "🧩 **Team, Batting & Bowling Tab Updates:**\n"
+               "• Fixed incorrect Bowling SR display on Team and Rank tabs.\n"
+               "• Aligned and cleaned column layouts for a more consistent look across all tabs.\n"
+               "• Updated competition names for Batting and Bowling tabs so events like FC League, Super Cup, and One Day Cup now show their proper phase (e.g. \"Final\") only once — removing repeated or redundant labels.\n\n"
+               "⚙️ **Refined Performance & Stability:**\n"
+               "• Streamlined data pipeline to handle mass imports without lag.\n"
+               "• Faster switching between tabs even on career saves with thousands of innings.\n\n"
+               "This release makes managing huge Cricket Captain saves effortless — bigger data, cleaner insights, same lightning speed.")
+    },
+    {
         "version": "1.23, 2025-07-17",
         "title": "Massive Performance Boost – Faster Scorecards & Smart Caching",
         "description": ("This version focuses on speed and scalability, delivering the fastest experience yet:\n\n"
@@ -303,23 +328,27 @@ versions_data = [
     {
         "version": "1.24, 2025-10-10",
         "title": "Smarter Imports, Cleaner Tabs, and Expanded Scorecard Support",
-        "description": ("This update builds on the speed and scalability of v1.23 — introducing seamless support for large datasets, smarter format detection, and cleaner team analytics:\n\n"
-                       "🗂 **ZIP Scorecard Import (Up to 1200 Files):**\n"
-                       "• You can now upload ZIP files containing hundreds or even thousands of scorecards.\n"
-                       "• Works perfectly with all data tabs — no extra steps needed.\n"
-                       "• Ideal for users leveraging Cricket Captain’s auto-save feature to analyse entire career histories.\n"
-                       "• The classic .txt upload method remains available for lighter loads.\n\n"
-                       "🏏 **Smarter Format Recognition:**\n"
-                       "• Updated Pakistan Super Cup to display as T20 format (instead of Unknown).\n"
-                       "• Ensures accurate records and comparisons across competitions.\n\n"
-                       "🧩 **Team & Ranking Tab Improvements:**\n"
-                       "• Fixed incorrect Bowling SR display on Team and Rank tabs.\n"
-                       "• Aligned and cleaned column layouts for a more consistent look across tabs.\n"
-                       "• Improved readability and data integrity for all team views.\n\n"
-                       "⚙️ **Refined Performance & Stability:**\n"
-                       "• Streamlined data pipeline to handle mass imports without lag.\n"
-                       "• Faster switching between tabs even on career saves with thousands of innings.\n\n"
-                       "This release makes managing huge Cricket Captain saves effortless — bigger data, cleaner insights, same lightning speed.")
+    "description": ("This update builds on the speed and scalability of v1.23 — introducing seamless support for large datasets, smarter format detection, and cleaner analytics across every tab:\n\n"
+               "🗂 **ZIP Scorecard Import (Up to 1200 Files):**\n"
+               "• You can now upload ZIP files containing hundreds or even thousands of scorecards.\n"
+               "• Works perfectly with all data tabs — no extra steps needed.\n"
+               "• Ideal for users leveraging Cricket Captain’s auto-save feature to analyse entire career histories.\n"
+               "• The classic .txt upload method remains available for lighter loads.\n\n"
+               "🏏 **Smarter Format Recognition:**\n"
+               "• Updated Pakistan Super Cup to display as T20 format (instead of Unknown).\n"
+               "• Ensures accurate records and comparisons across competitions.\n\n"
+               "📊 **Head-to-Head Enhancements:**\n"
+               "• Added Asia Trophy (T20 and ODI) as tournaments in the Head-to-Head records section, showing historical winners over time.\n\n"
+               "📈 **Elo Rating Improvements:**\n"
+               "• Added a new Domestic / International filter, allowing Elo ratings to be compared within the correct competitive context.\n\n"
+               "🧩 **Team, Batting & Bowling Tab Updates:**\n"
+               "• Fixed incorrect Bowling SR display on Team and Rank tabs.\n"
+               "• Aligned and cleaned column layouts for a more consistent look across all tabs.\n"
+               "• Updated competition names for Batting and Bowling tabs so events like FC League, Super Cup, and One Day Cup now show their proper phase (e.g. \"Final\") only once — removing repeated or redundant labels.\n\n"
+               "⚙️ **Refined Performance & Stability:**\n"
+               "• Streamlined data pipeline to handle mass imports without lag.\n"
+               "• Faster switching between tabs even on career saves with thousands of innings.\n\n"
+               "This release makes managing huge Cricket Captain saves effortless — bigger data, cleaner insights, same lightning speed.")
     }
 ]
 
