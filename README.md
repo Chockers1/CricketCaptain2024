@@ -2,15 +2,6 @@
 
 Streamlit-powered analytics suite for Cricket Captain 2025 saves. Upload thousands of scorecards, slice performance by format or competition, and explore rich visual dashboards designed for serious stat-heads.
 
-## ✨ Key Features
-
-- **Mass upload pipeline** – ingest up to 1,200 scorecards at once via the new ZIP importer, or drag-and-drop individual `.txt` files.
-- **Smarter competition labelling** – Pakistan Super Cup is correctly recognised as T20, while domestic competitions such as FC League, Super Cup, 20 Over Trophy, and One Day Cup collapse duplicate phase names ("Final", "Semi", etc.).
-- **Head-to-head history** – Asia Trophy (T20 and ODI) tournaments now appear in the historical progression matrix, including winners and runners-up.
-- **Context-aware Elo ratings** – toggle between *Domestic* and *International* scopes to compare teams in the right competitive arena.
-- **Global filters everywhere** – pick one or more formats and competitions and the selection flows across #1 rankings, batting, bowling, and all-rounder dashboards.
-- **Modern UI & navigation** – polished cards, gradient themes, and quick links to batting, bowling, team, comparison, records, Elo, and version history views.
-
 ## 🚀 Getting Started
 
 ### Prerequisites
