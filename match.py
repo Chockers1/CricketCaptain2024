@@ -49,10 +49,12 @@ def process_match_data(directory_path):
             # Determine match format based on competition name
             if 'Test' in line_3:
                 match_format = 'Test Match'
-            elif 'One Day International' in line_3 or 'World Cup -' in line_3 or 'Champions Cup' in line_3 or 'ODI Tournament' in line_3 or 'Asia Trophy ODI' in line_3 or 'Asia Trophy' in line_3:
-                match_format = 'ODI'
             elif '20 Over International' in line_3 or 'World Cup 20' in line_3 or '20 Over Tournament' in line_3 or 'Asia Trophy 20' in line_3 or 'Int20 Tournament' in line_3:
                 match_format = 'T20I'
+            elif ('One Day International' in line_3 or 'World Cup -' in line_3 or 'Champions Cup' in line_3 or 
+                  'ODI Tournament' in line_3 or 'Asia Trophy ODI' in line_3 or 
+                  ('Asia Trophy' in line_3 and 'Asia Trophy 20' not in line_3)):
+                match_format = 'ODI'
             elif '20 Over Trophy' in line_3 or '20 Over League' in line_3 or 'Domestic 20 Over' in line_3 or 'Provincial 20 Over' in line_3 or 'Super Trophy' in line_3 or 'Vitality Blast' in line_3 or 'Big Bash League' in line_3 or 'T20 Blast' in line_3 or 'Super Cup' in line_3:    
                 match_format = 'T20'
             elif 'Test Championship Final' in line_3:
@@ -191,7 +193,6 @@ def process_match_data(directory_path):
             comp = row['Competition']
             # Apply different transformations based on competition name patterns
             if 'Test Match' in comp:
-                # Use specific trophy names for Test matches between certain teams
                 team_pair = (row['Home_Team'], row['Away_Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
@@ -202,16 +203,25 @@ def process_match_data(directory_path):
                 return 'ODI World Cup'
             elif comp.startswith('Champions Cup'):
                 return 'Champions Cup'
-            elif comp.startswith('Asia Trophy ODI'):
-                return 'ODI Asia Cup'
             elif comp.startswith('Asia Trophy 20'):
                 return 'T20 Asia Cup'
+            elif comp.startswith('Asia Trophy'):
+                return 'ODI Asia Trophy'
+            elif comp.startswith('Asia Trophy ODI'):
+                return 'ODI Asia Cup'
+            elif comp.startswith('FC League'):
+                return 'FC League'
+            elif comp.startswith('Super Cup'):
+                return 'Super Cup'
+            elif comp.startswith('20 Over Trophy'):
+                return '20 Over Trophy'
+            elif comp.startswith('One Day Cup'):
+                return 'One Day Cup'
             elif 'One Day International' in comp:
                 return 'ODI'
             elif '20 Over International' in comp:
                 return 'T20I'
             else:
-                # Default: use original competition name
                 return comp
 
         # Apply competition name transformation
