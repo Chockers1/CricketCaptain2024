@@ -292,6 +292,14 @@ def process_bat_stats(directory_path, game_df, match_df):
                 return 'County Championship Division 1'    
             elif 'Challenge Trophy' in comp:
                 return 'Royal London Cup'         
+            elif comp.startswith('FC League'):
+                return 'FC League'
+            elif comp.startswith('Super Cup'):
+                return 'Super Cup'
+            elif comp.startswith('20 Over Trophy'):
+                return '20 Over Trophy'
+            elif comp.startswith('One Day Cup'):
+                return 'One Day Cup'
             else:
                 # Default: use original competition name
                 return comp
