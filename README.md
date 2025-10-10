@@ -1,168 +1,104 @@
-# Cricket Captain Stat Pack Application
+# Cricket Captain Stat Pack
 
-This application allows users to upload Cricket Captain scorecard files (.txt) and view detailed statistics and analysis based on the processed data.
+Streamlit-powered analytics suite for Cricket Captain 2025 saves. Upload thousands of scorecards, slice performance by format or competition, and explore rich visual dashboards designed for serious stat-heads.
 
-## Application Workflow
+## ✨ Key Features
 
-1.  **Login:** The application starts with a login screen to authenticate users.
-2.  **File Upload:** After logging in, users can upload Cricket Captain scorecard files (.txt).
-3.  **Data Processing:** The uploaded files are parsed, and the data is processed to update the application's internal datasets. This includes calculating various batting, bowling, and match statistics.
-4.  **View Statistics:** Users can navigate through different views to explore the processed statistics.
+- **Mass upload pipeline** – ingest up to 1,200 scorecards at once via the new ZIP importer, or drag-and-drop individual `.txt` files.
+- **Smarter competition labelling** – Pakistan Super Cup is correctly recognised as T20, while domestic competitions such as FC League, Super Cup, 20 Over Trophy, and One Day Cup collapse duplicate phase names ("Final", "Semi", etc.).
+- **Head-to-head history** – Asia Trophy (T20 and ODI) tournaments now appear in the historical progression matrix, including winners and runners-up.
+- **Context-aware Elo ratings** – toggle between *Domestic* and *International* scopes to compare teams in the right competitive arena.
+- **Global filters everywhere** – pick one or more formats and competitions and the selection flows across #1 rankings, batting, bowling, and all-rounder dashboards.
+- **Modern UI & navigation** – polished cards, gradient themes, and quick links to batting, bowling, team, comparison, records, Elo, and version history views.
 
-## Core Modules
+## 🚀 Getting Started
 
-The application's core logic is handled by the following Python modules:
+### Prerequisites
 
-*   **`match.py`**
-    *   **Purpose:** Extracts match-level metadata from scorecard `.txt` files.
-    *   **Input:** Directory path containing scorecard files.
-    *   **Processing:**
-        *   Iterates through each `.txt` file.
-        *   Parses specific lines (e.g., line 2 for teams, line 3 for competition/date) using string splitting.
-        *   Determines `Match_Format` based on keywords in the competition string.
-        *   Scans the end of the file for "Man of the match:" and result lines (e.g., "won", "lost", "drawn", "tied").
-        *   Uses regex (`re.search`) to extract numeric run/wicket margins from the result string.
-        *   Calculates boolean flags for results (`Home_Win`, `Away_Won`, `Tie`, etc.) and an `Innings_Win` flag.
-        *   Applies a `transform_competition` function to standardize competition names (e.g., mapping specific team pairings in Test Matches to trophy names like 'The Ashes').
-    *   **Output:** A Pandas DataFrame containing one row per match with columns like `File Name`, `Home_Team`, `Away_Team`, `Date`, `Competition`, `Match_Format`, `Player_of_the_Match`, `Match_Result`, `Margin`, result flags, and numeric margins. This DataFrame is also saved to `match_data.csv` in the scorecards directory.
-    *   **Dependencies:** `pandas`, `re`, `os`.
+- Python 3.10 or newer
+- `pip` (or `pipenv`/`uv` if you prefer)
+- A subscription to the **Cricket Captain 2024 Stats Pack** (credentials are required to log in)
 
-*   **`game.py`**
-    *   **Purpose:** Extracts innings-level summary statistics from scorecard `.txt` files.
-    *   **Input:** Directory path containing scorecard files, `match_df` (DataFrame from `match.py`).
-    *   **Processing:**
-        *   Iterates through each `.txt` file.
-        *   Parses lines to identify innings breaks (`-------------`) and the batting team.
-        *   Uses regex (`re.search`) to find the "TOTAL" line for each innings, extracting total runs, wickets, and overs (or balls for 'The Hundred'). Handles different formats of the TOTAL line (e.g., 'all out', 'X wkts').
-        *   Calculates `Run_Rate` (Total Runs / Overs) and `Balls_Per_Wicket`.
-        *   Merges the extracted innings data with the input `match_df` (on `File Name`) to add match context (`Competition`, `Match_Format`, `Date`, etc.).
-    *   **Output:** A Pandas DataFrame containing one row per innings with columns like `File Name`, `Home_Team`, `Away_Team`, `Bat_Team`, `Bowl_Team`, `Innings`, `Total_Runs`, `Overs`, `Wickets`, `Run_Rate`, `Competition`, `Match_Format`, `Date`, etc. This DataFrame is also saved to `game_data.csv` in the scorecards directory.
-    *   **Dependencies:** `pandas`, `re`, `os`, `numpy`. Relies on `match_df` from `match.py`.
+### Installation
 
-*   **`bat.py`**
-    *   **Purpose:** Extracts detailed batting statistics for each player in each innings from scorecard `.txt` files.
-    *   **Input:** Directory path containing scorecard files, `game_df` (DataFrame from `game.py`), `match_df` (DataFrame from `match.py`).
-    *   **Processing:**
-        *   Iterates through each `.txt` file.
-        *   Parses lines following innings separators (`-------------`) to identify batting performances.
-        *   Uses a complex regex (`re.search`) to capture `Name`, `How_Out`, `Runs`, `Balls`, `Fours`, `Sixes` for each batter line. Handles 'Did not bat' cases.
-        *   Calculates derived statistics:
-            *   Boolean flags: `Batted`, `Out`, `Not Out`, `DNB`.
-            *   Milestones: `50s`, `100s`, `200s`.
-            *   Dismissal types: `Caught`, `Bowled`, `LBW`, `Run Out`, `Stumped`.
-            *   Calculated metrics: `Boundary Runs`, `Strike Rate`.
-        *   Calculates `Team Balls` based on whether the team was all out or the match format's standard ball count.
-        *   Merges with `game_df` (on `File Name`, `Innings`) to add innings context (`Total_Runs`, `Overs`, `Wickets`, `Competition`, `Match_Format`, `Date`).
-        *   Applies the same `transform_competition` function as `match.py`.
-        *   Extracts `Year` from the `Date`.
-    *   **Output:** A Pandas DataFrame containing one row per player per innings batted, with detailed batting stats and merged match/innings context.
-    *   **Dependencies:** `pandas`, `re`, `os`, `traceback`. Relies on `game_df` from `game.py` and `match_df` from `match.py`.
+```powershell
+# clone this repository
+git clone https://github.com/Chockers1/CricketCaptain2024.git
+cd CricketCaptain2024
 
-*   **`bowl.py`**
-    *   **Purpose:** Extracts detailed bowling statistics for each player in each innings from scorecard `.txt` files.
-    *   **Input:** Directory path containing scorecard files, `game_df` (DataFrame from `game.py`), `match_df` (DataFrame from `match.py`).
-    *   **Processing:**
-        *   Iterates through each `.txt` file.
-        *   Parses lines following bowling data separators (identified by `Line_no` being 3, 7, 11, or 15 after a `-------------` line).
-        *   Uses regex (`re.search`) to capture `Name`, `Overs`, `Maidens`, `Runs`, `Wickets`, `Econ` for each bowler line.
-        *   Calculates derived statistics:
-            *   Boolean flag: `Bowled`.
-            *   Milestones: `5Ws`, `10Ws`.
-            *   Calculated metrics: `Bowler_Balls` (handles 5-ball overs for 'The Hundred'), `Runs_Per_Over`, `Balls_Per_Wicket`, `Dot_Ball_Percentage`, `Strike_Rate`, `Average`. Adjusts `Bowler_Overs` and `Bowler_Econ` for 'The Hundred'.
-        *   Merges first with `match_df` (on `File Name`) to get `Home_Team`, `Away_Team`, then merges with `game_df` (on `File Name`, `Innings`) to add innings context.
-        *   Applies the same `transform_competition` function as `match.py`.
-    *   **Output:** A Pandas DataFrame containing one row per player per innings bowled, with detailed bowling stats and merged match/innings context.
-    *   **Dependencies:** `pandas`, `re`, `os`, `traceback`. Relies on `game_df` from `game.py` and `match_df` from `match.py`.
+# (optional) create and activate a virtual environment
+python -m venv .venv
+.\.venv\Scripts\activate  # Windows PowerShell
 
-*   **`cricketcaptain.py`**
-    *   **Purpose:** Main Streamlit application entry point. Handles UI, navigation, authentication, and page loading.
-    *   **Processing:**
-        *   Sets page configuration (`st.set_page_config`).
-        *   Injects custom CSS for styling.
-        *   Implements login functionality (`login` function) using `st.text_input` and `st.button`.
-        *   Securely retrieves credentials using `get_credentials`, prioritizing Streamlit secrets, then environment variables, then hardcoded values (fallback). Uses `dotenv` optionally for local `.env` files.
-        *   Manages session state (`st.session_state`) to track login status (`logged_in`) and timestamp (`login_time`).
-        *   Enforces session duration (`is_session_valid`) and displays a timer (`display_session_timer`).
-        *   Uses `st.Page` to define individual views/pages located in the `views/` directory.
-        *   Uses `st.navigation` to create the sidebar navigation menu.
-        *   Adds logos and a logout button to the sidebar.
-        *   Calls `pg.run()` to display the currently selected page.
-    *   **Dependencies:** `streamlit`, `datetime`, `time`, `os`, optionally `dotenv`.
-
-*   **`database.py`**
-    *   **Purpose:** Intended for database interactions.
-    *   **Current State:** Empty file. Data persistence is currently handled by saving/loading DataFrames to/from CSV files (`match_data.csv`, `game_data.csv`) generated by `match.py` and `game.py`. The `redis` dependency in `requirements.txt` might suggest planned use for caching or session management, but isn't implemented in these core files.
-
-## Views (Pages)
-
-The application presents data through various views (Streamlit pages located in the `views/` directory):
-
-*   **`Home.py`**: The main landing page after login. Displays an overview, potentially some quick summary statistics, recent updates, or navigation links.
-*   **`batview.py`**: Dedicated to batting statistics. Shows detailed batting leaderboards, player career stats, season stats, format-specific stats, opponent stats, location stats, milestone analysis, percentile rankings, and various charts visualizing batting performance (e.g., Avg vs SR).
-*   **`bowlview.py`**: Dedicated to bowling statistics. Similar to the batting view, it displays bowling leaderboards, player career stats, season stats, format-specific stats, opponent stats, location stats, and visualizations for bowling performance.
-*   **`scorecards.py`**: Allows users to view detailed scorecards for individual matches that have been uploaded.
-*   **`recordsview.py`**: Displays all-time records across various categories for both batting (e.g., highest score, most runs) and bowling (e.g., best figures, most wickets).
-*   **`allrounders.py`**: Focuses on players who excel in both batting and bowling, likely showing combined rankings or statistics.
-*   **`compare.py`**: Allows users to select multiple players and compare their statistics side-by-side.
-*   **`domestictables.py`**: (Inferred) Likely displays league tables or standings for domestic competitions.
-*   **`elorating.py`**: Implements and displays Elo ratings for teams or players based on match results.
-*   **`gamestatsview.py`**: Provides statistics aggregated at the game or match level, possibly showing overall match summaries beyond individual scorecards.
-*   **`headtohead.py`**: Shows the statistical record between two specific teams or players when they compete against each other.
-*   **`Playerrankings.py`**: Displays overall player rankings, potentially using a custom ranking algorithm or combining various statistical measures.
-*   **`rankings.py`**: (Potentially redundant or specific focus) Another view for rankings, perhaps focusing on different criteria or formats compared to `Playerrankings.py`.
-*   **`teamview.py`**: Shows statistics aggregated at the team level, such as overall team performance, win/loss records, and team batting/bowling averages.
-*   **`versions.py`**: Displays information about the application version, updates, or changelog.
-*   **`watch.py`**: (Inferred) Purpose unclear from the name, might be for watching live game updates (if applicable) or tracking specific players/teams.
-
-## Setup and Running
-
-(Add instructions here on how to set up the environment, install dependencies from `requirements.txt`, configure secrets (`setup_secrets.py`), and run the Streamlit application.)
-
-```
-Example command:
-```bash
+# install dependencies
 pip install -r requirements.txt
-streamlit run Home.py
 ```
 
-*(Please update the Setup and Running section with specific instructions for your project.)*
+### Configure login credentials
 
-## Accessing the Dashboard
+Either create a `.streamlit/secrets.toml` manually or run the helper script and follow the prompts:
 
-This application requires a subscription to access. The Cricket Captain Stats Dashboard is a premium tool designed to help you analyze your Cricket Captain game data.
+```powershell
+python setup_secrets.py
+```
 
-### Login Instructions
+This generates `.streamlit/secrets.toml` with a `[login]` section. Keep this file out of version control.
 
-1. Subscribe to the "Cricket Captain 2024 Stats Pack tier" on [Buy Me A Coffee - Leading Edge](https://buymeacoffee.com/leadingedgepod)
-2. After subscribing, you'll receive the login credentials:
+### Launch the dashboard
 
-### Using the Dashboard
+```powershell
+streamlit run cricketcaptain.py
+```
 
-Once logged in, you can:
+The app opens in your browser on http://localhost:8501.
 
-1. **Upload your Cricket Captain game data**:
-   - In your Cricket Captain game, save the scorecards you want to analyze
-   - Find the saved .txt files on your computer:
-     - Windows: `C:\Users\[USER NAME]\AppData\Roaming\Childish Things\Cricket Captain 2021`
-     - Mac: `~/Library/Containers/com.childishthings.cricketcaptain2021mac/Data/Library/Application Support/Cricket Captain 2021/childish things/cricket captain 2021/saves`
-   
-2. **Process your data**:
-   - Click "Browse files" and select your saved .txt files
-   - Select all files using Ctrl+A (Windows) or Command+A (Mac)
-   - Click "Process Scorecards" to analyze your data
-   - Navigate through the tabs to view different statistics
+## 📥 Uploading Scorecards
 
-## Session Information
+1. **Gather scorecards**
+   - Windows: `C:\Users\<you>\AppData\Roaming\Childish Things\Cricket Captain 2025\Saves\Scorecards`
+   - macOS: `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`
+2. **Choose an import mode**
+   - *ZIP mode* (recommended for large archives): compress the folder, upload once, and the app flattens nested directories automatically.
+   - *TXT mode*: select individual `.txt` files for smaller batches.
+3. Hit **Process Scorecards**. The pipeline reads every file, standardises competition names, stores match/game/batting/bowling extracts, and caches the results in session state.
 
-- Your login session will last for 24 hours before requiring you to log in again
-- You can manually log out using the "Logout" button in the sidebar
+Progress feedback appears as each stage (match, game, bowling, batting) completes. Duplicate detection, player team switches, and innings overlap checks run automatically.
 
-## Additional Resources
+## 🧭 Navigating the App
 
-- Watch Cricket Captain 2024 gameplay on [Rob Taylor's YouTube Channel](https://www.youtube.com/@RobTaylor1985)
-- Support development through [Buy Me A Coffee](https://buymeacoffee.com/leadingedgepod)
+- **Home** – load data, review progress summaries, and follow the quick-start guide within the app.
+- **Player Rankings** – global format & competition multiselects drive the #1, batting, bowling, and all-rounder tabs. Rankings incorporate refined batting/bowling rating formulas.
+- **Elo Ratings** – filter by Format and by the new *Competition Scope* (Domestic vs International) before exploring time-series plots and tables.
+- **Head-to-Head** – compare teams with results grids, tournament histories (now including Asia Trophy variants), and recent form cards.
+- **Bat View / Bowl View / Team View** – deep dives into player and team production, with aligned column layouts and fixed SR calculations.
+- **Records, Scorecards, Compare, Versions** – browse historical records, individual match scorecards, side-by-side player comparisons, and the in-app changelog.
+
+## 🔧 Under the Hood
+
+The ingestion scripts inside the project root orchestrate the data model:
+
+| Module | Description |
+| --- | --- |
+| `match.py` | Extracts match metadata, detects results/outcomes, and normalises competition names (trophies, league phases, international titles). |
+| `game.py` | Captures innings totals, run rates, wickets, overs, and merges match context. |
+| `bat.py` | Parses every batting line, calculates milestones, strike rates, dismissal types, and maps competitions using the latest naming rules. |
+| `bowl.py` | Processes bowling figures, computes advanced metrics (dot percentage, economy, strike rate), and aligns competition labels with batting/match data. |
+| `cricketcaptain.py` | Streamlit entry-point handling authentication, navigation, and session lifetime. |
+
+Processed DataFrames (`match_data.csv`, `game_data.csv`, `bat_df`, `bowl_df`) persist in memory during a session and can be exported if you extend the app.
+
+## 🔐 Access & Sessions
+
+- Login is required for every browser session. Credentials are supplied to subscribers via [Buy Me A Coffee – Leading Edge](https://buymeacoffee.com/leadingedgepod).
+- Sessions remain active for 24 hours or until you choose **Logout** from the sidebar.
+
+## 🙌 Supporting Resources
+
+- YouTube: [Rob Taylor](https://www.youtube.com/@RobTaylor1985)
+- Support the project: [Buy Me A Coffee](https://buymeacoffee.com/leadingedgepod)
+- Release notes live inside the app on the **Versions** tab (v1.24 details the ZIP importer, Asia Trophy coverage, Elo scope filter, and competition clean-up).
 
 ---
 
-*This is a subscription product. Please do not share login credentials.*
+*The Cricket Captain Stat Pack is a subscription product. Please keep your credentials private.*
 ````
