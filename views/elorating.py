@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
+INTERNATIONAL_FORMATS = {'T20I', 'ODI', 'Test Match'}
+
 
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
@@ -22,9 +24,8 @@ def parse_date(date_str):
 @st.cache_data
 def calculate_elo_ratings(match_df):
     df = match_df.copy()
-    # Fast, vectorized date parsing and sorting
-    df['Date_Sort'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
-    df_sorted = df.sort_values('Date_Sort', kind='mergesort')  # stable for cumulative counts
+    df['Date_Sort'] = df['Date'].apply(parse_date)
+    df_sorted = df.sort_values('Date_Sort')
 
     initial_elo = 1000
     elo_ratings = {}
@@ -39,19 +40,17 @@ def calculate_elo_ratings(match_df):
         new_loser_elo = loser_elo + k_factor * ((1 - result) - (1 - expected_win))
         return round(new_winner_elo, 2), round(new_loser_elo, 2)
 
-    n = len(df_sorted)
-    home_start = np.empty(n, dtype=np.float64)
-    away_start = np.empty(n, dtype=np.float64)
-    home_end = np.empty(n, dtype=np.float64)
-    away_end = np.empty(n, dtype=np.float64)
-    df_sorted['Match_Number'] = np.arange(1, n + 1)
+    df_sorted['Home_Elo_Start'] = 0.0
+    df_sorted['Away_Elo_Start'] = 0.0
+    df_sorted['Home_Elo_End'] = 0.0
+    df_sorted['Away_Elo_End'] = 0.0
+    df_sorted['Match_Number'] = range(1, len(df_sorted) + 1)
     df_sorted['Format_Number'] = df_sorted.groupby('Match_Format').cumcount() + 1
 
-    # Iterate fast using positional index and itertuples
-    for i, row in enumerate(df_sorted.itertuples(index=False)):
-        home_team = row.Home_Team
-        away_team = row.Away_Team
-        match_format = row.Match_Format
+    for index, row in df_sorted.iterrows():
+        home_team = row['Home_Team']
+        away_team = row['Away_Team']
+        match_format = row['Match_Format']
 
         if match_format not in elo_ratings:
             elo_ratings[match_format] = {}
@@ -62,30 +61,23 @@ def calculate_elo_ratings(match_df):
         home_elo_start = elo_ratings[match_format][home_team]
         away_elo_start = elo_ratings[match_format][away_team]
 
-        home_start[i] = home_elo_start
-        away_start[i] = away_elo_start
+        df_sorted.at[index, 'Home_Elo_Start'] = home_elo_start
+        df_sorted.at[index, 'Away_Elo_Start'] = away_elo_start
 
-        # result from home perspective
-        if getattr(row, 'Home_Win'):
+        if row['Home_Win']:
             result = 1
-        elif getattr(row, 'Home_Lost'):
+        elif row['Home_Lost']:
             result = 0
         else:
             result = 0.5
 
         new_home_elo, new_away_elo = update_elo(home_elo_start, away_elo_start, k_factor, result)
 
-        home_end[i] = new_home_elo
-        away_end[i] = new_away_elo
+        df_sorted.at[index, 'Home_Elo_End'] = new_home_elo
+        df_sorted.at[index, 'Away_Elo_End'] = new_away_elo
 
         elo_ratings[match_format][home_team] = new_home_elo
         elo_ratings[match_format][away_team] = new_away_elo
-
-    # Assign arrays in one shot
-    df_sorted['Home_Elo_Start'] = home_start
-    df_sorted['Away_Elo_Start'] = away_start
-    df_sorted['Home_Elo_End'] = home_end
-    df_sorted['Away_Elo_End'] = away_end
 
     # Create home and away views
     home_df = df_sorted.rename(columns={
@@ -307,83 +299,120 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Create columns for filters
-col1, col2, col3 = st.columns(3)
+col_scope, col1, col2, col3 = st.columns(4)
+
+with col_scope:
+    scope_choice = st.selectbox(
+        'Competition Scope:',
+        ['All', 'International', 'Domestic'],
+        key='competition_scope_filter'
+    )
+
+if scope_choice == 'International':
+    allowed_formats = sorted(fmt for fmt in all_formats if fmt in INTERNATIONAL_FORMATS)
+elif scope_choice == 'Domestic':
+    allowed_formats = sorted(fmt for fmt in all_formats if fmt not in INTERNATIONAL_FORMATS)
+else:
+    allowed_formats = sorted(list(all_formats))
+
+allowed_formats_set = set(allowed_formats)
 
 with col1:
-    formats = ['All'] + sorted(list(all_formats))
+    formats = ['All'] + allowed_formats if allowed_formats else ['All']
     format_choice = st.multiselect('Format:', formats, default='All', key='global_format_filter')
+    format_choice = [opt for opt in format_choice if opt in formats]
+    if not format_choice:
+        format_choice = ['All']
+        st.session_state['global_format_filter'] = format_choice
 
-# Create dynamic lists based on selected formats
-if 'All' not in format_choice:
-    relevant_matches = st.session_state['match_df'][
-        st.session_state['match_df']['Match_Format'].isin(format_choice)
-    ] if 'match_df' in st.session_state else pd.DataFrame()
+if 'match_df' in st.session_state:
+    scope_filtered_match_df = st.session_state['match_df'].copy()
+else:
+    scope_filtered_match_df = pd.DataFrame()
+
+if allowed_formats_set:
+    scope_filtered_match_df = scope_filtered_match_df[
+        scope_filtered_match_df['Match_Format'].isin(allowed_formats_set)
+    ]
+else:
+    scope_filtered_match_df = scope_filtered_match_df.iloc[0:0]
+
+if 'All' in format_choice or not format_choice:
+    format_filter_set = set(allowed_formats_set)
+else:
+    format_filter_set = set(format_choice)
+
+if scope_filtered_match_df is not None and not scope_filtered_match_df.empty and format_filter_set:
+    scope_filtered_match_df = scope_filtered_match_df[
+        scope_filtered_match_df['Match_Format'].isin(format_filter_set)
+    ]
+elif scope_filtered_match_df is not None and scope_filtered_match_df.empty:
+    format_filter_set = set()
+
+if scope_filtered_match_df is not None and not scope_filtered_match_df.empty:
     dynamic_teams = sorted(
-        set(relevant_matches['Home_Team'].unique()) | set(relevant_matches['Away_Team'].unique())
+        set(scope_filtered_match_df['Home_Team'].unique()) |
+        set(scope_filtered_match_df['Away_Team'].unique())
     )
 else:
-    dynamic_teams = sorted(list(all_teams))
+    dynamic_teams = []
 
 with col2:
-    teams = ['All'] + dynamic_teams
+    teams = ['All'] + dynamic_teams if dynamic_teams else ['All']
     team_choice = st.multiselect('Team:', teams, default='All', key='team_filter')
 
-# Create dynamic opponents based on selected teams (and format if not 'All')
-if 'All' not in team_choice:
-    relevant_opponents = st.session_state['match_df'][
-        (st.session_state['match_df']['Home_Team'].isin(team_choice)) |
-        (st.session_state['match_df']['Away_Team'].isin(team_choice))
-    ] if 'match_df' in st.session_state else pd.DataFrame()
-    if 'All' not in format_choice:
-        relevant_opponents = relevant_opponents[
-            relevant_opponents['Match_Format'].isin(format_choice)
-        ]
+if scope_filtered_match_df is not None and not scope_filtered_match_df.empty and 'All' not in team_choice:
+    relevant_opponents = scope_filtered_match_df[
+        (scope_filtered_match_df['Home_Team'].isin(team_choice)) |
+        (scope_filtered_match_df['Away_Team'].isin(team_choice))
+    ]
+else:
+    relevant_opponents = scope_filtered_match_df
+
+if relevant_opponents is not None and not relevant_opponents.empty:
     dynamic_opponents = sorted(
-        set(relevant_opponents['Home_Team'].unique()) | set(relevant_opponents['Away_Team'].unique())
+        set(relevant_opponents['Home_Team'].unique()) |
+        set(relevant_opponents['Away_Team'].unique())
     )
 else:
     dynamic_opponents = dynamic_teams
 
 with col3:
-    opponents = ['All'] + dynamic_opponents
+    opponents = ['All'] + dynamic_opponents if dynamic_opponents else ['All']
     opponent_choice = st.multiselect('Opponent:', opponents, default='All', key='opponent_filter')
+
+format_filter_list = sorted(format_filter_set)
 
 # Enhanced filter function to handle all three filters
 def filter_by_all(df):
     filtered_df = df.copy()
-    
-    # Format filter
-    if 'All' not in format_choice:
-        filtered_df = filtered_df[filtered_df['Match_Format'].isin(format_choice)]
-    
-    # Team filter
+
+    if format_filter_list:
+        filtered_df = filtered_df[filtered_df['Match_Format'].isin(format_filter_list)]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
     if 'All' not in team_choice:
         filtered_df = filtered_df[filtered_df['Team'].isin(team_choice)]
-    
-    # Opponent filter
+
     if 'All' not in opponent_choice:
         filtered_df = filtered_df[filtered_df['Opponent'].isin(opponent_choice)]
-    
+
     return filtered_df
 
-# Build an initially unfiltered DataFrame
-if 'match_df' in st.session_state:
-    base_df = st.session_state['match_df'].copy()
-else:
-    base_df = pd.DataFrame()
+# Build an initially scope-filtered DataFrame
+base_df = scope_filtered_match_df.copy() if scope_filtered_match_df is not None else pd.DataFrame()
 
 # Apply selected filters to narrow down base_df for dynamic choices:
-if 'All' not in st.session_state.get('global_format_filter', []):
-    base_df = base_df[base_df['Match_Format'].isin(st.session_state['global_format_filter'])]
-if 'All' not in st.session_state.get('team_filter', []):
+if 'All' not in team_choice and not base_df.empty:
     base_df = base_df[
-        (base_df['Home_Team'].isin(st.session_state['team_filter'])) |
-        (base_df['Away_Team'].isin(st.session_state['team_filter']))
+        (base_df['Home_Team'].isin(team_choice)) |
+        (base_df['Away_Team'].isin(team_choice))
     ]
-if 'All' not in st.session_state.get('opponent_filter', []):
+if 'All' not in opponent_choice and not base_df.empty:
     base_df = base_df[
-        (base_df['Home_Team'].isin(st.session_state['opponent_filter'])) |
-        (base_df['Away_Team'].isin(st.session_state['opponent_filter']))
+        (base_df['Home_Team'].isin(opponent_choice)) |
+        (base_df['Away_Team'].isin(opponent_choice))
     ]
 
 # Once base_df is filtered with current selections, build dynamic options:
@@ -399,8 +428,10 @@ if 'match_df' in st.session_state:
 
     # Now, apply the interactive filters to the FAST, in-memory DataFrame
     filtered_elo_df = elo_combined_df.copy()
-    if 'All' not in format_choice:
-        filtered_elo_df = filtered_elo_df[filtered_elo_df['Match_Format'].isin(format_choice)]
+    if format_filter_list:
+        filtered_elo_df = filtered_elo_df[filtered_elo_df['Match_Format'].isin(format_filter_list)]
+    else:
+        filtered_elo_df = filtered_elo_df.iloc[0:0]
     if 'All' not in team_choice:
         filtered_elo_df = filtered_elo_df[filtered_elo_df['Team'].isin(team_choice)]
     if 'All' not in opponent_choice:
@@ -439,8 +470,9 @@ team_colors = {
 # Filter and display current ELO ratings
 current_ratings = []
 for format_name, teams in elo_ratings.items():
-    # Skip if format is filtered out
-    if 'All' not in format_choice and format_name not in format_choice:
+    if not format_filter_list:
+        continue
+    if format_name not in format_filter_list:
         continue
         
     for team, rating in teams.items():
@@ -637,28 +669,66 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 graph_df = filtered_elo_df.copy()
-# Ensure Date is datetime
-graph_df['Date'] = pd.to_datetime(graph_df['Date'], errors='coerce', dayfirst=True)
 
-# Global monthly range
+# Convert Date to datetime
+graph_df['Date'] = pd.to_datetime(graph_df['Date'], format='mixed', dayfirst=True, errors='coerce')
+
+# Create a complete timeline for all format/team combinations
 min_date = graph_df['Date'].min()
 max_date = graph_df['Date'].max()
-all_months = pd.date_range(start=pd.Timestamp(min_date).replace(day=1), end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1), freq='M')
 
-# Build monthly ratings per (Format, Team) via resample; forward-fill with first start
-timeline_parts = []
-for (fmt, team), g in graph_df.sort_values('Date').groupby(['Match_Format', 'Team'], sort=False):
-    if g.empty:
-        continue
-    # last rating per month from Team_Elo_End
-    s = g.set_index('Date')['Team_Elo_End'].resample('M').last()
-    s = s.reindex(all_months)
-    # fill forward and seed with first start rating for leading NaN
-    first_start = g.iloc[0]['Team_Elo_Start']
-    s = s.ffill().fillna(first_start)
-    part = pd.DataFrame({'Date': s.index, 'Match_Format': fmt, 'Team': team, 'Rating': s.values})
-    timeline_parts.append(part)
-timeline_df = pd.concat(timeline_parts, ignore_index=True) if timeline_parts else pd.DataFrame(columns=['Date','Match_Format','Team','Rating'])
+# Get all months in the date range
+all_months = pd.date_range(
+    start=pd.Timestamp(min_date).replace(day=1),
+    end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1),
+    freq='M'
+)
+
+# Create all possible format/team/month combinations
+format_teams = graph_df[['Match_Format', 'Team']].drop_duplicates()
+timeline_data = []
+
+for _, row in format_teams.iterrows():
+    format_name = row['Match_Format']
+    team_name = row['Team']
+    
+    # Get this team's match data
+    team_matches = graph_df[
+        (graph_df['Match_Format'] == format_name) & 
+        (graph_df['Team'] == team_name)
+    ].sort_values('Date')
+    
+    if not team_matches.empty:
+        last_rating = None
+        for month in all_months:
+            # Find matches in this month
+            month_matches = team_matches[
+                (team_matches['Date'].dt.year == month.year) & 
+                (team_matches['Date'].dt.month == month.month)
+            ]
+            
+            if not month_matches.empty:
+                # Use the last rating from this month
+                rating = month_matches.iloc[-1]['Team_Elo_End']
+                last_rating = rating
+            elif last_rating is not None:
+                # Use the last known rating
+                rating = last_rating
+            else:
+                # Use the first rating we'll see
+                first_match = team_matches.iloc[0]
+                rating = first_match['Team_Elo_Start']
+                last_rating = rating
+            
+            timeline_data.append({
+                'Date': month,
+                'Match_Format': format_name,
+                'Team': team_name,
+                'Rating': rating
+            })
+
+# Convert to DataFrame
+timeline_df = pd.DataFrame(timeline_data)
 
 # Create the plot
 fig = go.Figure()
@@ -750,9 +820,25 @@ if 'elo_df' in st.session_state:
 ############===================number 1 per format==============================###############
 if 'elo_df' in st.session_state:
     try:
-        # Create a copy of the DataFrame and parse dates vectorially
+        # Create a copy of the DataFrame
         elo_df = st.session_state['elo_df'].copy()
-        elo_df['Date'] = pd.to_datetime(elo_df['Date'], errors='coerce', dayfirst=True).dt.date
+        
+        def parse_date(date_str):
+            """Helper function to parse dates in multiple formats"""
+            try:
+                # Try different date formats
+                for fmt in ['%d/%m/%Y', '%d %b %Y', '%Y-%m-%d']:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()  # Added .date() to remove time
+                    except ValueError:
+                        continue
+                # If none of the specific formats work, let pandas try to infer the format
+                return pd.to_datetime(date_str).date()  # Added .date() to remove time
+            except Exception:
+                return pd.NaT
+        
+        # Convert Date to datetime using our parse_date function
+        elo_df['Date'] = elo_df['Date'].apply(parse_date)
         
         # Remove any invalid dates
         invalid_dates = elo_df['Date'].isna().sum()
@@ -781,8 +867,10 @@ if 'elo_df' in st.session_state:
         monthly_leaders = {date: {} for date in date_range}
         
         # Filter for selected format if specified
-        if 'All' not in format_choice:
-            elo_df = elo_df[elo_df['Match_Format'].isin(format_choice)]
+        if format_filter_list:
+            elo_df = elo_df[elo_df['Match_Format'].isin(format_filter_list)]
+        else:
+            elo_df = elo_df.iloc[0:0]
         
         # For each format and month, find the team with highest Elo
         for format_name in elo_df['Match_Format'].unique():
@@ -899,17 +987,19 @@ if 'elo_df' in st.session_state:
         elo_df_highest = st.session_state['elo_df'].copy()
         
         # Apply filters
-        if 'All' not in format_choice:
-            elo_df_highest = elo_df_highest[elo_df_highest['Match_Format'].isin(format_choice)]
+        if format_filter_list:
+            elo_df_highest = elo_df_highest[elo_df_highest['Match_Format'].isin(format_filter_list)]
+        else:
+            elo_df_highest = elo_df_highest.iloc[0:0]
         
         if 'All' not in team_choice:
             elo_df_highest = elo_df_highest[elo_df_highest['Team'].isin(team_choice)]
         
         if 'All' not in opponent_choice:
             elo_df_highest = elo_df_highest[elo_df_highest['Opponent'].isin(opponent_choice)]
-
-        # Convert Date to datetime (vectorized) and drop invalid
-        elo_df_highest['Date'] = pd.to_datetime(elo_df_highest['Date'], errors='coerce', dayfirst=True)
+        
+        # Convert Date to datetime using our parse_date function
+        elo_df_highest['Date'] = elo_df_highest['Date'].apply(parse_date)
         
         # Remove any invalid dates
         elo_df_highest = elo_df_highest.dropna(subset=['Date'])
@@ -973,24 +1063,36 @@ if 'elo_df' in st.session_state:
                     height=600
                 )
                 
-                # Create summary cards for the highest rating per format
+                # Create summary cards for the top 3 highest ratings overall
                 st.markdown("""
                     <div style="margin: 30px 0;">
-                        <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Highest ELO by Format</h3>
+                        <h3 style="text-align: center; color: #f04f53; margin-bottom: 20px;">🥇 Top 3 Highest ELO Ratings Ever</h3>
                     </div>
                 """, unsafe_allow_html=True)
-
-                # Get the highest rating per format
-                idx = highest_ratings_df.groupby('Format')['ELO'].idxmax()
-                top_by_format = highest_ratings_df.loc[idx].sort_values('Format')
-
-                if not top_by_format.empty:
+                
+                # Get the top 3 highest ratings overall
+                top_3_peaks = highest_ratings_df.nlargest(3, 'ELO')
+                
+                # Create cards in a grid layout
+                if not top_3_peaks.empty:
                     cols = st.columns(3)
-                    for i, (_, peak) in enumerate(top_by_format.iterrows()):
-                        with cols[i % 3]:
+                    
+                    for idx, (_, peak) in enumerate(top_3_peaks.iterrows()):
+                        with cols[idx]:
+                            # Get team color for accent
                             team_color = team_colors.get(peak['Team'], '#f04f53')
-                            medal_color = '#FFD700'
-                            medal_emoji = '🏆'
+                            
+                            # Determine medal color based on ranking
+                            if idx == 0:
+                                medal_color = '#FFD700'  # Gold
+                                medal_emoji = '🥇'
+                            elif idx == 1:
+                                medal_color = '#C0C0C0'  # Silver
+                                medal_emoji = '🥈'
+                            else:
+                                medal_color = '#cd7f32'  # Bronze
+                                medal_emoji = '🥉'
+                            
                             st.markdown(f"""
                                 <div style="background: linear-gradient(135deg, {medal_color} 0%, #FFA500 100%); 
                                             padding: 15px; border-radius: 12px; box-shadow: 0 6px 20px rgba(255,215,0,0.3); 
