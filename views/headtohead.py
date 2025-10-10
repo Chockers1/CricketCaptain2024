@@ -566,7 +566,7 @@ with tabs[0]:
                         📋 Form Guide
                     </h2>
                     <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                        ← Latest match results
+                        Latest match results → 
                     </p>
                 </div>
             </div>
@@ -2520,17 +2520,53 @@ with tabs[2]:
                         stages = [map_stage_to_code(comp) for comp in year_matches['Competition']]
                         best_stage = min(stages, key=lambda x: x[1])
                         if best_stage[0] == "F":
-                            # Pick one final match row
-                            final_row = year_matches.iloc[0]
-                            # Check if it was a draw first
-                            if 'drawn' in str(final_row["Match_Result"]).lower():
+                            final_matches = year_matches[
+                                year_matches['Competition'].str.contains('Final', case=False, na=False) &
+                                ~year_matches['Competition'].str.contains('Semi', case=False, na=False)
+                            ].copy()
+
+                            if not final_matches.empty:
+                                final_matches['__parsed_date'] = pd.to_datetime(
+                                    final_matches['Date'], dayfirst=True, errors='coerce'
+                                )
+                                final_row = final_matches.sort_values('__parsed_date').iloc[-1]
+                            else:
+                                fallback_matches = year_matches.copy()
+                                fallback_matches['__parsed_date'] = pd.to_datetime(
+                                    fallback_matches['Date'], dayfirst=True, errors='coerce'
+                                )
+                                final_row = fallback_matches.sort_values('__parsed_date').iloc[-1]
+
+                            match_result = str(final_row.get("Match_Result", ""))
+                            is_drawn = 'drawn' in match_result.lower() or bool(final_row.get('Tie', 0))
+
+                            if is_drawn:
                                 best_code = "W"  # Both teams get W for a draw
                             else:
-                                # Check if team won or lost
-                                if team in str(final_row["Match_Result"]):
+                                winner = None
+                                loser = None
+
+                                if final_row.get('Home_Win', 0) == 1:
+                                    winner = final_row.get('Home_Team')
+                                    loser = final_row.get('Away_Team')
+                                elif final_row.get('Away_Won', 0) == 1:
+                                    winner = final_row.get('Away_Team')
+                                    loser = final_row.get('Home_Team')
+                                elif ' won' in match_result.lower():
+                                    winner_name = match_result.split(' won', 1)[0].strip()
+                                    if winner_name == final_row.get('Home_Team'):
+                                        winner = final_row.get('Home_Team')
+                                        loser = final_row.get('Away_Team')
+                                    elif winner_name == final_row.get('Away_Team'):
+                                        winner = final_row.get('Away_Team')
+                                        loser = final_row.get('Home_Team')
+
+                                if team == winner:
                                     best_code = "W"
-                                else:
+                                elif team == loser:
                                     best_code = "RU"
+                                else:
+                                    best_code = "F"
                         else:
                             best_code = best_stage[0]
                         team_results.append({
@@ -2877,6 +2913,256 @@ with tabs[2]:
         else:
             st.info("No World Test Championship data available.")
 
+        # Helper to determine winner/runner-up for final matches
+        def _determine_final_stage(match_row, team_name):
+            match_result = str(match_row.get('Match_Result', ''))
+            if 'drawn' in match_result.lower() or bool(match_row.get('Tie', 0)):
+                return "W"
+
+            winner = None
+            loser = None
+
+            if match_row.get('Home_Win', 0) == 1:
+                winner = match_row.get('Home_Team')
+                loser = match_row.get('Away_Team')
+            elif match_row.get('Away_Won', 0) == 1:
+                winner = match_row.get('Away_Team')
+                loser = match_row.get('Home_Team')
+            elif ' won' in match_result.lower():
+                winner_name = match_result.split(' won', 1)[0].strip()
+                if winner_name == match_row.get('Home_Team'):
+                    winner = match_row.get('Home_Team')
+                    loser = match_row.get('Away_Team')
+                elif winner_name == match_row.get('Away_Team'):
+                    winner = match_row.get('Away_Team')
+                    loser = match_row.get('Home_Team')
+
+            if team_name == winner:
+                return "W"
+            if team_name == loser:
+                return "RU"
+            return "F"
+
+        # T20 Asia Cup Progress Tracker
+        t20_asia_df = st.session_state['match_df'].copy()
+        t20_asia_df = t20_asia_df[t20_asia_df['comp'] == "T20 Asia Cup"]
+        t20_asia_df['Year'] = pd.to_datetime(t20_asia_df['Date'], dayfirst=True, errors='coerce').dt.year
+
+        teams_t20_asia = pd.concat([t20_asia_df['Home_Team'], t20_asia_df['Away_Team']]).dropna().unique()
+        unique_t20_asia_years = sorted(t20_asia_df['Year'].dropna().unique())
+
+        t20_asia_results = []
+        if len(teams_t20_asia) > 0 and len(unique_t20_asia_years) > 0:
+            for team in teams_t20_asia:
+                for year in unique_t20_asia_years:
+                    team_matches = t20_asia_df[
+                        ((t20_asia_df['Home_Team'] == team) | (t20_asia_df['Away_Team'] == team)) &
+                        (t20_asia_df['Year'] == year)
+                    ]
+                    stage = ""
+                    best = 0
+                    for _, match in team_matches.iterrows():
+                        comp_name = str(match.get('Competition', ''))
+                        stage_code = ""
+                        current = 0
+
+                        if "Final" in comp_name and "Semi-Final" not in comp_name:
+                            current = 3
+                            stage_code = _determine_final_stage(match, team)
+                        elif "Super Four" in comp_name:
+                            current = 2
+                            stage_code = "S4"
+                        elif "Group" in comp_name:
+                            current = 1
+                            stage_code = "GRP"
+
+                        if current > best and stage_code:
+                            best = current
+                            stage = stage_code
+                        elif current == best and stage_code in ["W", "RU"]:
+                            stage = stage_code
+
+                    if stage:
+                        t20_asia_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+        t20_asia_matrix = pd.DataFrame(t20_asia_results)
+        if not t20_asia_matrix.empty:
+            t20_asia_matrix = t20_asia_matrix.pivot(index='Team', columns='Year', values='Stage').fillna("")
+
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #9face6 0%, #74ebd5 100%); 
+                           padding: 20px; border-radius: 15px; color: #1f3b73; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        🏆 T20 Asia Cup Progress
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.85; font-size: 0.9em;">
+                        Track team journeys through Asia Trophy 20 tournaments
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if 't20_asia_matrix' in locals() and not t20_asia_matrix.empty:
+            def highlight_t20_asia(row):
+                return [
+                    "background-color: gold; color: black;" if cell == "W" else
+                    "background-color: silver; color: black;" if cell == "RU" else
+                    "background-color: lightblue; color: black;" if cell in ("S4", "S8") else
+                    "background-color: lightcoral; color: black;" if cell == "GRP" else
+                    ""
+                    for cell in row
+                ]
+
+            styled_t20_asia = t20_asia_matrix.style.apply(highlight_t20_asia, axis=1)
+
+            st.markdown("""
+            <style>
+            .dataframe {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: none;
+                margin-bottom: 30px;
+            }
+            .dataframe th {
+                background: linear-gradient(135deg, #9face6 0%, #74ebd5 100%);
+                color: #1f3b73;
+                font-weight: 600;
+                padding: 15px 10px;
+                text-align: center;
+                border: none;
+                font-size: 14px;
+            }
+            .dataframe td {
+                padding: 12px 10px;
+                text-align: center;
+                border: 1px solid #f0f0f0;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            .dataframe tr:hover {
+                background-color: #f3f6ff !important;
+                transition: background-color 0.2s ease;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            st.dataframe(styled_t20_asia, use_container_width=True)
+        else:
+            st.info("No T20 Asia Cup data available.")
+
+        # ODI Asia Trophy Progress Tracker
+        odi_asia_df = st.session_state['match_df'].copy()
+        odi_asia_df = odi_asia_df[odi_asia_df['comp'] == "ODI Asia Trophy"]
+        odi_asia_df['Year'] = pd.to_datetime(odi_asia_df['Date'], dayfirst=True, errors='coerce').dt.year
+
+        teams_odi_asia = pd.concat([odi_asia_df['Home_Team'], odi_asia_df['Away_Team']]).dropna().unique()
+        unique_odi_asia_years = sorted(odi_asia_df['Year'].dropna().unique())
+
+        odi_asia_results = []
+        if len(teams_odi_asia) > 0 and len(unique_odi_asia_years) > 0:
+            for team in teams_odi_asia:
+                for year in unique_odi_asia_years:
+                    team_matches = odi_asia_df[
+                        ((odi_asia_df['Home_Team'] == team) | (odi_asia_df['Away_Team'] == team)) &
+                        (odi_asia_df['Year'] == year)
+                    ]
+                    stage = ""
+                    best = 0
+                    for _, match in team_matches.iterrows():
+                        comp_name = str(match.get('Competition', ''))
+                        stage_code = ""
+                        current = 0
+
+                        if "Final" in comp_name and "Semi-Final" not in comp_name:
+                            current = 3
+                            stage_code = _determine_final_stage(match, team)
+                        elif "Super Four" in comp_name:
+                            current = 2
+                            stage_code = "S4"
+                        elif "Group" in comp_name:
+                            current = 1
+                            stage_code = "GRP"
+
+                        if current > best and stage_code:
+                            best = current
+                            stage = stage_code
+                        elif current == best and stage_code in ["W", "RU"]:
+                            stage = stage_code
+
+                    if stage:
+                        odi_asia_results.append({'Team': team, 'Year': year, 'Stage': stage})
+
+        odi_asia_matrix = pd.DataFrame(odi_asia_results)
+        if not odi_asia_matrix.empty:
+            odi_asia_matrix = odi_asia_matrix.pivot(index='Team', columns='Year', values='Stage').fillna("")
+
+        st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #f6d365 0%, #fda085 100%); 
+                           padding: 20px; border-radius: 15px; color: #8b3a0e; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                    <h2 style="margin: 0; font-size: 1.8em; font-weight: bold;">
+                        🏆 ODI Asia Trophy Progress
+                    </h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.85; font-size: 0.9em;">
+                        Track performances across Asia Trophy One-Day tournaments
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if 'odi_asia_matrix' in locals() and not odi_asia_matrix.empty:
+            def highlight_odi_asia(row):
+                return [
+                    "background-color: gold; color: black;" if cell == "W" else
+                    "background-color: silver; color: black;" if cell == "RU" else
+                    "background-color: lightblue; color: black;" if cell == "S4" else
+                    "background-color: lightcoral; color: black;" if cell == "GRP" else
+                    ""
+                    for cell in row
+                ]
+
+            styled_odi_asia = odi_asia_matrix.style.apply(highlight_odi_asia, axis=1)
+
+            st.markdown("""
+            <style>
+            .dataframe {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: none;
+                margin-bottom: 30px;
+            }
+            .dataframe th {
+                background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+                color: #8b3a0e;
+                font-weight: 600;
+                padding: 15px 10px;
+                text-align: center;
+                border: none;
+                font-size: 14px;
+            }
+            .dataframe td {
+                padding: 12px 10px;
+                text-align: center;
+                border: 1px solid #f0f0f0;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            .dataframe tr:hover {
+                background-color: #fff5ec !important;
+                transition: background-color 0.2s ease;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            st.dataframe(styled_odi_asia, use_container_width=True)
+        else:
+            st.info("No ODI Asia Trophy data available.")
+
         # Beautiful legend section
         st.markdown("""
             <div style="text-align: center; margin: 40px 0;">
@@ -2896,7 +3182,7 @@ with tabs[2]:
                             🥉 SF = Semi-Final
                         </div>
                         <div style="background: lightblue; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
-                            🔵 S8 = Super Eight
+                            🔵 S8/S4 = Super Stage
                         </div>
                         <div style="background: lightcoral; color: black; padding: 10px; border-radius: 8px; font-weight: bold;">
                             🔴 GRP = Group Stage
@@ -2905,4 +3191,3 @@ with tabs[2]:
                 </div>
             </div>
         """, unsafe_allow_html=True)
-
