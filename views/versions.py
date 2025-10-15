@@ -138,6 +138,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 versions_data = [
     {
+        "version": "1.25, 2025-10-15",
+        "title": "Player Similarity Engine — Discover Hidden Talent and Perfect Replacements",
+        "description": (
+            "Version 1.25 introduces one of the most advanced additions yet — a full **Player Similarity Engine** built for analysts, scouts, and serious stat-heads. "
+            "It lets you instantly find players with matching skill profiles, spot natural replacements, and uncover the next great talent hidden in your save.\n\n"
+            "🔍 **Dual-Mode Similarity Search:**\n"
+            "• Choose between **Tolerance Mode** (manual stat range filters) and **Distance Mode** (algorithmic, weighted comparisons).\n"
+            "• Works seamlessly for both **batting** and **bowling**, across any combination of team, competition, or format.\n\n"
+            "📊 **Smart Metrics & Weighting:**\n"
+            "• Batting similarity uses **Average**, **Strike Rate**, **Balls Per Out**, and **100s Per Innings**.\n"
+            "• Bowling similarity compares **Average**, **Strike Rate**, and **Economy Rate**, with customizable weighting presets — Balanced, Average-Heavy, or Aggression-Focused.\n\n"
+            "🎨 **Professional Visual Analytics:**\n"
+            "• Interactive scatter maps showing where players cluster on Average vs Strike Rate.\n"
+            "• Dynamic radar charts comparing normalized skill profiles.\n"
+            "• Metric-difference bar charts and correlation heatmaps revealing how attributes interact.\n\n"
+            "🏆 **Talent Identification Made Simple:**\n"
+            "• Find emerging stars who mirror elite performers.\n"
+            "• Identify like-for-like replacements during rebuilds or generational transitions.\n"
+            "• Pinpoint stylistic matches for tactical selection decisions.\n\n"
+            "This update transforms the Stats Pack into a **player-scouting powerhouse** — blending statistical precision with visual clarity. "
+            "Whether you’re rebuilding a dynasty or analysing opposition depth, v1.25 helps you spot the next big name before anyone else."
+        )
+    },
+    {
         "version": "1.24, 2025-10-10",
         "title": "Smarter Imports, Cleaner Tabs, and Expanded Scorecard Support",
     "description": ("This update builds on the speed and scalability of v1.23 — introducing seamless support for large datasets, smarter format detection, and cleaner analytics across every tab:\n\n"
