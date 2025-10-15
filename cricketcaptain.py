@@ -453,6 +453,11 @@ compare_page= st.Page(
     title="Compare Players",
     icon="⚖️",
 )
+similar_players_page = st.Page(
+    "views/similarplayers.py",
+    title="Similar Players",
+    icon="🔍",
+)
 team_page = st.Page(
     "views/teamview.py",
     title="Team",
@@ -514,6 +519,7 @@ pg = st.navigation(
             bowling_page,
             all_rounders_page,
             compare_page,
+            similar_players_page,
             team_page,
             rankings_page,
             int_player_rankings_page,
