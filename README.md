@@ -10,39 +10,6 @@ Streamlit-powered analytics suite for Cricket Captain 2025 saves. Upload thousan
 - `pip` (or `pipenv`/`uv` if you prefer)
 - A subscription to the **Cricket Captain 2024 Stats Pack** (credentials are required to log in)
 
-### Installation
-
-```powershell
-# clone this repository
-git clone https://github.com/Chockers1/CricketCaptain2024.git
-cd CricketCaptain2024
-
-# (optional) create and activate a virtual environment
-python -m venv .venv
-.\.venv\Scripts\activate  # Windows PowerShell
-
-# install dependencies
-pip install -r requirements.txt
-```
-
-### Configure login credentials
-
-Either create a `.streamlit/secrets.toml` manually or run the helper script and follow the prompts:
-
-```powershell
-python setup_secrets.py
-```
-
-This generates `.streamlit/secrets.toml` with a `[login]` section. Keep this file out of version control.
-
-### Launch the dashboard
-
-```powershell
-streamlit run cricketcaptain.py
-```
-
-The app opens in your browser on http://localhost:8501.
-
 ## 📥 Uploading Scorecards
 
 1. **Gather scorecards**
