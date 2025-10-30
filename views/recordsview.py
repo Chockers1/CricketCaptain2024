@@ -8,6 +8,19 @@ import gc
 import sys
 import time
 from datetime import datetime
+from pandas.api.types import CategoricalDtype
+
+try:
+    import polars as pl
+except Exception:  # pragma: no cover - optional dependency
+    pl = None
+
+try:
+    from .logging_utils import FastViewLogger
+except ImportError:  # pragma: no cover - support direct execution
+    from views.logging_utils import FastViewLogger
+
+logger = FastViewLogger(st, "Records")
 
 # Simple placeholder cache functions (without Redis)
 def cache_dataframe(key, df, expiry=None):
@@ -25,6 +38,73 @@ def get_cached_dataframe(key):
 def generate_cache_key(*args):
     """Generate a simple cache key"""
     return '_'.join(str(arg) for arg in args)
+
+
+def _to_polars_frame(df: pd.DataFrame):
+    """Return a sanitized Polars frame when Polars is available."""
+    if pl is None or df is None or df.empty:
+        return None
+    sanitized = df.copy()
+    if 'Date' in sanitized.columns:
+        sanitized['Date'] = pd.to_datetime(sanitized['Date'], errors='coerce')
+    for col in sanitized.columns:
+        col_dtype = sanitized[col].dtype
+        if isinstance(col_dtype, pd.CategoricalDtype):
+            sanitized[col] = sanitized[col].astype(str)
+        elif col_dtype == object:
+            sample = sanitized[col].dropna().head(1)
+            if not sample.empty and isinstance(sample.iloc[0], (dict, list, set, tuple)):
+                sanitized[col] = sanitized[col].astype(str)
+    try:
+        return pl.from_pandas(sanitized, include_index=False)
+    except Exception:
+        return None
+
+
+def _polars_not_out_condition(polars_df):
+    if pl is None or polars_df is None:
+        return None
+    conditions = []
+    if 'Not Out' in polars_df.columns:
+        numeric_check = (
+            pl.col('Not Out').cast(pl.Float64, strict=False).fill_null(0) == 1
+        )
+        string_check = (
+            pl.col('Not Out')
+            .cast(pl.Utf8, strict=False)
+            .str.to_lowercase()
+            .str.strip_chars()
+            .is_in(['1', 'true', 'yes', 'y'])
+        )
+        conditions.append(numeric_check | string_check)
+    if 'How Out' in polars_df.columns:
+        conditions.append(
+            pl.col('How Out')
+            .cast(pl.Utf8, strict=False)
+            .str.to_lowercase()
+            .str.strip_chars()
+            .is_in(['not out'])
+        )
+    if not conditions:
+        return None
+    combined = conditions[0]
+    for extra in conditions[1:]:
+        combined = combined | extra
+    return combined
+
+
+def _pandas_not_out_mask(frame: pd.DataFrame):
+    if frame is None or frame.empty:
+        return None
+    mask = None
+    if 'Not Out' in frame.columns:
+        numeric_mask = pd.to_numeric(frame['Not Out'], errors='coerce') == 1
+        string_mask = frame['Not Out'].astype(str).str.lower().str.strip().isin(['1', 'true', 'yes', 'y'])
+        mask = numeric_mask | string_mask
+    if 'How Out' in frame.columns:
+        how_mask = frame['How Out'].astype(str).str.lower().str.strip().isin(['not out'])
+        mask = how_mask if mask is None else (mask | how_mask)
+    return mask
 # common columns to drop for batting‐based tables
 BAT_DROP_COMMON = [
     'Bat_Team_x','Bowl_Team_x','File Name','Total_Runs','Overs','Wickets',
@@ -343,14 +423,20 @@ def process_data_chunk(func, df, *args, **kwargs):
         else:
             return func(df, *args, **kwargs)
     except Exception as e:
+        logger.log("process_in_chunks error", error=str(e), chunk_size=len(df) if df is not None else 0)
         st.error(f"Error processing data chunk: {str(e)}")
         return pd.DataFrame()
 
 # --- HELPERS ------------------------------------------------------
 def format_date_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    """Format a datetime column to 'dd/mm/YYYY'."""
-    df[col] = df[col].dt.strftime('%d/%m/%Y')
-    return df
+    """Format a datetime column to 'dd/mm/YYYY', working on a safe copy."""
+    if df is None or col not in df.columns:
+        return df
+    formatted_df = df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(formatted_df[col]):
+        formatted_df[col] = pd.to_datetime(formatted_df[col], errors='coerce')
+    formatted_df[col] = formatted_df[col].dt.strftime('%d/%m/%Y')
+    return formatted_df
 
 def safe_parse_dates(df: pd.DataFrame) -> pd.DataFrame | None:
     """
@@ -378,12 +464,36 @@ def process_highest_scores(filtered_bat_df: pd.DataFrame) -> pd.DataFrame:
     """Return all centuries sorted by Runs desc, with minimal cols."""
     if filtered_bat_df is None or filtered_bat_df.empty:
         return pd.DataFrame()
-    df = (
-        filtered_bat_df[filtered_bat_df['Runs'] >= 100]
-        .drop(columns=BAT_DROP_COMMON, errors='ignore')
-        .sort_values('Runs', ascending=False)
-        .rename(columns={'Bat_Team_y':'Bat Team','Bowl_Team_y':'Bowl Team'})
-    )
+    logger.log("process_highest_scores start", rows=len(filtered_bat_df))
+    df = pd.DataFrame()
+    if pl is not None:
+        polars_df = _to_polars_frame(filtered_bat_df)
+        if polars_df is not None:
+            drop_cols = [c for c in BAT_DROP_COMMON if c in polars_df.columns]
+            if drop_cols:
+                polars_df = polars_df.drop(drop_cols)
+            polars_df = polars_df.filter(pl.col('Runs') >= 100)
+            rename_map = {
+                old: new
+                for old, new in (('Bat_Team_y', 'Bat Team'), ('Bowl_Team_y', 'Bowl Team'))
+                if old in polars_df.columns
+            }
+            if rename_map:
+                polars_df = polars_df.rename(rename_map)
+            polars_df = polars_df.sort('Runs', descending=True)
+            df = polars_df.to_pandas()
+            logger.log_dataframe("process_highest_scores polars", df)
+        else:
+            logger.log("process_highest_scores fallback", reason="polars_frame_none")
+    if df.empty:
+        df = (
+            filtered_bat_df[filtered_bat_df['Runs'] >= 100]
+            .drop(columns=BAT_DROP_COMMON, errors='ignore')
+            .sort_values('Runs', ascending=False)
+            .rename(columns={'Bat_Team_y': 'Bat Team', 'Bowl_Team_y': 'Bowl Team'})
+        )
+        logger.log_dataframe("process_highest_scores pandas", df)
+    logger.log_dataframe("process_highest_scores result", df)
     return format_date_column(df, 'Date')
 
 def process_consecutive_scores(filtered_bat_df, threshold):
@@ -448,77 +558,227 @@ def process_not_out_99s(filtered_bat_df: pd.DataFrame) -> pd.DataFrame:
     """Return 99 not out entries."""
     if filtered_bat_df is None or filtered_bat_df.empty:
         return pd.DataFrame()
-    df = (
-        filtered_bat_df[(filtered_bat_df['Runs']==99)&(filtered_bat_df['Not Out']==1)]
-        .drop(columns=BAT_DROP_COMMON, errors='ignore')
-        .sort_values('Runs', ascending=False)
-        .rename(columns={'Bat_Team_y':'Bat Team','Bowl_Team_y':'Bowl Team'})
-    )
+    logger.log("process_not_out_99s start", rows=len(filtered_bat_df))
+    df = pd.DataFrame()
+    if pl is not None:
+        polars_df = _to_polars_frame(filtered_bat_df)
+        if polars_df is not None:
+            polars_df = polars_df.filter(pl.col('Runs') == 99)
+            not_out_condition = _polars_not_out_condition(polars_df)
+            if not_out_condition is not None:
+                polars_df = polars_df.filter(not_out_condition)
+            else:
+                logger.log("process_not_out_99s missing_not_out_indicators")
+            rename_map = {
+                old: new
+                for old, new in (('Bat_Team_y', 'Bat Team'), ('Bowl_Team_y', 'Bowl Team'))
+                if old in polars_df.columns
+            }
+            if rename_map:
+                polars_df = polars_df.rename(rename_map)
+            drop_cols = [c for c in BAT_DROP_COMMON if c in polars_df.columns]
+            if drop_cols:
+                polars_df = polars_df.drop(drop_cols)
+            polars_df = polars_df.sort('Date', descending=True)
+            df = polars_df.to_pandas()
+            logger.log_dataframe("process_not_out_99s polars", df)
+        else:
+            logger.log("process_not_out_99s fallback", reason="polars_frame_none")
+    if df.empty:
+        mask = filtered_bat_df['Runs'] == 99
+        not_out_mask = _pandas_not_out_mask(filtered_bat_df)
+        if not_out_mask is not None:
+            mask &= not_out_mask
+        else:
+            logger.log("process_not_out_99s pandas_missing_not_out_indicators")
+        df = (
+            filtered_bat_df[mask]
+            .drop(columns=BAT_DROP_COMMON, errors='ignore')
+            .sort_values('Runs', ascending=False)
+            .rename(columns={'Bat_Team_y': 'Bat Team', 'Bowl_Team_y': 'Bowl Team'})
+        )
+        logger.log_dataframe("process_not_out_99s pandas", df)
+    logger.log_dataframe("process_not_out_99s result", df)
     return format_date_column(df, 'Date')
 
 def process_carrying_bat(filtered_bat_df: pd.DataFrame) -> pd.DataFrame:
     """Return instances of carrying the bat."""
     if filtered_bat_df is None or filtered_bat_df.empty:
         return pd.DataFrame()
-    df = (
-        filtered_bat_df[
-            filtered_bat_df['Position'].isin([1,2]) &
-            (filtered_bat_df['Not Out']==1)&(filtered_bat_df['Wickets']==10)
-        ]
-        .drop(columns=CARRY_BAT_DROP, errors='ignore')
-        .rename(columns={
-            'Bat_Team_y':'Bat Team','Bowl_Team_y':'Bowl Team',
-            'Total_Runs':'Team Total','Wickets':'Team Wickets'
-        })
-        .loc[:,['Name','Bat Team','Bowl Team','Runs','Team Total','Team Wickets',
-                'Balls','4s','6s','Match_Format','Date']]
-        .sort_values('Runs', ascending=False)
-    )
+    logger.log("process_carrying_bat start", rows=len(filtered_bat_df))
+    df = pd.DataFrame()
+    if pl is not None:
+        polars_df = _to_polars_frame(filtered_bat_df)
+        if polars_df is not None:
+            polars_df = polars_df.filter(
+                pl.col('Position').is_in([1, 2])
+                & (pl.col('Wickets') == 10)
+            )
+            not_out_condition = _polars_not_out_condition(polars_df)
+            if not_out_condition is not None:
+                polars_df = polars_df.filter(not_out_condition)
+            else:
+                logger.log("process_carrying_bat missing_not_out_indicators")
+            rename_map = {
+                'Bat_Team_y': 'Bat Team',
+                'Bowl_Team_y': 'Bowl Team',
+                'Total_Runs': 'Team Total',
+                'Wickets': 'Team Wickets',
+            }
+            rename_map = {k: v for k, v in rename_map.items() if k in polars_df.columns}
+            if rename_map:
+                polars_df = polars_df.rename(rename_map)
+            drop_cols = [c for c in CARRY_BAT_DROP if c in polars_df.columns]
+            if drop_cols:
+                polars_df = polars_df.drop(drop_cols)
+            polars_df = polars_df.sort('Runs', descending=True)
+            df = polars_df.to_pandas()
+            logger.log_dataframe("process_carrying_bat polars", df)
+        else:
+            logger.log("process_carrying_bat fallback", reason="polars_frame_none")
+    if df.empty:
+        mask = filtered_bat_df['Position'].isin([1, 2]) & (filtered_bat_df['Wickets'] == 10)
+        not_out_mask = _pandas_not_out_mask(filtered_bat_df)
+        if not_out_mask is not None:
+            mask &= not_out_mask
+        else:
+            logger.log("process_carrying_bat pandas_missing_not_out_indicators")
+        df = (
+            filtered_bat_df[mask]
+            .drop(columns=CARRY_BAT_DROP, errors='ignore')
+            .rename(columns={
+                'Bat_Team_y': 'Bat Team', 'Bowl_Team_y': 'Bowl Team',
+                'Total_Runs': 'Team Total', 'Wickets': 'Team Wickets'
+            })
+            .sort_values('Runs', ascending=False)
+        )
+        logger.log_dataframe("process_carrying_bat pandas", df)
+    desired_order = ['Name', 'Bat Team', 'Bowl Team', 'Runs', 'Team Total', 'Team Wickets',
+                     'Balls', '4s', '6s', 'Match_Format', 'Date']
+    existing_cols = [col for col in desired_order if col in df.columns]
+    df = df.loc[:, existing_cols]
+    logger.log_dataframe("process_carrying_bat result", df)
     return format_date_column(df, 'Date')
 
 def process_hundreds_both_innings(filtered_bat_df):
-    """Process hundreds in both innings data"""
+    """Process hundreds in both innings data."""
     if filtered_bat_df is None or filtered_bat_df.empty:
         return pd.DataFrame()
-        
-    bat_match_100_df = (filtered_bat_df.groupby(['Name', 'Date', 'Home Team'])
-                .agg({
-                    'Runs': lambda x: [
-                        max([r for r, i in zip(x, filtered_bat_df.loc[x.index, 'Innings']) if i in [1, 2]], default=0),
-                        max([r for r, i in zip(x, filtered_bat_df.loc[x.index, 'Innings']) if i in [3, 4]], default=0)
-                    ],
-                    'Bat_Team_y': 'first',
-                    'Bowl_Team_y': 'first',
-                    'Balls': 'sum',
-                    '4s': 'sum',
-                    '6s': 'sum'
-                })
-                .reset_index())
+    logger.log("process_hundreds_both_innings start", rows=len(filtered_bat_df))
 
-    bat_match_100_df['1st Innings'] = bat_match_100_df['Runs'].str[0]
-    bat_match_100_df['2nd Innings'] = bat_match_100_df['Runs'].str[1]
+    required_columns = {'Name', 'Date', 'Innings', 'Runs'}
+    if not required_columns.issubset(filtered_bat_df.columns):
+        return pd.DataFrame()
 
-    hundreds_both_df = (bat_match_100_df[
-        (bat_match_100_df['1st Innings'] >= 100) & 
-        (bat_match_100_df['2nd Innings'] >= 100)
-    ]
-    .drop(columns=['Runs'])
-    .rename(columns={
+    format_mask = (
+        filtered_bat_df['Match_Format'].isin(['First Class', 'Test Match'])
+        if 'Match_Format' in filtered_bat_df.columns
+        else True
+    )
+    innings_mask = filtered_bat_df['Innings'].isin([1, 2, 3, 4])
+    runs_mask = filtered_bat_df['Runs'] >= 100
+
+    df = filtered_bat_df[format_mask & innings_mask & runs_mask].copy()
+    if df.empty:
+        return pd.DataFrame()
+
+    polars_result = None
+    if pl is not None:
+        polars_df = _to_polars_frame(df)
+        if polars_df is not None:
+            polars_df = polars_df.with_columns(
+                pl.when(pl.col('Innings') <= 2).then(1).otherwise(2).alias('Team_Innings')
+            )
+            group_cols = ['Name', 'Date']
+            for optional_col in ['Home Team', 'Bat_Team_y', 'Bowl_Team_y', 'Match_Format']:
+                if optional_col in polars_df.columns and optional_col not in group_cols:
+                    group_cols.append(optional_col)
+            agg_exprs = [
+                (
+                    pl.when(pl.col('Team_Innings') == 1)
+                    .then(pl.col('Runs'))
+                    .otherwise(None)
+                    .max()
+                    .alias('1st Innings')
+                ),
+                (
+                    pl.when(pl.col('Team_Innings') == 2)
+                    .then(pl.col('Runs'))
+                    .otherwise(None)
+                    .max()
+                    .alias('2nd Innings')
+                ),
+            ]
+            if 'Balls' in polars_df.columns:
+                agg_exprs.append(pl.col('Balls').sum().alias('Balls'))
+            if '4s' in polars_df.columns:
+                agg_exprs.append(pl.col('4s').sum().alias('4s'))
+            if '6s' in polars_df.columns:
+                agg_exprs.append(pl.col('6s').sum().alias('6s'))
+
+            polars_result = (
+                polars_df.group_by(group_cols)
+                .agg(agg_exprs)
+                .filter((pl.col('1st Innings') >= 100) & (pl.col('2nd Innings') >= 100))
+            )
+            if polars_result.height == 0:
+                polars_result = None
+
+    if polars_result is not None:
+        combined = polars_result.to_pandas()
+        logger.log_dataframe("process_hundreds_both_innings polars", combined)
+    else:
+        logger.log("process_hundreds_both_innings fallback", reason="polars_frame_none" if pl is not None else "polars_unavailable")
+        df['Team_Innings'] = np.where(df['Innings'] <= 2, 1, 2)
+        group_cols = ['Name', 'Date']
+        for optional_col in ['Home Team', 'Bat_Team_y', 'Bowl_Team_y', 'Match_Format']:
+            if optional_col in df.columns:
+                group_cols.append(optional_col)
+
+        runs_pivot = (
+            df.groupby(group_cols + ['Team_Innings'], observed=True)['Runs']
+            .max()
+            .unstack('Team_Innings')
+            .rename(columns={1: '1st Innings', 2: '2nd Innings'})
+        )
+
+        if {'1st Innings', '2nd Innings'} - set(runs_pivot.columns):
+            return pd.DataFrame()
+
+        runs_pivot = runs_pivot[(runs_pivot['1st Innings'] >= 100) & (runs_pivot['2nd Innings'] >= 100)]
+        if runs_pivot.empty:
+            return pd.DataFrame()
+
+        stats_cols = [col for col in ['Balls', '4s', '6s'] if col in df.columns]
+        stats_df = (
+            df.groupby(group_cols, observed=True)[stats_cols].sum()
+            if stats_cols
+            else pd.DataFrame(index=runs_pivot.index)
+        )
+
+        combined = runs_pivot.join(stats_df, how='left')
+        combined = combined.reset_index()
+        logger.log_dataframe("process_hundreds_both_innings pandas", combined)
+
+    rename_map = {
         'Bat_Team_y': 'Bat Team',
         'Bowl_Team_y': 'Bowl Team',
-        'Home Team': 'Country'
-    }))
+        'Home Team': 'Country',
+        'Match_Format': 'Format',
+    }
+    combined = combined.rename(columns=rename_map)
 
-    hundreds_both_df = hundreds_both_df[
-        ['Name', 'Bat Team', 'Bowl Team', 'Country', '1st Innings', '2nd Innings', 
-         'Balls', '4s', '6s', 'Date']
+    display_cols = [
+        'Name', 'Bat Team', 'Bowl Team', 'Country', 'Format',
+        '1st Innings', '2nd Innings', 'Balls', '4s', '6s', 'Date'
     ]
-    
-    hundreds_both_df['Date'] = pd.to_datetime(hundreds_both_df['Date'])
-    hundreds_both_df = hundreds_both_df.sort_values(by='Date', ascending=False)
-    hundreds_both_df['Date'] = hundreds_both_df['Date'].dt.strftime('%d/%m/%Y')
-    
-    return hundreds_both_df
+    existing_cols = [col for col in display_cols if col in combined.columns]
+    if 'Date' in combined.columns:
+        combined['Date'] = pd.to_datetime(combined['Date'], errors='coerce', dayfirst=True)
+        combined = combined.sort_values('Date', ascending=False, na_position='last')
+        combined = format_date_column(combined, 'Date')
+    logger.log_dataframe("process_hundreds_both_innings result", combined)
+    return combined[existing_cols]
 
 def process_position_scores(filtered_bat_df):
     """Process highest scores by position data"""
@@ -764,16 +1024,17 @@ def process_best_bowling(filtered_bowl_df):
     if filtered_bowl_df is None or filtered_bowl_df.empty:
         return pd.DataFrame()
     
+    desired_columns = [
+        'Innings', 'Position', 'Name', 'Bowler_Overs', 'Maidens', 'Bowler_Runs',
+        'Bowler_Wkts', 'Bowler_Econ', 'Bat_Team', 'Bowl_Team', 'Home_Team',
+        'Match_Format', 'Date', 'comp', 'Competition'
+    ]
+    available_columns = [col for col in desired_columns if col in filtered_bowl_df.columns]
+
     df = (
         filtered_bowl_df[filtered_bowl_df['Bowler_Wkts'] >= 5]
         .sort_values(by=['Bowler_Wkts', 'Bowler_Runs'], ascending=[False, True])
-        [
-            [
-                'Innings', 'Position', 'Name', 'Bowler_Overs', 'Maidens', 'Bowler_Runs',
-                'Bowler_Wkts', 'Bowler_Econ', 'Bat_Team', 'Bowl_Team', 'Home_Team',
-                'Match_Format', 'Date', 'comp'
-            ]
-        ]
+        [available_columns]
         .rename(
             columns={
                 'Bowler_Overs': 'Overs',
@@ -784,12 +1045,25 @@ def process_best_bowling(filtered_bowl_df):
                 'Bowl_Team': 'Bowl Team',
                 'Home_Team': 'Country',
                 'Match_Format': 'Format',
-                'comp': 'Competition'
             }
         )
     )
-    
-    df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
+
+    # Normalize competition column naming
+    if 'comp' in df.columns and 'Competition' not in df.columns:
+        df = df.rename(columns={'comp': 'Competition'})
+    elif 'comp' in df.columns and 'Competition' in df.columns:
+        df = df.drop(columns=['comp'])
+
+    display_order = [
+        'Innings', 'Position', 'Name', 'Overs', 'Maidens', 'Runs', 'Wickets',
+        'Econ', 'Bat Team', 'Bowl Team', 'Country', 'Format', 'Competition', 'Date'
+    ]
+    df = df[[col for col in display_order if col in df.columns] + [
+        col for col in df.columns if col not in display_order
+    ]]
+
+    df = format_date_column(df, 'Date') if 'Date' in df.columns else df
     return df
 
 def process_consecutive_five_wickets(filtered_bowl_df):
@@ -870,118 +1144,172 @@ def process_consecutive_five_wickets(filtered_bowl_df):
     return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
 
 def process_five_wickets_both(filtered_bowl_df):
-    """Process 5+ wickets in both innings data"""
+    """Process 5+ wickets in both innings data."""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
         return pd.DataFrame()
-    
-    bowl_5w = (filtered_bowl_df.groupby(['Name', 'Date', 'Home_Team'])
-              .agg({
-                  'Bowler_Wkts': lambda x: [
-                      max([w for w, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                          if i in [1, 2]], default=0),
-                      max([w for w, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                          if i in [3, 4]], default=0)
-                  ],
-                  'Bowler_Runs': lambda x: [
-                      min([r for r, i, w in zip(x, filtered_bowl_df.loc[x.index, 'Innings'], 
-                          filtered_bowl_df.loc[x.index, 'Bowler_Wkts']) 
-                          if i in [1, 2] and w >= 5], default=0),
-                      min([r for r, i, w in zip(x, filtered_bowl_df.loc[x.index, 'Innings'], 
-                          filtered_bowl_df.loc[x.index, 'Bowler_Wkts']) 
-                          if i in [3, 4] and w >= 5], default=0)
-                  ],
-                  'Bowler_Overs': lambda x: [
-                      [o for o, i, w in zip(x, filtered_bowl_df.loc[x.index, 'Innings'], 
-                       filtered_bowl_df.loc[x.index, 'Bowler_Wkts']) 
-                       if i in [1, 2] and w >= 5][0] if any([w >= 5 for w, i in 
-                       zip(filtered_bowl_df.loc[x.index, 'Bowler_Wkts'], 
-                       filtered_bowl_df.loc[x.index, 'Innings']) if i in [1, 2]]) else 0,
-                      [o for o, i, w in zip(x, filtered_bowl_df.loc[x.index, 'Innings'], 
-                       filtered_bowl_df.loc[x.index, 'Bowler_Wkts']) 
-                       if i in [3, 4] and w >= 5][0] if any([w >= 5 for w, i in 
-                       zip(filtered_bowl_df.loc[x.index, 'Bowler_Wkts'], 
-                       filtered_bowl_df.loc[x.index, 'Innings']) if i in [3, 4]]) else 0
-                  ],
-                  'Bat_Team': 'first',
-                  'Bowl_Team': 'first',
-                  'Match_Format': 'first'
-              })
-              .reset_index())
-    
-    bowl_5w['1st Innings Wkts'] = bowl_5w['Bowler_Wkts'].str[0]
-    bowl_5w['2nd Innings Wkts'] = bowl_5w['Bowler_Wkts'].str[1]
-    bowl_5w['1st Innings Runs'] = bowl_5w['Bowler_Runs'].str[0]
-    bowl_5w['2nd Innings Runs'] = bowl_5w['Bowler_Runs'].str[1]
-    bowl_5w['1st Innings Overs'] = bowl_5w['Bowler_Overs'].str[0]
-    bowl_5w['2nd Innings Overs'] = bowl_5w['Bowler_Overs'].str[1]
-    
-    five_wickets_both_df = (bowl_5w[
-        (bowl_5w['1st Innings Wkts'] >= 5) & 
-        (bowl_5w['2nd Innings Wkts'] >= 5)
+
+    required_columns = {'Name', 'Date', 'Innings', 'Bowler_Wkts'}
+    if not required_columns.issubset(filtered_bowl_df.columns):
+        return pd.DataFrame()
+
+    format_mask = (
+        filtered_bowl_df['Match_Format'].isin(['First Class', 'Test Match'])
+        if 'Match_Format' in filtered_bowl_df.columns
+        else True
+    )
+    innings_mask = filtered_bowl_df['Innings'].isin([1, 2, 3, 4])
+    wickets_mask = filtered_bowl_df['Bowler_Wkts'] >= 5
+
+    df = filtered_bowl_df[format_mask & innings_mask & wickets_mask].copy()
+    if df.empty:
+        return pd.DataFrame()
+
+    df['Team_Innings'] = np.where(df['Innings'] <= 2, 1, 2)
+
+    group_cols = ['Name', 'Date']
+    for optional_col in ['Home_Team', 'Bat_Team', 'Bowl_Team', 'Match_Format', 'Competition', 'comp']:
+        if optional_col in df.columns and optional_col not in group_cols:
+            group_cols.append(optional_col)
+
+    wkts_pivot = (
+        df.groupby(group_cols + ['Team_Innings'], observed=True)['Bowler_Wkts']
+        .max()
+        .unstack('Team_Innings')
+        .rename(columns={1: '1st Innings Wkts', 2: '2nd Innings Wkts'})
+    )
+
+    if {'1st Innings Wkts', '2nd Innings Wkts'} - set(wkts_pivot.columns):
+        return pd.DataFrame()
+
+    wkts_pivot = wkts_pivot[
+        (wkts_pivot['1st Innings Wkts'] >= 5) & (wkts_pivot['2nd Innings Wkts'] >= 5)
     ]
-    .drop(columns=['Bowler_Wkts', 'Bowler_Runs', 'Bowler_Overs'])
-    .rename(columns={
-        'Home_Team': 'Country',
+    if wkts_pivot.empty:
+        return pd.DataFrame()
+
+    runs_pivot = None
+    if 'Bowler_Runs' in df.columns:
+        runs_pivot = (
+            df.groupby(group_cols + ['Team_Innings'], observed=True)['Bowler_Runs']
+            .sum()
+            .unstack('Team_Innings')
+            .rename(columns={1: '1st Innings Runs', 2: '2nd Innings Runs'})
+        )
+
+    overs_pivot = None
+    if 'Bowler_Overs' in df.columns:
+        overs_pivot = (
+            df.groupby(group_cols + ['Team_Innings'], observed=True)['Bowler_Overs']
+            .max()
+            .unstack('Team_Innings')
+            .rename(columns={1: '1st Innings Overs', 2: '2nd Innings Overs'})
+        )
+
+    combined = wkts_pivot
+    for extra in [runs_pivot, overs_pivot]:
+        if extra is not None:
+            combined = combined.join(extra, how='left')
+
+    combined = combined.reset_index()
+
+    rename_map = {
         'Bat_Team': 'Bat Team',
         'Bowl_Team': 'Bowl Team',
-        'Match_Format': 'Format'
-    })
-    [['Name', 'Bat Team', 'Bowl Team', 'Country', 'Format',
-      '1st Innings Wkts', '1st Innings Runs', '1st Innings Overs',
-      '2nd Innings Wkts', '2nd Innings Runs', '2nd Innings Overs', 
-      'Date']]
-    .sort_values(by='Date', ascending=False))
-    
-    five_wickets_both_df['Date'] = five_wickets_both_df['Date'].dt.strftime('%d/%m/%Y')
-    return five_wickets_both_df
+        'Home_Team': 'Country',
+        'Match_Format': 'Format',
+        'comp': 'Competition',
+    }
+    combined = combined.rename(columns=rename_map)
+
+    if 'Date' in combined.columns:
+        combined['Date'] = pd.to_datetime(combined['Date'], errors='coerce', dayfirst=True)
+        combined = combined.sort_values('Date', ascending=False, na_position='last')
+        combined = format_date_column(combined, 'Date')
+
+    display_cols = [
+        'Name', 'Bat Team', 'Bowl Team', 'Country', 'Format', 'Competition',
+        '1st Innings Wkts', '1st Innings Runs', '1st Innings Overs',
+        '2nd Innings Wkts', '2nd Innings Runs', '2nd Innings Overs', 'Date'
+    ]
+    existing_cols = [col for col in display_cols if col in combined.columns]
+    return combined[existing_cols]
 
 def process_match_bowling(filtered_bowl_df):
     """Process match bowling figures data"""
     if filtered_bowl_df is None or filtered_bowl_df.empty:
         return pd.DataFrame()
     
-    match_bowling_df = (filtered_bowl_df
-        .groupby(['Name', 'Date', 'Home_Team', 'Bat_Team', 'Bowl_Team', 'Match_Format'])
-        .agg({
-            'Bowler_Wkts': lambda x: [
-                max([w for w, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                    if i in [1, 2]] or [0]),
-                max([w for w, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                    if i in [3, 4]] or [0])
-            ],
-            'Bowler_Runs': lambda x: [
-                sum([r for r, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                    if i in [1, 2]] or [0]),
-                sum([r for r, i in zip(x, filtered_bowl_df.loc[x.index, 'Innings']) 
-                    if i in [3, 4]] or [0])
-            ]
-        })
-        .reset_index())
-    
-    match_bowling_df['1st Innings Wkts'] = match_bowling_df['Bowler_Wkts'].str[0]
-    match_bowling_df['2nd Innings Wkts'] = match_bowling_df['Bowler_Wkts'].str[1]
-    match_bowling_df['1st Innings Runs'] = match_bowling_df['Bowler_Runs'].str[0]
-    match_bowling_df['2nd Innings Runs'] = match_bowling_df['Bowler_Runs'].str[1]
-    
-    match_bowling_df['Match Wickets'] = match_bowling_df['1st Innings Wkts'] + match_bowling_df['2nd Innings Wkts']
-    match_bowling_df['Match Runs'] = match_bowling_df['1st Innings Runs'] + match_bowling_df['2nd Innings Runs']
-    
-    df = (match_bowling_df
-        .sort_values(by=['Match Wickets', 'Match Runs'], 
-                    ascending=[False, True])
-        .rename(columns={
-            'Home_Team': 'Country',
-            'Bat_Team': 'Bat Team',
-            'Bowl_Team': 'Bowl Team',
-            'Match_Format': 'Format'
-        })
-        [['Name', 'Bat Team', 'Bowl Team', 'Country', 'Format',
-          '1st Innings Wkts', '1st Innings Runs',
-          '2nd Innings Wkts', '2nd Innings Runs',
-          'Match Wickets', 'Match Runs', 'Date']]
+    # Prepare a consolidated view to avoid repeated global lookups inside lambdas
+    grouped = filtered_bowl_df.groupby(
+        ['Name', 'Date', 'Home_Team', 'Bat_Team', 'Bowl_Team', 'Match_Format', 'Innings'],
+        observed=True
+    ).agg({
+        'Bowler_Wkts': 'sum',
+        'Bowler_Runs': 'sum'
+    }).reset_index()
+
+    def _innings_metrics(df: pd.DataFrame, innings: tuple[int, ...]) -> tuple[int, int]:
+        subset = df[df['Innings'].isin(innings)]
+        if subset.empty:
+            return 0, 0
+        wickets = subset['Bowler_Wkts'].max()
+        runs = subset['Bowler_Runs'].sum()
+        return wickets, runs
+
+    def _collect_innings_metrics(df: pd.DataFrame) -> dict[str, int]:
+        first_wkts, first_runs = _innings_metrics(df, (1, 2))
+        second_wkts, second_runs = _innings_metrics(df, (3, 4))
+        return {
+            '1st Innings Wkts': first_wkts,
+            '2nd Innings Wkts': second_wkts,
+            '1st Innings Runs': first_runs,
+            '2nd Innings Runs': second_runs,
+        }
+
+    # Aggregate once per player/match, then split figures into innings bands
+    match_bowling_df = (
+        grouped.groupby(
+            ['Name', 'Date', 'Home_Team', 'Bat_Team', 'Bowl_Team', 'Match_Format'],
+            observed=True
+        )
+        .apply(
+            lambda g: pd.Series(_collect_innings_metrics(g)),
+            include_groups=False
+        )
+        .reset_index()
     )
-    
-    df['Date'] = df['Date'].dt.strftime('%d/%m/%Y')
+
+    match_bowling_df['Match Wickets'] = (
+        match_bowling_df['1st Innings Wkts'] + match_bowling_df['2nd Innings Wkts']
+    )
+    match_bowling_df['Match Runs'] = (
+        match_bowling_df['1st Innings Runs'] + match_bowling_df['2nd Innings Runs']
+    )
+
+    # Exclude match entries where fewer than 10 wickets were taken
+    match_bowling_df = match_bowling_df[match_bowling_df['Match Wickets'] >= 10]
+
+    df = (
+        match_bowling_df
+        .sort_values(by=['Match Wickets', 'Match Runs'], ascending=[False, True])
+        .rename(
+            columns={
+                'Home_Team': 'Country',
+                'Bat_Team': 'Bat Team',
+                'Bowl_Team': 'Bowl Team',
+                'Match_Format': 'Format',
+            }
+        )
+    )
+
+    display_cols = [
+        'Name', 'Bat Team', 'Bowl Team', 'Country', 'Format',
+        '1st Innings Wkts', '1st Innings Runs',
+        '2nd Innings Wkts', '2nd Innings Runs',
+        'Match Wickets', 'Match Runs', 'Date'
+    ]
+    df = df[[col for col in display_cols if col in df.columns]]
+    df = format_date_column(df, 'Date') if 'Date' in df.columns else df
     return df
 
 # Bowling Records Tab
@@ -1067,27 +1395,36 @@ def process_wins_data(filtered_match_df, win_type='runs', margin_type='big'):
     """Process wins data by type and margin"""
     if filtered_match_df is None or filtered_match_df is None or filtered_match_df.empty:
         return pd.DataFrame()
-    
-    # Rest of the function remains the same
+
+    df = filtered_match_df.copy()
+
+    # Ensure comparison columns are numeric to avoid categorical ordering errors
+    if 'Margin_Runs' in df.columns:
+        df['Margin_Runs'] = pd.to_numeric(df['Margin_Runs'], errors='coerce')
+    if 'Margin_Wickets' in df.columns:
+        df['Margin_Wickets'] = pd.to_numeric(df['Margin_Wickets'], errors='coerce')
+
     # Set conditions based on win type
     if win_type == 'runs':
         base_conditions = [
-            (filtered_match_df['Margin_Runs'] > 0),
-            (filtered_match_df['Innings_Win'] == 0),
-            (filtered_match_df['Home_Drawn'] != 1)
+            df['Margin_Runs'].notna(),
+            df['Margin_Runs'] > 0,
+            df['Innings_Win'] == 0,
+            df['Home_Drawn'] != 1
         ]
         margin_column = 'Margin_Runs'
         margin_name = 'Runs'
     else:  # wickets
         base_conditions = [
-            (filtered_match_df['Margin_Wickets'] > 0),
-            (filtered_match_df['Innings_Win'] == 0),
-            (filtered_match_df['Home_Drawn'] != 1)
+            df['Margin_Wickets'].notna(),
+            df['Margin_Wickets'] > 0,
+            df['Innings_Win'] == 0,
+            df['Home_Drawn'] != 1
         ]
         margin_column = 'Margin_Wickets'
         margin_name = 'Wickets'
-    
-    df = filtered_match_df[np.all(base_conditions, axis=0)].copy()
+
+    df = df[np.all(base_conditions, axis=0)].copy()
     
     df['Win Team'] = np.where(
         df['Home_Win'] == 1,
@@ -1860,6 +2197,7 @@ with tabs[4]:
         computed_info = compute_series_info(filtered_match_df)
         
         if not computed_info.empty:
+            logger.log_dataframe("series_info_df", computed_info, include_dtypes=True)
             st.markdown("""
                 <div style="text-align: center; margin: 30px 0;">
                     <div style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
@@ -1874,13 +2212,36 @@ with tabs[4]:
                 </div>
             """, unsafe_allow_html=True)
             
-            series_info_df = computed_info
-            # Format dates for display
-            series_info_df['Start_Date'] = pd.to_datetime(series_info_df['Start_Date']).dt.strftime('%d/%m/%Y')
-            series_info_df['End_Date'] = pd.to_datetime(series_info_df['End_Date']).dt.strftime('%d/%m/%Y')
-            
+            series_info_df = computed_info.copy()
+            series_info_df['Start_Date'] = pd.to_datetime(
+                series_info_df['Start_Date'], errors='coerce', dayfirst=True
+            )
+            series_info_df['End_Date'] = pd.to_datetime(
+                series_info_df['End_Date'], errors='coerce', dayfirst=True
+            )
+            series_info_df['Home_Team_norm'] = (
+                series_info_df['Home_Team'].astype(str).str.strip().str.lower()
+            )
+            series_info_df['Away_Team_norm'] = (
+                series_info_df['Away_Team'].astype(str).str.strip().str.lower()
+            )
+            series_info_df['Match_Format_norm'] = (
+                series_info_df['Match_Format'].astype(str).str.strip().str.lower()
+            )
+
+            # Precompute comparison arrays to avoid repeated conversions inside row lookups
+            series_start_dates = series_info_df['Start_Date'].dt.date
+            series_end_dates = series_info_df['End_Date'].dt.date
+            series_home_norm = series_info_df['Home_Team_norm']
+            series_away_norm = series_info_df['Away_Team_norm']
+            series_format_norm = series_info_df['Match_Format_norm']
+
+            series_display_df = series_info_df.copy()
+            series_display_df = format_date_column(series_display_df, 'Start_Date')
+            series_display_df = format_date_column(series_display_df, 'End_Date')
+
             # Display the series information
-            st.dataframe(series_info_df, use_container_width=True, hide_index=True)
+            st.dataframe(series_display_df, use_container_width=True, hide_index=True)
         else:
             st.info("No series records available.")
     else:
@@ -1904,29 +2265,57 @@ with tabs[4]:
         
         # Create a copy of batting dataframe
         series_batting = filtered_bat_df.copy()
+        logger.log_dataframe("series_batting initial", series_batting)
+        logger.log(
+            "series_batting team columns",
+            bat_columns=[c for c in series_batting.columns if 'Bat_Team' in c],
+            bowl_columns=[c for c in series_batting.columns if 'Bowl_Team' in c],
+        )
+        series_batting['Date_dt'] = pd.to_datetime(
+            series_batting['Date'], errors='coerce', dayfirst=True
+        )
         
         # Remove unwanted columns
         series_batting = series_batting.drop(['Bat_Team_x', 'Bowl_Team_x'], axis=1, errors='ignore')
         
+        def _normalize_team(value):
+            if value is None or pd.isna(value):
+                return None
+            return str(value).strip().lower()
+
         # Add Series column by matching date ranges
         def find_series(row):
             try:
-                match_date = pd.to_datetime(row['Date']).date()
+                match_date = row.get('Date_dt')
+                if pd.isna(match_date):
+                    match_date = pd.to_datetime(row.get('Date'), errors='coerce', dayfirst=True)
+                if pd.isna(match_date):
+                    return None
+                match_date = match_date.date()
                 # Check if necessary columns exist in series_info_df
                 if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    # Convert date strings to datetime.date objects for comparison
-                    start_dates = pd.to_datetime(series_info_df['Start_Date'], errors='coerce').dt.date
-                    end_dates = pd.to_datetime(series_info_df['End_Date'], errors='coerce').dt.date
-                    
+                    match_format = _normalize_team(row.get('Match_Format'))
+                    team_candidates = {
+                        _normalize_team(row.get('Bat_Team_y')),
+                        _normalize_team(row.get('Bowl_Team_y')),
+                        _normalize_team(row.get('Bat_Team')),
+                        _normalize_team(row.get('Bowl_Team')),
+                        _normalize_team(row.get('Home Team')),
+                        _normalize_team(row.get('Away Team')),
+                    }
+                    team_candidates = {team for team in team_candidates if team}
+                    if not team_candidates:
+                        return None
                     # Filter rows where match_date is within range and teams match
                     mask = (
-                        (start_dates <= match_date) & 
-                        (end_dates >= match_date) & 
-                        ((series_info_df['Home_Team'] == row['Bat_Team_y']) | 
-                        (series_info_df['Home_Team'] == row['Bowl_Team_y']) |
-                        (series_info_df['Away_Team'] == row['Bat_Team_y']) |
-                        (series_info_df['Away_Team'] == row['Bowl_Team_y']))
+                        series_info_df['Start_Date'].notna() &
+                        series_info_df['End_Date'].notna() &
+                        (series_start_dates <= match_date) & 
+                        (series_end_dates >= match_date) & 
+                        (series_home_norm.isin(team_candidates) | series_away_norm.isin(team_candidates))
                     )
+                    if match_format:
+                        mask &= series_format_norm == match_format
                     matches = series_info_df[mask]
                     
                     if not matches.empty:
@@ -1939,15 +2328,23 @@ with tabs[4]:
         
         # Add Series column
         series_batting['Series'] = series_batting.apply(find_series, axis=1)
+        matched_count = int(series_batting['Series'].notna().sum())
+        logger.log("series_batting matches", matched=matched_count, total=len(series_batting))
         
         # Filter out rows with no series match
         series_batting = series_batting[series_batting['Series'].notna()]
+        series_batting = series_batting.drop(columns=['Date_dt'], errors='ignore')
         
         if series_batting.empty:
+            logger.log("series_batting empty_after_filter")
             st.info("No batting data matches available series.")
         else:
+            logger.log_dataframe("series_batting matched", series_batting)
             # Create series batting statistics
-            series_stats = series_batting.groupby(['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team']).agg({
+            series_stats = series_batting.groupby(
+                ['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team'],
+                observed=True
+            ).agg({
                 'File Name': 'nunique',
                 'Batted': 'sum', 
                 'Out': 'sum',
@@ -1967,8 +2364,10 @@ with tabs[4]:
             
             # Display series batting statistics
             if not series_stats.empty:
+                logger.log_dataframe("series_batting stats", series_stats)
                 st.dataframe(series_stats, use_container_width=True, hide_index=True)
             else:
+                logger.log("series_stats empty")
                 st.info("No series batting statistics available.")
     else:
         st.info("No batting data available for series analysis or no series found")
@@ -1995,17 +2394,18 @@ with tabs[4]:
         # Add Series column by matching date ranges
         def find_bowling_series(row):
             try:
-                match_date = pd.to_datetime(row['Date']).date()
+                match_date = pd.to_datetime(row['Date'], errors='coerce', dayfirst=True)
+                if pd.isna(match_date):
+                    return None
+                match_date = match_date.date()
                 # Check if necessary columns exist in series_info_df
                 if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    # Convert date strings to datetime.date objects for comparison
-                    start_dates = pd.to_datetime(series_info_df['Start_Date'], errors='coerce').dt.date
-                    end_dates = pd.to_datetime(series_info_df['End_Date'], errors='coerce').dt.date
-                    
                     # Filter rows where match_date is within range and teams match
                     mask = (
-                        (start_dates <= match_date) & 
-                        (end_dates >= match_date) & 
+                        series_info_df['Start_Date'].notna() &
+                        series_info_df['End_Date'].notna() &
+                        (series_start_dates <= match_date) & 
+                        (series_end_dates >= match_date) & 
                         ((series_info_df['Home_Team'] == row['Bat_Team']) | 
                         (series_info_df['Home_Team'] == row['Bowl_Team']) |
                         (series_info_df['Away_Team'] == row['Bat_Team']) |
@@ -2029,7 +2429,10 @@ with tabs[4]:
             st.info("No bowling data matches available series. ")
         else:
             # Create series bowling statistics
-            series_bowl_stats = series_bowling.groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).agg({
+            series_bowl_stats = series_bowling.groupby(
+                ['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'],
+                observed=True
+            ).agg({
                 'File Name': 'nunique',
                 'Bowler_Overs': 'sum',
                 'Bowler_Wkts': 'sum',
@@ -2037,8 +2440,18 @@ with tabs[4]:
             }).reset_index()
             
             # Calculate 5-wicket and 10-wicket hauls from individual match data
-            five_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 5].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='5w_hauls')
-            ten_wicket_hauls = series_bowling[series_bowling['Bowler_Wkts'] >= 10].groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team']).size().reset_index(name='10w_hauls')
+            five_wicket_hauls = (
+                series_bowling[series_bowling['Bowler_Wkts'] >= 5]
+                .groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], observed=True)
+                .size()
+                .reset_index(name='5w_hauls')
+            )
+            ten_wicket_hauls = (
+                series_bowling[series_bowling['Bowler_Wkts'] >= 10]
+                .groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], observed=True)
+                .size()
+                .reset_index(name='10w_hauls')
+            )
             
             # Merge the hauls data
             series_bowl_stats = series_bowl_stats.merge(five_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')

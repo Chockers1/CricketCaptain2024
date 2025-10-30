@@ -3,6 +3,14 @@ import datetime
 import time
 import os
 
+# PERFORMANCE OPTIMIZATION: Add memory management
+try:
+    from memory_optimization import add_memory_sidebar, optimize_dataframes_on_load
+    MEMORY_OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    MEMORY_OPTIMIZATION_AVAILABLE = False
+    st.warning("⚠️ Memory optimization not available - install performance_utils.py for better performance")
+
 # Try to import dotenv, but make it optional
 try:
     from dotenv import load_dotenv

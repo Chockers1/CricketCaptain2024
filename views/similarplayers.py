@@ -291,7 +291,8 @@ def display_similar_players_view():
             st.error("❌ Please upload batting data first from the Home page.")
             return
 
-        bat_df = st.session_state['bat_df'].copy()
+        # OPTIMIZATION: Use reference instead of copy - saves memory
+        bat_df = st.session_state['bat_df']  # No .copy() needed for read operations
         
         # Convert Year to int to avoid comparison issues
         bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)

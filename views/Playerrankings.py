@@ -1,13 +1,20 @@
 import streamlit as st 
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import datetime
+import time
 try:
     import polars as pl
 except Exception:
     pl = None
+
+try:
+    from .logging_utils import FastViewLogger
+except ImportError:  # pragma: no cover - support direct execution
+    from views.logging_utils import FastViewLogger
 
 # Modern CSS for beautiful UI - Enhanced styling
 def apply_modern_styling():
@@ -307,7 +314,7 @@ def _sanitize_for_polars(df: pd.DataFrame) -> pd.DataFrame:
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     # Cast categoricals or objects with nested types to strings
     for c in df.columns:
-        if pd.api.types.is_categorical_dtype(df[c]):
+        if isinstance(df[c].dtype, CategoricalDtype):
             df[c] = df[c].astype(str)
         elif df[c].dtype == object:
             sample = df[c].dropna().head(1)
@@ -315,24 +322,81 @@ def _sanitize_for_polars(df: pd.DataFrame) -> pd.DataFrame:
                 df[c] = df[c].astype(str)
     return df
 
+
+def _to_polars_frame(df: pd.DataFrame):
+    """Return a sanitized Polars frame if Polars is available."""
+    if pl is None or df is None or df.empty:
+        return None
+    sanitized = _sanitize_for_polars(df)
+    if sanitized is None or sanitized.empty:
+        return None
+    return pl.from_pandas(sanitized)
+
 @st.cache_data
 def calculate_batter_rating_per_match(df):
-    """Calculate batting rating with bonuses"""
+    """Calculate batting rating with bonuses, preferring Polars for speed."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    if pl is not None:
+        polars_df = _to_polars_frame(df)
+        if polars_df is not None:
+            runs_col = pl.col('Runs').cast(pl.Float64).fill_null(0)
+            balls_col = pl.col('Balls').cast(pl.Float64).fill_null(0)
+            polars_df = polars_df.with_columns([
+                runs_col.alias('_Runs_float'),
+                balls_col.alias('_Balls_float'),
+            ])
+            polars_df = polars_df.with_columns([
+                pl.when(pl.col('_Balls_float') > 0)
+                .then(pl.col('_Runs_float') / pl.col('_Balls_float') * 100)
+                .otherwise(0)
+                .alias('Strike_Rate'),
+                pl.col('_Runs_float').alias('Base_Score'),
+            ])
+            polars_df = polars_df.with_columns([
+                pl.when(pl.col('Base_Score') >= 200)
+                .then(100)
+                .when(pl.col('Base_Score') >= 150)
+                .then(75)
+                .when(pl.col('Base_Score') >= 100)
+                .then(50)
+                .otherwise(0)
+                .alias('_Century_Bonus'),
+                pl.when((pl.col('Base_Score') >= 40) & (pl.col('Strike_Rate') >= 75))
+                .then(25)
+                .otherwise(0)
+                .alias('_SR_Positive'),
+                pl.when((pl.col('Base_Score') >= 40) & (pl.col('Strike_Rate') <= 40))
+                .then(-25)
+                .otherwise(0)
+                .alias('_SR_Penalty'),
+            ])
+            polars_df = polars_df.with_columns(
+                (pl.col('_Century_Bonus') + pl.col('_SR_Positive') + pl.col('_SR_Penalty')).alias('Bonus')
+            )
+            polars_df = polars_df.with_columns(
+                (pl.col('Base_Score') + pl.col('Bonus')).alias('Batting_Rating')
+            )
+            polars_df = polars_df.drop(['_Runs_float', '_Balls_float', '_Century_Bonus', '_SR_Positive', '_SR_Penalty'])
+            return polars_df.to_pandas()
+
+    # Fallback to pandas implementation
     stats = df.copy()
-    # Vectorized strike rate and base
-    stats['Strike_Rate'] = (pd.to_numeric(stats['Runs'], errors='coerce').fillna(0) /
-                            pd.to_numeric(stats['Balls'], errors='coerce').replace(0, np.nan)) * 100
+    stats['Strike_Rate'] = (
+        pd.to_numeric(stats['Runs'], errors='coerce').fillna(0)
+        /
+        pd.to_numeric(stats['Balls'], errors='coerce').replace(0, np.nan)
+    ) * 100
     stats['Strike_Rate'] = stats['Strike_Rate'].fillna(0)
     stats['Base_Score'] = pd.to_numeric(stats['Runs'], errors='coerce').fillna(0)
     runs = stats['Base_Score']
     sr = stats['Strike_Rate']
-    # Century tier bonuses
     bonus = np.select(
         [runs.ge(200), runs.ge(150), runs.ge(100)],
         [100, 75, 50],
         default=0
     )
-    # SR bonus/penalty when substantial innings
     sr_bonus = np.where(runs.ge(40) & sr.ge(75), 25, 0)
     sr_pen = np.where(runs.ge(40) & sr.le(40), -25, 0)
     stats['Bonus'] = bonus + sr_bonus + sr_pen
@@ -341,7 +405,56 @@ def calculate_batter_rating_per_match(df):
 
 @st.cache_data
 def calculate_bowler_rating_per_match(df):
-    """Calculate bowling rating with bonuses"""
+    """Calculate bowling rating with bonuses, using Polars when available."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    if pl is not None:
+        polars_df = _to_polars_frame(df)
+        if polars_df is not None:
+            if 'Maidens' not in polars_df.columns:
+                if 'Bowler_Maidens' in polars_df.columns:
+                    polars_df = polars_df.rename({'Bowler_Maidens': 'Maidens'})
+                else:
+                    polars_df = polars_df.with_columns(pl.lit(0).alias('Maidens'))
+
+            polars_df = polars_df.with_columns([
+                pl.col('Bowler_Balls').cast(pl.Float64).fill_null(0).alias('_Balls_float'),
+                pl.col('Bowler_Runs').cast(pl.Float64).fill_null(0).alias('_Runs_float'),
+                pl.col('Bowler_Wkts').cast(pl.Float64).fill_null(0).alias('_Wkts_float'),
+                pl.col('Maidens').cast(pl.Float64).fill_null(0).alias('_Maid_float'),
+            ])
+            polars_df = polars_df.with_columns([
+                (pl.col('_Balls_float') / 6.0).alias('Overs'),
+                pl.when(pl.col('_Balls_float') > 0)
+                .then(pl.col('_Runs_float') * 6.0 / pl.col('_Balls_float'))
+                .otherwise(0)
+                .alias('Economy'),
+                (pl.col('_Wkts_float') * 20 + pl.col('_Maid_float') * 2).alias('Base_Score'),
+            ])
+            polars_df = polars_df.with_columns([
+                pl.when(pl.col('_Wkts_float') >= 10).then(260)
+                .when(pl.col('_Wkts_float') >= 9).then(200)
+                .when(pl.col('_Wkts_float') >= 8).then(150)
+                .when(pl.col('_Wkts_float') >= 7).then(100)
+                .when(pl.col('_Wkts_float') >= 6).then(75)
+                .when(pl.col('_Wkts_float') >= 5).then(50)
+                .when(pl.col('_Wkts_float') >= 4).then(35)
+                .when(pl.col('_Wkts_float') >= 3).then(20)
+                .otherwise(0)
+                .alias('Wicket_Bonus'),
+                pl.when((pl.col('Overs') >= 10) & (pl.col('Economy') <= 2.5)).then(25)
+                .when((pl.col('Overs') >= 10) & (pl.col('Economy') >= 4.5)).then(-25)
+                .otherwise(0)
+                .alias('Economy_Bonus'),
+            ])
+            polars_df = polars_df.with_columns([
+                (pl.col('Base_Score') + pl.col('Wicket_Bonus') + pl.col('Economy_Bonus')).alias('Bowling_Rating')
+            ])
+            polars_df = polars_df.drop(['_Balls_float', '_Runs_float', '_Wkts_float', '_Maid_float'])
+            return polars_df.to_pandas()
+
+    # Fallback to pandas implementation
     stats = df.copy()
     balls = pd.to_numeric(stats.get('Bowler_Balls', 0), errors='coerce').fillna(0)
     runs = pd.to_numeric(stats.get('Bowler_Runs', 0), errors='coerce').fillna(0)
@@ -353,10 +466,8 @@ def calculate_bowler_rating_per_match(df):
     stats['Overs'] = overs
     stats['Economy'] = econ
     stats['Base_Score'] = wkts * 20 + maid * 2
-    # Wicket bonus mapping
-    bonus_map = {10:260,9:200,8:150,7:100,6:75,5:50,4:35,3:20}
+    bonus_map = {10: 260, 9: 200, 8: 150, 7: 100, 6: 75, 5: 50, 4: 35, 3: 20}
     stats['Wicket_Bonus'] = wkts.map(bonus_map).fillna(0)
-    # Economy bonus when enough overs
     econ_bonus = np.where(overs.ge(10) & econ.le(2.5), 25, 0)
     econ_pen = np.where(overs.ge(10) & econ.ge(4.5), -25, 0)
     stats['Economy_Bonus'] = econ_bonus + econ_pen
@@ -852,10 +963,10 @@ def display_number_one_rankings(bat_df, bowl_df):
     # ...rest of the function remains unchanged...
 
 @st.cache_data
-@st.cache_data
 def compute_batting_rankings(bat_df):
-    if bat_df.empty:
+    if bat_df is None or bat_df.empty:
         return pd.DataFrame()
+    bat_df = bat_df.copy()
     # Use the correct team column from batting data
     if 'Team' not in bat_df.columns:
         if 'Bat_Team' in bat_df.columns:
@@ -868,47 +979,53 @@ def compute_batting_rankings(bat_df):
             bat_df['Team'] = 'Unknown'
     # Polars-first aggregation
     if pl is not None:
-        pdf = _sanitize_for_polars(bat_df)
-        p = pl.from_pandas(pdf)
-        g = (
-            p.group_by(['Year','Name','Team','Match_Format'])
-             .agg([
-                 pl.col('File Name').n_unique().alias('Matches'),
-                 pl.col('Batting_Rating').sum().alias('Rating'),
-                 pl.col('Runs').sum().alias('Total_Runs'),
-                 pl.col('Runs').mean().alias('Average'),
-                 (pl.col('Runs').sum() / pl.col('Balls').sum() * 100).alias('Strike_Rate'),
-                 (pl.col('Runs')>=100).sum().alias('Centuries'),
-                 (pl.col('Runs')>=200).sum().alias('Double_Centuries'),
-                 pl.col('4s').sum().alias('4s'),
-                 pl.col('6s').sum().alias('6s'),
-             ])
-        )
-        batting_rankings = g.to_pandas()
+        polars_df = _to_polars_frame(bat_df)
+        if polars_df is not None:
+            g = (
+                polars_df.group_by(['Year', 'Name', 'Team', 'Match_Format'])
+                .agg([
+                    pl.col('File Name').n_unique().alias('Matches'),
+                    pl.col('Batting_Rating').sum().alias('Rating'),
+                    pl.col('Runs').sum().alias('Total_Runs'),
+                    pl.col('Runs').mean().alias('Average'),
+                    pl.col('Balls').sum().alias('Balls'),
+                    (pl.col('Runs') >= 100).sum().alias('Centuries'),
+                    (pl.col('Runs') >= 200).sum().alias('Double_Centuries'),
+                    pl.col('4s').sum().alias('4s'),
+                    pl.col('6s').sum().alias('6s'),
+                ])
+            )
+            batting_rankings = g.to_pandas()
+        else:
+            batting_rankings = pd.DataFrame()
     else:
-        bat = bat_df.copy()
-        bat['Centuries'] = (bat['Runs']>=100).astype(int)
-        bat['Double_Centuries'] = (bat['Runs']>=200).astype(int)
-        grp = bat.groupby(['Year','Name','Team','Match_Format'], observed=True)
-        batting_rankings = grp.agg(
-            Matches=('File Name','nunique'),
-            Rating=('Batting_Rating','sum'),
-            Total_Runs=('Runs','sum'),
-            Average=('Runs','mean'),
-            Balls=('Balls','sum'),
-            Centuries=('Centuries','sum'),
-            Double_Centuries=('Double_Centuries','sum'),
-            **{'4s':('4s','sum'), '6s':('6s','sum')}
-        ).reset_index()
-        batting_rankings['Strike_Rate'] = np.where(
-            batting_rankings['Balls']>0,
-            batting_rankings['Total_Runs']/batting_rankings['Balls']*100,
-            0
+        batting_rankings = pd.DataFrame()
+
+    if batting_rankings.empty:
+        g = (
+            bat_df.assign(
+                Centuries=(bat_df['Runs'] >= 100).astype(int),
+                Double_Centuries=(bat_df['Runs'] >= 200).astype(int)
+            )
+            .groupby(['Year', 'Name', 'Team', 'Match_Format'], observed=True)
         )
-        batting_rankings = batting_rankings.drop(columns=['Balls'])
-    batting_rankings = batting_rankings.rename(columns={
-        'Runs_mean': 'Average'
-    })
+        batting_rankings = g.agg(
+            Matches=('File Name', 'nunique'),
+            Rating=('Batting_Rating', 'sum'),
+            Total_Runs=('Runs', 'sum'),
+            Average=('Runs', 'mean'),
+            Balls=('Balls', 'sum'),
+            Centuries=('Centuries', 'sum'),
+            Double_Centuries=('Double_Centuries', 'sum'),
+            **{'4s': ('4s', 'sum'), '6s': ('6s', 'sum')}
+        ).reset_index()
+
+    batting_rankings['Strike_Rate'] = np.where(
+        batting_rankings['Balls'] > 0,
+        batting_rankings['Total_Runs'] / batting_rankings['Balls'] * 100,
+        0
+        )
+    batting_rankings = batting_rankings.drop(columns=['Balls'], errors='ignore')
     batting_rankings['RPG'] = batting_rankings['Rating'] / batting_rankings['Matches']
     batting_rankings['Rank'] = batting_rankings.groupby('Year')['Rating'].rank(method='dense', ascending=False).astype(int)
     batting_rankings = batting_rankings.sort_values(['Year', 'Rank'])
@@ -1108,10 +1225,10 @@ def display_batting_rankings(bat_df):
     st.plotly_chart(fig2, use_container_width=True)
 
 @st.cache_data
-@st.cache_data
 def compute_bowling_rankings(bowl_df):
-    if bowl_df.empty:
+    if bowl_df is None or bowl_df.empty:
         return pd.DataFrame()
+    bowl_df = bowl_df.copy()
     # Use the correct team column from bowling data
     if 'Team' not in bowl_df.columns:
         if 'Bowl_Team' in bowl_df.columns:
@@ -1122,60 +1239,79 @@ def compute_bowling_rankings(bowl_df):
             bowl_df['Team'] = bowl_df['Bowl_Team_y']
         else:
             bowl_df['Team'] = 'Unknown'
+    bowling_rankings = pd.DataFrame()
     if pl is not None:
-        pdf = _sanitize_for_polars(bowl_df)
-        p = pl.from_pandas(pdf)
-        # Ensure optional columns exist for aggregation
-        if 'Bowler_Maidens' not in p.columns:
-            p = p.with_columns(pl.lit(0).alias('Bowler_Maidens'))
-        five = (pl.col('Bowler_Wkts')>=5).sum().alias('Five_Wickets')
-        ten = (pl.col('Bowler_Wkts')>=10).sum().alias('Ten_Wickets')
-        runs_sum = pl.col('Bowler_Runs').sum()
-        balls_sum = pl.col('Bowler_Balls').sum()
-        wkts_sum = pl.col('Bowler_Wkts').sum()
-        maid_sum = pl.col('Bowler_Maidens').sum().alias('Maidens')
-        g = (
-            p.group_by(['Year','Name','Team','Match_Format'])
-             .agg([
-                 pl.col('File Name').n_unique().alias('Matches'),
-                 pl.col('Bowling_Rating').sum().alias('Rating'),
-                 wkts_sum.alias('Total_Wickets'),
-                 (runs_sum / wkts_sum).alias('Average'),
-                 (balls_sum / wkts_sum).alias('Strike_Rate'),
-                 (runs_sum * 6.0 / balls_sum).alias('Economy'),
-                 five,
-                 ten,
-                 maid_sum,
-             ])
+        polars_df = _to_polars_frame(bowl_df)
+        if polars_df is not None:
+            if 'Bowler_Maidens' not in polars_df.columns and 'Maidens' not in polars_df.columns:
+                polars_df = polars_df.with_columns(pl.lit(0).alias('Bowler_Maidens'))
+            if 'Bowler_Maidens' in polars_df.columns and 'Maidens' not in polars_df.columns:
+                polars_df = polars_df.rename({'Bowler_Maidens': 'Maidens'})
+            g = (
+                polars_df.group_by(['Year', 'Name', 'Team', 'Match_Format'])
+                .agg([
+                    pl.col('File Name').n_unique().alias('Matches'),
+                    pl.col('Bowling_Rating').sum().alias('Rating'),
+                    pl.col('Bowler_Wkts').sum().alias('Total_Wickets'),
+                    pl.col('Bowler_Runs').sum().alias('_RunsAggregate'),
+                    pl.col('Bowler_Balls').sum().alias('_BallsAggregate'),
+                    (pl.col('Bowler_Wkts') >= 5).sum().alias('Five_Wickets'),
+                    (pl.col('Bowler_Wkts') >= 10).sum().alias('Ten_Wickets'),
+                    pl.col('Maidens').sum().alias('Maidens'),
+                ])
+            )
+            bowling_rankings = g.to_pandas()
+    if bowling_rankings.empty:
+        b = bowl_df.assign(
+            Five_Wickets=(bowl_df['Bowler_Wkts'] >= 5).astype(int),
+            Ten_Wickets=(bowl_df['Bowler_Wkts'] >= 10).astype(int)
         )
-        bowling_rankings = g.to_pandas()
-    else:
-        b = bowl_df.copy()
-        b['Five_Wickets'] = (b['Bowler_Wkts']>=5).astype(int)
-        b['Ten_Wickets'] = (b['Bowler_Wkts']>=10).astype(int)
-        grp = b.groupby(['Year','Name','Team','Match_Format'], observed=True)
+        grp = b.groupby(['Year', 'Name', 'Team', 'Match_Format'], observed=True)
         agg_dict = {
-            'File Name':'nunique',
-            'Bowling_Rating':'sum',
-            'Bowler_Wkts':'sum',
-            'Bowler_Runs':'sum',
-            'Bowler_Balls':'sum',
-            'Five_Wickets':'sum',
-            'Ten_Wickets':'sum'
+            'File Name': 'nunique',
+            'Bowling_Rating': 'sum',
+            'Bowler_Wkts': 'sum',
+            'Bowler_Runs': 'sum',
+            'Bowler_Balls': 'sum',
+            'Five_Wickets': 'sum',
+            'Ten_Wickets': 'sum',
         }
-        if 'Bowler_Maidens' in b.columns:
-            agg_dict['Bowler_Maidens'] = 'sum'
+        if 'Bowler_Maidens' in b.columns or 'Maidens' in b.columns:
+            maid_col = 'Bowler_Maidens' if 'Bowler_Maidens' in b.columns else 'Maidens'
+            agg_dict[maid_col] = 'sum'
         agg = grp.agg(agg_dict).reset_index()
-        agg = agg.rename(columns={'File Name':'Matches','Bowling_Rating':'Rating','Bowler_Wkts':'Total_Wickets'})
+        agg = agg.rename(columns={'File Name': 'Matches', 'Bowling_Rating': 'Rating', 'Bowler_Wkts': 'Total_Wickets'})
         if 'Bowler_Maidens' in agg.columns:
-            agg = agg.rename(columns={'Bowler_Maidens':'Maidens'})
-        else:
+            agg = agg.rename(columns={'Bowler_Maidens': 'Maidens'})
+        elif 'Maidens' not in agg.columns:
             agg['Maidens'] = 0
-        agg['Average'] = np.where(agg['Total_Wickets']>0, agg['Bowler_Runs']/agg['Total_Wickets'], 0)
-        agg['Strike_Rate'] = np.where(agg['Total_Wickets']>0, agg['Bowler_Balls']/agg['Total_Wickets'], 0)
-        agg['Economy'] = np.where(agg['Bowler_Balls']>0, agg['Bowler_Runs']*6/agg['Bowler_Balls'], 0)
-        bowling_rankings = agg.drop(columns=['Bowler_Runs','Bowler_Balls'])
-    # columns already correctly named across branches
+        bowling_rankings = agg
+
+    if '_RunsAggregate' in bowling_rankings.columns:
+        bowling_rankings = bowling_rankings.rename(columns={'_RunsAggregate': 'Bowler_Runs', '_BallsAggregate': 'Bowler_Balls'})
+    if 'Bowler_Runs' not in bowling_rankings.columns:
+        bowling_rankings['Bowler_Runs'] = 0.0
+    if 'Bowler_Balls' not in bowling_rankings.columns:
+        bowling_rankings['Bowler_Balls'] = 0.0
+    if 'Maidens' not in bowling_rankings.columns:
+        bowling_rankings['Maidens'] = 0.0
+
+    bowling_rankings['Average'] = np.where(
+        bowling_rankings['Total_Wickets'] > 0,
+        bowling_rankings['Bowler_Runs'] / bowling_rankings['Total_Wickets'],
+        0
+    )
+    bowling_rankings['Strike_Rate'] = np.where(
+        bowling_rankings['Total_Wickets'] > 0,
+        bowling_rankings['Bowler_Balls'] / bowling_rankings['Total_Wickets'],
+        0
+    )
+    bowling_rankings['Economy'] = np.where(
+        bowling_rankings['Bowler_Balls'] > 0,
+        bowling_rankings['Bowler_Runs'] * 6 / bowling_rankings['Bowler_Balls'],
+        0
+    )
+    bowling_rankings = bowling_rankings.drop(columns=['Bowler_Runs', 'Bowler_Balls'])
     bowling_rankings['RPG'] = bowling_rankings['Rating'] / bowling_rankings['Matches']
     bowling_rankings['Rank'] = bowling_rankings.groupby('Year')['Rating'].rank(method='dense', ascending=False).astype(int)
     bowling_rankings = bowling_rankings.sort_values(['Year', 'Rank'])
@@ -1266,25 +1402,46 @@ def display_bowling_rankings(bowl_df):
         </div>
     """, unsafe_allow_html=True)
     
-    career_stats = filtered_bowling.groupby(['Name', 'Match_Format']).agg({
-        'Matches': 'sum',
-        'Total_Wickets': 'sum',
-        'Average': 'mean',
-        'Strike_Rate': 'mean',
-        'Economy': 'mean',
-        'Five_Wickets': 'sum',
-        'Ten_Wickets': 'sum',
-        'Maidens': 'sum',
-        'Rating': ['sum', 'mean']  # Now calculating both sum and mean
-    }).round(2)
-    
-    # Flatten the column names
-    career_stats.columns = ['Matches', 'Total_Wickets', 'Average', 'Strike_Rate',
-                          'Economy', 'Five_Wickets', 'Ten_Wickets', 'Maidens',
-                          'Total_Rating', 'Avg_Rating']
-    
+    if pl is not None:
+        summary_pl = _to_polars_frame(filtered_bowling)
+    else:
+        summary_pl = None
+
+    if summary_pl is not None:
+        career_stats = (
+            summary_pl.group_by(['Name', 'Match_Format'])
+            .agg([
+                pl.col('Matches').sum().alias('Matches'),
+                pl.col('Total_Wickets').sum().alias('Total_Wickets'),
+                pl.col('Average').mean().alias('Average'),
+                pl.col('Strike_Rate').mean().alias('Strike_Rate'),
+                pl.col('Economy').mean().alias('Economy'),
+                pl.col('Five_Wickets').sum().alias('Five_Wickets'),
+                pl.col('Ten_Wickets').sum().alias('Ten_Wickets'),
+                pl.col('Maidens').sum().alias('Maidens'),
+                pl.col('Rating').sum().alias('Total_Rating'),
+                pl.col('Rating').mean().alias('Avg_Rating'),
+            ])
+        ).to_pandas()
+    else:
+        career_stats = filtered_bowling.groupby(['Name', 'Match_Format']).agg({
+            'Matches': 'sum',
+            'Total_Wickets': 'sum',
+            'Average': 'mean',
+            'Strike_Rate': 'mean',
+            'Economy': 'mean',
+            'Five_Wickets': 'sum',
+            'Ten_Wickets': 'sum',
+            'Maidens': 'sum',
+            'Rating': ['sum', 'mean']
+        })
+        career_stats.columns = ['Matches', 'Total_Wickets', 'Average', 'Strike_Rate',
+                                'Economy', 'Five_Wickets', 'Ten_Wickets', 'Maidens',
+                                'Total_Rating', 'Avg_Rating']
+        career_stats = career_stats.reset_index()
+
+    career_stats = career_stats.round(2)
     career_stats = career_stats.sort_values(['Name', 'Match_Format'])
-    career_stats = career_stats.reset_index()
     
     # Display Career Stats safely
     try:
@@ -1715,6 +1872,10 @@ def display_ar_view():
     """Main function to display all rankings views"""
     # Apply modern styling
     apply_modern_styling()
+
+    perf_start = time.perf_counter()
+    logger = FastViewLogger(st, "PlayerRankings")
+    logger.log("Entering Player Rankings view", fast_mode=logger.enabled)
     
     # Add proper top spacing to match other pages
     st.markdown('<div style="margin-top: 2rem;"></div>', unsafe_allow_html=True)
@@ -1743,11 +1904,16 @@ def display_ar_view():
             <p>Please load data from the main application first.</p>
         </div>
         """, unsafe_allow_html=True)
+        logger.log("Player Rankings data unavailable")
         return
 
     # Get the dataframes
-    bat_df = st.session_state['bat_df'].copy()
+    # OPTIMIZATION: Use reference instead of copy - saves memory
+    bat_df = st.session_state['bat_df']  # No .copy() needed for read operations
     bowl_df = st.session_state['bowl_df'].copy()
+
+    logger.log_dataframe("bat_df source", bat_df, include_dtypes=True)
+    logger.log_dataframe("bowl_df source", bowl_df, include_dtypes=True)
 
     def extract_date_series(series: pd.Series) -> pd.Series:
         """Vectorized parse: if string contains ' - ', take last segment; then to_datetime (dayfirst)."""
@@ -1755,45 +1921,50 @@ def display_ar_view():
         # if already datetime, return
         if pd.api.types.is_datetime64_any_dtype(s):
             return s
-        s = s.astype('string')
-        parts = s.str.rsplit(' - ', n=1).str[-1].str.strip()
+        s = s.astype('string').fillna('')
+        parts = s.str.replace(r'.* - ', '', regex=True).str.strip()
+        parts = parts.replace('', pd.NA)
         return pd.to_datetime(parts, errors='coerce', dayfirst=True)
 
-    # Process dates and add Year column with robust date parsing
-    if 'Date' in bat_df.columns:
-        bat_df['Date'] = extract_date_series(bat_df['Date'])
-        bat_df['Year'] = bat_df['Date'].dt.year
+    with logger.time_block("Prepare rankings datasets"):
+        # Process dates and add Year column with robust date parsing
+        if 'Date' in bat_df.columns:
+            bat_df['Date'] = extract_date_series(bat_df['Date'])
+            bat_df['Year'] = bat_df['Date'].dt.year
+            # Remove any rows where Year is null or 0
+            bat_df = bat_df[bat_df['Year'].notna() & (bat_df['Year'] != 0)]
+
+        # Process bowling dataframe dates
+        if 'Date' in bowl_df.columns:
+            bowl_df['Date'] = extract_date_series(bowl_df['Date'])
+            bowl_df['Year'] = bowl_df['Date'].dt.year
+
+        # Merge with batting years as backup
+        bowl_df = pd.merge(
+            bowl_df,
+            bat_df[['File Name', 'Year']].drop_duplicates(),
+            on='File Name',
+            how='left'
+        )
+
+        # If there are two Year columns, use the first non-null value
+        if 'Year_x' in bowl_df.columns and 'Year_y' in bowl_df.columns:
+            bowl_df['Year'] = bowl_df['Year_x'].combine_first(bowl_df['Year_y'])
+            bowl_df = bowl_df.drop(['Year_x', 'Year_y'], axis=1)
+
         # Remove any rows where Year is null or 0
-        bat_df = bat_df[bat_df['Year'].notna() & (bat_df['Year'] != 0)]
+        bowl_df = bowl_df[bowl_df['Year'].notna() & (bowl_df['Year'] != 0)]
 
-    # Process bowling dataframe dates
-    if 'Date' in bowl_df.columns:
-        bowl_df['Date'] = extract_date_series(bowl_df['Date'])
-        bowl_df['Year'] = bowl_df['Date'].dt.year
-    
-    # Merge with batting years as backup
-    bowl_df = pd.merge(
-        bowl_df,
-        bat_df[['File Name', 'Year']].drop_duplicates(),
-        on='File Name',
-        how='left'
-    )
-    
-    # If there are two Year columns, use the first non-null value
-    if 'Year_x' in bowl_df.columns and 'Year_y' in bowl_df.columns:
-        bowl_df['Year'] = bowl_df['Year_x'].combine_first(bowl_df['Year_y'])
-        bowl_df = bowl_df.drop(['Year_x', 'Year_y'], axis=1)
-    
-    # Remove any rows where Year is null or 0
-    bowl_df = bowl_df[bowl_df['Year'].notna() & (bowl_df['Year'] != 0)]
-
-    # Calculate ratings
-    bat_df = calculate_batter_rating_per_match(bat_df)
-    bowl_df = calculate_bowler_rating_per_match(bowl_df)
+    with logger.time_block("Calculate player ratings"):
+        bat_df = calculate_batter_rating_per_match(bat_df)
+        bowl_df = calculate_bowler_rating_per_match(bowl_df)
 
     # Ensure Year is integer type
     bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
     bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
+
+    logger.log_dataframe("bat_df prepared", bat_df)
+    logger.log_dataframe("bowl_df prepared", bowl_df)
 
     # Global Format Filter (above navigation)
     st.markdown('<div class="custom-spacer"></div>', unsafe_allow_html=True)
@@ -1806,6 +1977,8 @@ def display_ar_view():
         key="global_format_filter",
         help="Choose one or more formats to filter all rankings and analysis"
     )
+
+    logger.log("Global format filter applied", selections=selected_format or ["All"], total_formats=len(all_formats))
 
     # Points System Explanation - Collapsible Section
     with st.expander("📊 **Points System Explanation - Format Specific**", expanded=False):
@@ -1954,16 +2127,28 @@ def display_ar_view():
     ])
 
     with tab1:
+        logger.log("Render #1 rankings", bat_rows=len(bat_df), bowl_rows=len(bowl_df))
         display_number_one_rankings(bat_df, bowl_df)
-        
+
     with tab2:
+        logger.log("Render batting rankings", bat_rows=len(bat_df))
         display_batting_rankings(bat_df)
-        
+
     with tab3:
+        logger.log("Render bowling rankings", bowl_rows=len(bowl_df))
         display_bowling_rankings(bowl_df)
-        
+
     with tab4:
+        logger.log("Render all-rounder rankings", bat_rows=len(bat_df), bowl_rows=len(bowl_df))
         display_allrounder_rankings(bat_df, bowl_df)
+
+    logger.log_total(
+        "Player Rankings render complete",
+        perf_start,
+        bat_rows=len(bat_df),
+        bowl_rows=len(bowl_df),
+        formats_selected=len(selected_format) if selected_format else 0
+    )
 
 # Call the function to display with modern styling
 if __name__ == "__main__":

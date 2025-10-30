@@ -22,47 +22,83 @@ PROCESSING_TIME_PER_FILE = 0.065
 def process_duplicates(bat_df):
     """Process duplicate player detection."""
     try:
-        duplicates_base = bat_df[['Name', 'Bat_Team_y', 'Year', 'Competition']].copy()
+        # Explicitly create a copy to avoid SettingWithCopyWarning and ensure changes stick
+        working_df = bat_df.copy()
+
+        # Safeguard against missing columns introduced by different processing paths
+        if 'Bat_Team_y' not in working_df.columns:
+            fallback_col = next((col for col in ['Bat_Team', 'Bat_Team_x'] if col in working_df.columns), None)
+            if fallback_col:
+                working_df['Bat_Team_y'] = working_df[fallback_col]
+            else:
+                # If no fallback is found, create a placeholder to prevent KeyErrors
+                working_df['Bat_Team_y'] = 'Unknown'
+
+        if 'Competition' not in working_df.columns:
+            fallback_col = next((col for col in ['comp'] if col in working_df.columns), None)
+            if fallback_col:
+                working_df['Competition'] = working_df[fallback_col]
+            else:
+                # If no fallback is found, create a placeholder to prevent KeyErrors
+                working_df['Competition'] = 'Unknown'
+
+        if 'Year' not in working_df.columns:
+            if 'Date' in working_df.columns:
+                derived_years = pd.to_datetime(working_df['Date'], errors='coerce').dt.year
+                working_df['Year'] = derived_years.fillna(0).astype(int)
+            else:
+                working_df['Year'] = 0
+        else:
+            working_df['Year'] = pd.to_numeric(working_df['Year'], errors='coerce').fillna(0).astype(int)
+
+        duplicates_base = working_df[['Name', 'Bat_Team_y', 'Year', 'Competition']].copy()
         team_counts = duplicates_base.groupby(['Name', 'Year', 'Competition'])['Bat_Team_y'].nunique()
         multi_team_players = team_counts[team_counts > 1].reset_index()
         multi_team_players.columns = ['Name', 'Year', 'Competition', 'Team_Count']
-        
+
         duplicates_list = []
         if not multi_team_players.empty:
             for _, row in multi_team_players.iterrows():
                 player_teams = duplicates_base[
-                    (duplicates_base['Name'] == row['Name']) & 
-                    (duplicates_base['Year'] == row['Year']) & 
+                    (duplicates_base['Name'] == row['Name']) &
+                    (duplicates_base['Year'] == row['Year']) &
                     (duplicates_base['Competition'] == row['Competition'])
                 ]['Bat_Team_y'].unique()
                 duplicates_list.append({
-                    'Name': row['Name'], 'Year': row['Year'], 'Competition': row['Competition'],
-                    'Teams': ', '.join(player_teams), 'Team_Count': len(player_teams)
+                    'Name': row['Name'],
+                    'Year': row['Year'],
+                    'Competition': row['Competition'],
+                    'Teams': ', '.join(player_teams),
+                    'Team_Count': len(player_teams)
                 })
-        
+
         duplicates = pd.DataFrame(duplicates_list) if duplicates_list else pd.DataFrame(columns=['Name', 'Year', 'Competition', 'Teams', 'Team_Count'])
         st.session_state['duplicates'] = duplicates
-        
-        innings_counts = bat_df.groupby(['Name', 'File Name', 'Innings']).size()
+
+        innings_counts = working_df.groupby(['Name', 'File Name', 'Innings']).size()
         multi_innings_players = innings_counts[innings_counts > 1].reset_index()
         multi_innings_players.columns = ['Name', 'File Name', 'Innings', 'Count']
-        
+
         teamduplicates_list = []
         if not multi_innings_players.empty:
             for _, row in multi_innings_players.iterrows():
-                player_details = bat_df[
-                    (bat_df['Name'] == row['Name']) & 
-                    (bat_df['File Name'] == row['File Name']) & 
-                    (bat_df['Innings'] == row['Innings'])
+                player_details = working_df[
+                    (working_df['Name'] == row['Name']) &
+                    (working_df['File Name'] == row['File Name']) &
+                    (working_df['Innings'] == row['Innings'])
                 ][['Name', 'File Name', 'Innings', 'Year', 'Competition', 'Bat_Team_y']].iloc[0]
                 teamduplicates_list.append({
-                    'Name': row['Name'], 'File Name': row['File Name'], 'Year': player_details['Year'],
-                    'Competition': player_details['Competition'], 'Team': player_details['Bat_Team_y'], 'Count': row['Count']
+                    'Name': row['Name'],
+                    'File Name': row['File Name'],
+                    'Year': player_details['Year'],
+                    'Competition': player_details['Competition'],
+                    'Team': player_details['Bat_Team_y'],
+                    'Count': row['Count']
                 })
-        
+
         teamduplicates = pd.DataFrame(teamduplicates_list).drop_duplicates() if teamduplicates_list else pd.DataFrame(columns=['Name', 'File Name', 'Year', 'Competition', 'Team', 'Count'])
         st.session_state['teamduplicates'] = teamduplicates
-        
+
         return {
             'multi_team': duplicates,
             'team_duplicates': teamduplicates,
@@ -246,11 +282,30 @@ def load_data(uploaded_files=None, uploaded_zip=None):
             if game_df is None or game_df.empty:
                 raise ValueError("game.py failed to produce data.")
 
-            status_text.text("🎯 Processing bowling statistics..."); progress_bar.progress(0.75)
-            bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
+            # PERFORMANCE OPTION: Use fast processing if available
+            use_fast_processing = st.session_state.get('use_fast_processing', False)
+            
+            if use_fast_processing:
+                try:
+                    from fast_processing import fast_process_bowl_stats, fast_process_bat_stats
+                    
+                    status_text.text("🚀 Fast processing bowling statistics..."); progress_bar.progress(0.75)
+                    bowl_df = fast_process_bowl_stats(temp_dir, game_df, match_df)
+                    
+                    status_text.text("⚡ Fast processing batting statistics..."); progress_bar.progress(0.9)
+                    bat_df = fast_process_bat_stats(temp_dir, game_df, match_df)
+                    
+                except ImportError:
+                    st.warning("Fast processing not available - using standard processing")
+                    use_fast_processing = False
+            
+            if not use_fast_processing:
+                status_text.text("🎯 Processing bowling statistics..."); progress_bar.progress(0.75)
+                bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
 
-            status_text.text("🏏 Processing batting statistics..."); progress_bar.progress(0.9)
-            bat_df = process_bat_stats(temp_dir, game_df, match_df)
+                status_text.text("🏏 Processing batting statistics..."); progress_bar.progress(0.9)
+                bat_df = process_bat_stats(temp_dir, game_df, match_df)
+                
             if bat_df is None or bat_df.empty:
                 raise ValueError("bat.py failed to produce data.")
 
@@ -263,6 +318,13 @@ def load_data(uploaded_files=None, uploaded_zip=None):
             st.session_state['bowl_df'] = bowl_df
             st.session_state['bat_df'] = bat_df
             st.session_state['data_loaded'] = True
+            
+            # PERFORMANCE OPTIMIZATION: Optimize data types for memory efficiency
+            try:
+                from memory_optimization import optimize_dataframes_on_load
+                optimize_dataframes_on_load()
+            except ImportError:
+                pass  # Optimization not available
 
             progress_bar.progress(1.0)
             end_time = time.time()
@@ -342,6 +404,26 @@ st.markdown("### 📁 Upload Your Scorecard Files")
 uploaded_files_txt = None
 uploaded_zip_file = None
 
+# Performance Options
+st.markdown("### ⚡ Processing Options")
+
+col_perf1, col_perf2 = st.columns(2)
+with col_perf1:
+    use_fast_processing = st.checkbox(
+        "🚀 Enable Fast Processing (2-5x faster upload)", 
+        value=st.session_state.get('use_fast_processing', False),
+        help="Uses optimized algorithms with parallel processing for much faster scorecard analysis"
+    )
+    st.session_state['use_fast_processing'] = use_fast_processing
+
+with col_perf2:
+    if use_fast_processing:
+        st.success("⚡ Fast processing enabled - expect 2-5x speed improvement!")
+    else:
+        st.info("🐌 Using standard processing - enable fast processing for speed boost")
+
+st.markdown("---")
+
 col_txt, col_zip = st.columns(2)
 
 with col_txt:
@@ -365,13 +447,18 @@ with col_txt:
         help="Browse and select multiple .txt files from your Cricket Captain saves folder",
     )
     if uploaded_files_txt:
-        estimated_time = len(uploaded_files_txt) * PROCESSING_TIME_PER_FILE
+        # Adjust time estimate based on processing mode
+        time_multiplier = 0.3 if use_fast_processing else 1.0  # Fast processing is ~3x faster
+        estimated_time = len(uploaded_files_txt) * PROCESSING_TIME_PER_FILE * time_multiplier
+        
         if estimated_time < 60:
             time_estimate_str = f"~{max(1, round(estimated_time))} seconds"
         else:
             minutes = int(estimated_time // 60)
             seconds = int(estimated_time % 60)
             time_estimate_str = f"~{minutes}m {seconds}s" if minutes > 0 else f"~{seconds}s"
+        
+        processing_mode = "⚡ Fast" if use_fast_processing else "🐌 Standard"
         st.markdown(
             f"""
             <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">

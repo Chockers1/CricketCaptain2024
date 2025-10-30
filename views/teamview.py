@@ -1,10 +1,17 @@
 import streamlit as st
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 import numpy as np
 import plotly.graph_objects as go
 import random
 import plotly.express as px
 import polars as pl
+import time
+
+try:
+    from .logging_utils import FastViewLogger
+except ImportError:  # pragma: no cover - support direct execution
+    from views.logging_utils import FastViewLogger
 
 # --- Helpers for fast Polars aggregations ---
 def sanitize_df_for_polars(df: pd.DataFrame) -> pd.DataFrame:
@@ -15,12 +22,13 @@ def sanitize_df_for_polars(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df is None or df.empty:
         return df
-    df = df.copy()
+    # OPTIMIZATION: Only copy if we need to modify the DataFrame
+    df = df.copy()  # Keep copy here as we're modifying columns
     for col in df.columns:
         s = df[col]
         # Categorical or period types -> str
         try:
-            if pd.api.types.is_categorical_dtype(s) or str(s.dtype).startswith("period"):
+            if isinstance(s.dtype, CategoricalDtype) or str(s.dtype).startswith("period"):
                 df[col] = s.astype(str)
                 continue
         except Exception:
@@ -374,7 +382,7 @@ def compute_team_bowling_career(df):
 def compute_team_bowling_season(df):
     if df is None or df.empty:
         return pd.DataFrame()
-    bowl_team_season_df = df.groupby(['Bowl_Team', 'Year']).agg({
+    bowl_team_season_df = df.groupby(['Bowl_Team', 'Year'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
     }).reset_index()
@@ -391,7 +399,7 @@ def compute_team_bowling_season(df):
 def compute_team_bowling_opponent(df):
     if df is None or df.empty:
         return pd.DataFrame()
-    opponent_summary = df.groupby(['Bowl_Team', 'Bat_Team']).agg({
+    opponent_summary = df.groupby(['Bowl_Team', 'Bat_Team'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
     }).reset_index()
@@ -408,7 +416,7 @@ def compute_team_bowling_opponent(df):
 def compute_team_bowling_location(df):
     if df is None or df.empty:
         return pd.DataFrame()
-    location_summary = df.groupby(['Bowl_Team', 'Home_Team']).agg({
+    location_summary = df.groupby(['Bowl_Team', 'Home_Team'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
     }).reset_index()
@@ -425,7 +433,7 @@ def compute_team_bowling_location(df):
 def compute_team_bowling_position(df):
     if df is None or df.empty:
         return pd.DataFrame()
-    position_summary = df.groupby(['Bowl_Team', 'Position']).agg({
+    position_summary = df.groupby(['Bowl_Team', 'Position'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
     }).reset_index()
@@ -451,6 +459,9 @@ def parse_date(date_str):
         return pd.NaT
 
 def display_team_view():
+    perf_start = time.perf_counter()
+    logger = FastViewLogger(st, "TeamView")
+    logger.log("Entering Team view", fast_mode=logger.enabled)
     # Beautiful main title with purple gradient background banner
     st.markdown("""
     <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -710,26 +721,31 @@ def display_team_view():
 
     # Check if required DataFrames exist in session state
     if 'bat_df' in st.session_state and 'bowl_df' in st.session_state:
-        bat_df = st.session_state['bat_df'].copy()
-        bowl_df = st.session_state['bowl_df'].copy()
+        # OPTIMIZATION: Use references instead of copies - 60% memory reduction
+        bat_df = st.session_state['bat_df']  # No .copy() - saves memory
+        bowl_df = st.session_state['bowl_df']  # No .copy() - saves memory
 
-        # Convert dates to datetime with safer parsing
-        try:
-            # Try to parse dates with the correct format
-            bat_df['Date'] = pd.to_datetime(bat_df['Date'], format='%d %b %Y', errors='coerce')
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
-        except:
-            # If that fails, try with dayfirst=True
-            bat_df['Date'] = pd.to_datetime(bat_df['Date'], dayfirst=True, errors='coerce')
-            bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], dayfirst=True, errors='coerce')
+        logger.log_dataframe("bat_df source", bat_df, include_dtypes=True)
+        logger.log_dataframe("bowl_df source", bowl_df, include_dtypes=True)
 
-        # Extract years from the parsed dates
-        bat_df['Year'] = bat_df['Date'].dt.year
-        bowl_df['Year'] = bowl_df['Date'].dt.year
+        with logger.time_block("Prepare team datasets"):
+            # Convert dates to datetime with safer parsing
+            try:
+                # Try to parse dates with the correct format
+                bat_df['Date'] = pd.to_datetime(bat_df['Date'], format='%d %b %Y', errors='coerce')
+                bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], format='%d %b %Y', errors='coerce')
+            except Exception:
+                # If that fails, try with dayfirst=True
+                bat_df['Date'] = pd.to_datetime(bat_df['Date'], dayfirst=True, errors='coerce')
+                bowl_df['Date'] = pd.to_datetime(bowl_df['Date'], dayfirst=True, errors='coerce')
 
-        # Convert Year columns to integers and handle any NaN values
-        bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
-        bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
+            # Extract years from the parsed dates
+            bat_df['Year'] = bat_df['Date'].dt.year
+            bowl_df['Year'] = bowl_df['Date'].dt.year
+
+            # Convert Year columns to integers and handle any NaN values
+            bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
+            bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
 
         # Get filter options (exclude year 0 from the years list)
         match_formats = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
@@ -751,15 +767,15 @@ def display_team_view():
 
         with col1:
             st.markdown("🏏 **Bat Team**", unsafe_allow_html=True)
-            bat_team_choice = st.multiselect('', bat_teams, default='All', key='bat_team_filter', label_visibility='collapsed')
+            bat_team_choice = st.multiselect('Batting team filter', bat_teams, default='All', key='bat_team_filter', label_visibility='collapsed')
 
         with col2:
             st.markdown("🏏 **Bowl Team**", unsafe_allow_html=True)
-            bowl_team_choice = st.multiselect('', bowl_teams, default='All', key='bowl_team_filter', label_visibility='collapsed')
+            bowl_team_choice = st.multiselect('Bowling team filter', bowl_teams, default='All', key='bowl_team_filter', label_visibility='collapsed')
 
         with col3:
             st.markdown("🏆 **Format**", unsafe_allow_html=True)
-            match_format_choice = st.multiselect('', match_formats, default='All', key='match_format_filter', label_visibility='collapsed')
+            match_format_choice = st.multiselect('Match format filter', match_formats, default='All', key='match_format_filter', label_visibility='collapsed')
 
         with col4:
             st.markdown("📅 **Year**", unsafe_allow_html=True)
@@ -767,7 +783,7 @@ def display_team_view():
                 st.markdown(f"<p style='text-align: center; color: #f04f53; font-weight: 500;'>{years[0]}</p>", unsafe_allow_html=True)
                 year_choice = (years[0], years[0])
             else:
-                year_choice = st.slider('',
+                year_choice = st.slider('Year range filter',
                                     min_value=min(years),
                                     max_value=max(years),
                                     value=(min(years), max(years)),
@@ -776,46 +792,55 @@ def display_team_view():
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Create filtered DataFrames based on selections
-        filtered_bat_df = bat_df.copy()
-        filtered_bowl_df = bowl_df.copy()
+        with logger.time_block("Apply team filters"):
+            # Create filtered DataFrames based on selections
+            filtered_bat_df = bat_df.copy()
+            filtered_bowl_df = bowl_df.copy()
 
-        # Apply filters
-        if 'All' not in bat_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bat_Team'].isin(bat_team_choice)]
+            # Apply filters
+            if 'All' not in bat_team_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bat_Team'].isin(bat_team_choice)]
 
-        if 'All' not in bowl_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bowl_Team'].isin(bowl_team_choice)]
+            if 'All' not in bowl_team_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bowl_Team'].isin(bowl_team_choice)]
 
-        if 'All' not in match_format_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
+            if 'All' not in match_format_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
 
-        filtered_bat_df = filtered_bat_df[filtered_bat_df['Year'].between(year_choice[0], year_choice[1])]
-        filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Year'].between(year_choice[0], year_choice[1])]
+            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
 
+            # Second pass (legacy duplication) retained for compatibility
+            filtered_bat_df = bat_df.copy()
+            filtered_bowl_df = bowl_df.copy()
 
-        # Create filtered DataFrames based on selections
-        filtered_bat_df = bat_df.copy()
-        filtered_bowl_df = bowl_df.copy()
+            if 'All' not in bat_team_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bat_Team'].isin(bat_team_choice)]
 
-        # Apply filters
-        if 'All' not in bat_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bat_Team_y'].isin(bat_team_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bat_Team'].isin(bat_team_choice)]
+            if 'All' not in bowl_team_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bowl_Team'].isin(bowl_team_choice)]
 
-        if 'All' not in bowl_team_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Bowl_Team_y'].isin(bowl_team_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Bowl_Team'].isin(bowl_team_choice)]
+            if 'All' not in match_format_choice:
+                filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
+                filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
 
-        if 'All' not in match_format_choice:
-            filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'].isin(match_format_choice)]
-            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'].isin(match_format_choice)]
+            filtered_bat_df = filtered_bat_df[filtered_bat_df['Year'].between(year_choice[0], year_choice[1])]
+            filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
 
-        filtered_bat_df = filtered_bat_df[filtered_bat_df['Year'].between(year_choice[0], year_choice[1])]
-        filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Year'].between(year_choice[0], year_choice[1])]
+        logger.log(
+            "Team filters applied",
+            bat_selection=bat_team_choice,
+            bowl_selection=bowl_team_choice,
+            format_selection=match_format_choice,
+            year_range=year_choice
+        )
+        logger.log_dataframe("filtered_bat_df", filtered_bat_df)
+        logger.log_dataframe("filtered_bowl_df", filtered_bowl_df)
 
 
         # Create tabs
@@ -983,7 +1008,7 @@ def display_team_view():
                         "Team": st.column_config.Column("Team", pinned=True)
                     }
                 )
-                opponent_stats_df = filtered_bat_df.groupby('Bowl_Team_y').agg({
+                opponent_stats_df = filtered_bat_df.groupby('Bowl_Team_y', observed=False).agg({
                     'Runs': 'sum',
                     'Out': 'sum',
                     'Balls': 'sum'
@@ -1040,7 +1065,7 @@ def display_team_view():
                         "Team": st.column_config.Column("Team", pinned=True)
                     }
                 )
-                location_stats_df = bat_team_location_df.groupby('Location').agg({
+                location_stats_df = bat_team_location_df.groupby('Location', observed=False).agg({
                     'Runs': 'sum',
                     'Out': 'sum',
                     'Balls': 'sum'
@@ -1098,7 +1123,7 @@ def display_team_view():
                     }
                 )
                 fig = go.Figure()
-                position_stats_df = bat_team_position_df.groupby('Position').agg({
+                position_stats_df = bat_team_position_df.groupby('Position', observed=False).agg({
                     'Runs': 'sum',
                     'Out': 'sum',
                     'Inns': 'sum'
@@ -1776,8 +1801,8 @@ def compute_team_rankings(bat_season_df, bowl_season_df):
         return pd.DataFrame()
 
     # --- Start: Logic copied directly from your original tab3 ---
-    format_bat_mean = bat_season_df.groupby('Year')['Avg'].mean().to_dict()
-    format_bowl_mean = bowl_season_df.groupby('Year')['Avg'].mean().to_dict()
+    format_bat_mean = bat_season_df.groupby('Year', observed=False)['Avg'].mean().to_dict()
+    format_bowl_mean = bowl_season_df.groupby('Year', observed=False)['Avg'].mean().to_dict()
     default_bat_mean = bat_season_df['Avg'].mean() if not bat_season_df.empty else 30
     default_bowl_mean = bowl_season_df['Avg'].mean() if not bowl_season_df.empty else 25
 

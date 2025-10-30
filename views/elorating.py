@@ -23,7 +23,8 @@ def parse_date(date_str):
 
 @st.cache_data
 def calculate_elo_ratings(match_df):
-    df = match_df.copy()
+    # OPTIMIZATION: Only copy when we need to modify the DataFrame
+    df = match_df.copy()  # Keep copy as we're adding Date_Sort column
     df['Date_Sort'] = df['Date'].apply(parse_date)
     df_sorted = df.sort_values('Date_Sort')
 
@@ -45,7 +46,7 @@ def calculate_elo_ratings(match_df):
     df_sorted['Home_Elo_End'] = 0.0
     df_sorted['Away_Elo_End'] = 0.0
     df_sorted['Match_Number'] = range(1, len(df_sorted) + 1)
-    df_sorted['Format_Number'] = df_sorted.groupby('Match_Format').cumcount() + 1
+    df_sorted['Format_Number'] = df_sorted.groupby('Match_Format', observed=False).cumcount() + 1
 
     for index, row in df_sorted.iterrows():
         home_team = row['Home_Team']
@@ -326,7 +327,8 @@ with col1:
         st.session_state['global_format_filter'] = format_choice
 
 if 'match_df' in st.session_state:
-    scope_filtered_match_df = st.session_state['match_df'].copy()
+    # OPTIMIZATION: Use reference instead of copy for read operations
+    scope_filtered_match_df = st.session_state['match_df']  # No .copy() - saves memory
 else:
     scope_filtered_match_df = pd.DataFrame()
 
@@ -646,7 +648,7 @@ if current_ratings:
         except (ValueError, TypeError):
             return ''
 
-    styled_rank_matrix = rank_matrix.style.applymap(apply_formatting).format(precision=0, na_rep='')
+    styled_rank_matrix = rank_matrix.style.map(apply_formatting).format(precision=0, na_rep='')
 
     # Beautiful section banner for rankings by format
     st.markdown("""
@@ -681,7 +683,7 @@ max_date = graph_df['Date'].max()
 all_months = pd.date_range(
     start=pd.Timestamp(min_date).replace(day=1),
     end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1),
-    freq='M'
+    freq='ME'
 )
 
 # Create all possible format/team/month combinations
@@ -850,7 +852,7 @@ if 'elo_df' in st.session_state:
             st.stop()
         
         # Convert dates to datetime for period calculations
-        elo_df['Month_End'] = pd.to_datetime(elo_df['Date']).dt.to_period('M').dt.to_timestamp(how='end')
+        elo_df['Month_End'] = pd.to_datetime(elo_df['Date']).dt.to_period('ME').dt.to_timestamp(how='end')
         
         # Get min and max dates
         min_date = elo_df['Date'].min()
@@ -860,7 +862,7 @@ if 'elo_df' in st.session_state:
         date_range = pd.date_range(
             start=pd.to_datetime(min_date).replace(day=1),
             end=pd.to_datetime(max_date),
-            freq='M'
+            freq='ME'
         )
         
         # Initialize results dictionary
@@ -1201,7 +1203,7 @@ def color_elo_change(val):
     except (ValueError, TypeError):
         return ''
 
-styled_display_df = display_df.style.applymap(color_elo_change, subset=['Elo_Change', 'Diff']).format({
+styled_display_df = display_df.style.map(color_elo_change, subset=['Elo_Change', 'Diff']).format({
     'Team_Elo_Start': '{:.2f}',
     'Opponent_Elo_Start': '{:.2f}',
     'Diff': '{:.2f}',

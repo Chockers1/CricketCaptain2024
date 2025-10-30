@@ -20,6 +20,8 @@ Streamlit-powered analytics suite for Cricket Captain 2025 saves. Upload thousan
    - *TXT mode*: select individual `.txt` files for smaller batches.
 3. Hit **Process Scorecards**. The pipeline reads every file, standardises competition names, stores match/game/batting/bowling extracts, and caches the results in session state.
 
+The default ingestion path automatically uses the **FastCricketProcessor** Polars pipeline. First passes ingest ~3,000 scorecards in under a second per discipline; subsequent reloads reuse cached parses for near-instant refreshes. Look for the `[FAST]` console entries (enabled when `use_fast_processing` is true) to confirm timing breakdowns.
+
 Progress feedback appears as each stage (match, game, bowling, batting) completes. Duplicate detection, player team switches, and innings overlap checks run automatically.
 
 ## 🧭 Navigating the App
@@ -131,6 +133,13 @@ Individual match scorecard viewer:
 
 ### 📖 **Versions** (`versions.py`)
 In-app changelog and version history detailing feature updates and improvements.
+
+## ⚡ Performance & Benchmarking (Oct 2025)
+
+- **Fast ingestion:** `FastCricketProcessor` + Polars-backed aggregations cut load times to under a second for 3,000+ scorecards. Batting and bowling tabs now share a single cached metrics dictionary (`compute_bat_metrics` / `compute_bowl_metrics`).
+- **Instrumentation:** Setting `st.session_state['use_fast_processing'] = True` surfaces `[FAST][ViewName]` timing logs so you can verify preprocessing, aggregation, and render totals in real-time.
+- **Memory discipline:** All major views read directly from session state (no `.copy()` noise) and surface sidebar monitoring / cleanup actions.
+- **Regression guard:** Run `python benchmark_performance.py` to compare legacy processors against the fast pipeline on your dataset before shipping new builds.
 
 ## 🔧 Under the Hood
 

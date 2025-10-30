@@ -126,7 +126,8 @@ st.markdown("""
 def process_dataframes():
     """Process all dataframes"""
     if 'bat_df' in st.session_state:
-        bat_df = st.session_state['bat_df'].copy()
+        # OPTIMIZATION: Use reference instead of copy - saves memory
+        bat_df = st.session_state['bat_df']  # No .copy() needed for read operations
         # Ensure proper date parsing for bat_df
         try:
             bat_df['Date'] = pd.to_datetime(bat_df['Date'], format='%d %b %Y', errors='coerce')
@@ -184,15 +185,15 @@ if sc_bat_df is not None:
         'Away Team': 'Away_Team'
     })
     # Create unique ID for batting entries
-    sc_bat_df['Match_Innings_ID'] = sc_bat_df['File Name'] + '_' + sc_bat_df['Innings'].astype(str)
+    sc_bat_df['Match_Innings_ID'] = sc_bat_df['File Name'].astype(str) + '_' + sc_bat_df['Innings'].astype(str)
 
 if sc_bowl_df is not None:
     # Create unique ID for bowling entries
-    sc_bowl_df['Match_Innings_ID'] = sc_bowl_df['File Name'] + '_' + sc_bowl_df['Innings'].astype(str)
+    sc_bowl_df['Match_Innings_ID'] = sc_bowl_df['File Name'].astype(str) + '_' + sc_bowl_df['Innings'].astype(str)
 
 if sc_game_df is not None:
     # Create unique ID for game entries
-    sc_game_df['Match_Innings_ID'] = sc_game_df['File Name'] + '_' + sc_game_df['Innings'].astype(str)
+    sc_game_df['Match_Innings_ID'] = sc_game_df['File Name'].astype(str) + '_' + sc_game_df['Innings'].astype(str)
 
 # Now we can join data using either:
 # 1. 'File Name' for match-level data

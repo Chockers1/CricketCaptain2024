@@ -248,6 +248,10 @@ def process_bowl_stats(directory_path, game_df, match_df):
             }
 
             comp = row['Competition']
+            # Handle NaN/None/float values safely
+            if pd.isna(comp) or comp is None or not isinstance(comp, str):
+                return ''
+                
             # Apply different transformations based on competition name patterns
             if 'Test Match' in comp:
                 # Use specific trophy names for Test matches between certain teams
