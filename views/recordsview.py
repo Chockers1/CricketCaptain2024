@@ -368,14 +368,44 @@ def initialize_data():
         raw_formats = get_formats() or []
         formats: list[str] = []
         seen = set()
+
+        def _normalize_format(value) -> Optional[str]:
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+
         for option in raw_formats:
-            normalized = option if isinstance(option, str) else str(option)
-            if normalized not in seen:
+            if not is_scalar(option):
+                continue
+            normalized = _normalize_format(option)
+            if normalized and normalized not in seen:
                 seen.add(normalized)
                 formats.append(normalized)
 
+        candidate_frames = [bat_df, bowl_df, match_df, game_df]
+        if (not formats or formats == ['All']) and any(frame is not None for frame in candidate_frames):
+            derived = set()
+            for frame in candidate_frames:
+                if frame is None or frame.empty or 'Match_Format' not in frame.columns:
+                    continue
+                column = frame['Match_Format']
+                if isinstance(column.dtype, CategoricalDtype):
+                    column = column.astype(str)
+                values = column.dropna().unique().tolist()
+                for value in values:
+                    if not is_scalar(value):
+                        continue
+                    normalized = _normalize_format(value)
+                    if normalized:
+                        derived.add(normalized)
+            if derived:
+                formats = ['All', *sorted(derived)]
+
         if 'All' in formats:
-            formats = ['All'] + [option for option in formats if option != 'All']
+            ordered = ['All']
+            ordered.extend(sorted(option for option in formats if option != 'All'))
+            formats = ordered
         else:
             formats.insert(0, 'All')
 

@@ -275,87 +275,216 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
             filtered_bat_df = filtered_bat_df[filtered_bat_df['Match_Format'] == match_format_choice]
             filtered_bowl_df = filtered_bowl_df[filtered_bowl_df['Match_Format'] == match_format_choice]
 
-        def calculate_stats(player_name):
-            bat_stats = filtered_bat_df[filtered_bat_df['Name'] == player_name]
-            bowl_stats = filtered_bowl_df[
-                (filtered_bowl_df['Name'] == player_name) & 
-                (filtered_bowl_df['Bowler_Balls'] > 0)
-            ]
+        METRIC_COLUMNS = [
+            "Matches", "Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match",
+            "50+ Scores", "50s", "100s", "50+ Scores Per Match", "100s Per Match",
+            "Overs", "Wickets", "Bowl Average", "Economy Rate", "Bowl Strike Rate", "Wickets Per Match",
+            "5Ws", "5Ws Per Match", "10Ws", "POM", "POM Per Match"
+        ]
+        SUPPORT_COLUMNS = ["Out", "Balls", "Bowler_Runs", "Bowler_Balls"]
 
-            career_stats = pd.merge(
-                bat_stats.groupby('Name').agg({
-                    'File Name': 'nunique',
-                    'Runs': 'sum',
-                    'Out': 'sum',
-                    'Balls': 'sum',
-                    '50s': 'sum',
-                    '100s': 'sum'
-                }).reset_index(),
-                bowl_stats.groupby('Name').agg({
+        def build_player_stats(bat_source: pd.DataFrame, bowl_source: pd.DataFrame) -> pd.DataFrame:
+            bat_subset = bat_source.copy()
+            bowl_subset = bowl_source.copy()
+
+            bat_numeric_cols = ['Runs', 'Out', 'Balls', '50s', '100s']
+            for col in bat_numeric_cols:
+                if col in bat_subset.columns:
+                    bat_subset[col] = pd.to_numeric(bat_subset[col], errors='coerce').fillna(0)
+
+            bowl_numeric_cols = ['Bowler_Runs', 'Bowler_Wkts', 'Bowler_Balls', '5Ws']
+            for col in bowl_numeric_cols:
+                if col in bowl_subset.columns:
+                    bowl_subset[col] = pd.to_numeric(bowl_subset[col], errors='coerce').fillna(0)
+
+            match_frames = []
+            if {'Name', 'File Name'}.issubset(bat_subset.columns):
+                match_frames.append(bat_subset[['Name', 'File Name']])
+            if {'Name', 'File Name'}.issubset(bowl_subset.columns):
+                match_frames.append(bowl_subset[['Name', 'File Name']])
+
+            if match_frames:
+                matches = (
+                    pd.concat(match_frames, ignore_index=True)
+                    .dropna()
+                    .drop_duplicates()
+                    .groupby('Name', observed=False)['File Name']
+                    .nunique()
+                    .reset_index(name='Matches')
+                )
+            else:
+                matches = pd.DataFrame(columns=['Name', 'Matches'])
+
+            batting = pd.DataFrame(columns=['Name', 'Runs', 'Out', 'Balls', '50s', '100s'])
+            if {'Name', 'Runs', 'Out', 'Balls', '50s', '100s'}.issubset(bat_subset.columns):
+                batting = (
+                    bat_subset.groupby('Name', observed=False)[['Runs', 'Out', 'Balls', '50s', '100s']]
+                    .sum()
+                    .reset_index()
+                )
+
+            bowling_filtered = bowl_subset
+            if 'Bowler_Balls' in bowling_filtered.columns:
+                bowling_filtered = bowling_filtered[bowling_filtered['Bowler_Balls'] > 0]
+
+            bowling = pd.DataFrame(columns=['Name', 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Balls', '5Ws'])
+            if {'Name', 'Bowler_Runs', 'Bowler_Wkts', 'Bowler_Balls'}.issubset(bowling_filtered.columns):
+                agg_dict = {
                     'Bowler_Runs': 'sum',
                     'Bowler_Wkts': 'sum',
-                    'Bowler_Balls': 'sum',
-                    '5Ws': 'sum'
-                }).reset_index(),
-                on='Name',
-                how='outer'
-            ).fillna(0)
+                    'Bowler_Balls': 'sum'
+                }
+                if '5Ws' in bowling_filtered.columns:
+                    agg_dict['5Ws'] = 'sum'
+                bowling = (
+                    bowling_filtered
+                    .groupby('Name', observed=False)[list(agg_dict.keys())]
+                    .sum()
+                    .reset_index()
+                )
+                if '5Ws' not in bowling.columns:
+                    bowling['5Ws'] = 0
 
-            bowl_stats_per_file = bowl_stats.groupby('File Name')['Bowler_Wkts'].sum().reset_index()
-            bowl_stats_per_file['TenW'] = np.where(bowl_stats_per_file['Bowler_Wkts'] >= 10, 1, 0)
-            tenW_count = bowl_stats_per_file['TenW'].sum()
-            career_stats['10Ws'] = tenW_count
+            ten_w = pd.DataFrame(columns=['Name', '10Ws'])
+            if {'Name', 'File Name', 'Bowler_Wkts'}.issubset(bowling_filtered.columns):
+                ten_w = (
+                    bowling_filtered.groupby(['Name', 'File Name'], observed=False)['Bowler_Wkts']
+                    .sum()
+                    .ge(10)
+                    .groupby('Name', observed=False)
+                    .sum()
+                    .reset_index(name='10Ws')
+                )
 
-            career_stats['Matches'] = career_stats['File Name']
-            career_stats['Bat Average'] = (career_stats['Runs'] / career_stats['Out'].replace(0, np.inf)).round(2)
-            career_stats['Bat Strike Rate'] = ((career_stats['Runs'] / career_stats['Balls'].replace(0, np.inf)) * 100).round(2)
-            career_stats['Balls Per Out'] = (career_stats['Balls'] / career_stats['Out'].replace(0, np.inf)).round(2)
-            career_stats['Runs Per Match'] = (career_stats['Runs'] / career_stats['Matches']).round(2)
-            career_stats['Overs'] = (career_stats['Bowler_Balls'] // 6) + (career_stats['Bowler_Balls'] % 6) / 10
-            career_stats['Wickets'] = career_stats['Bowler_Wkts']
-            career_stats['Bowl Average'] = np.where(
-                career_stats['Bowler_Wkts'] > 0,
-                (career_stats['Bowler_Runs'] / career_stats['Bowler_Wkts']).round(2),
-                np.inf
-            )
-            career_stats['Economy Rate'] = np.where(
-                career_stats['Overs'] > 0,
-                (career_stats['Bowler_Runs'] / career_stats['Overs']).round(2),
-                0
-            )
-            career_stats['Bowl Strike Rate'] = np.where(
-                career_stats['Bowler_Wkts'] > 0,
-                (career_stats['Bowler_Balls'] / career_stats['Bowler_Wkts']).round(2),
-                np.inf
-            )
-            career_stats['Wickets Per Match'] = (career_stats['Wickets'] / career_stats['Matches']).round(2)
-            career_stats['100s Per Match'] = (
-                (career_stats['100s'] / career_stats['Matches'].replace(0, np.inf)) * 100
-            ).round(2)
-            career_stats['5Ws Per Match'] = (
-                (career_stats['5Ws'] / career_stats['Matches'].replace(0, np.inf)) * 100
-            ).round(2)
-            career_stats['50+ Scores Per Match'] = (
-                (career_stats['50s'] + career_stats['100s']) 
-                / career_stats['Matches'].replace(0, np.inf) 
-                * 100
-            ).round(2)
-            career_stats['50+ Scores'] = career_stats['50s'] + career_stats['100s']
+            pom = pd.DataFrame(columns=['Name', 'POM'])
+            if {'Name', 'File Name', 'Player_of_the_Match'}.issubset(bat_subset.columns):
+                pom_series = bat_subset['Player_of_the_Match'].astype('string').fillna('')
+                name_series = bat_subset['Name'].astype('string').fillna('')
+                pom_mask = pom_series != ''
+                pom_mask &= pom_series == name_series
+                if pom_mask.any():
+                    pom = (
+                        bat_subset.loc[pom_mask]
+                        .groupby('Name', observed=False)['File Name']
+                        .nunique()
+                        .reset_index(name='POM')
+                    )
 
-            pom_count = bat_stats[bat_stats['Player_of_the_Match'] == player_name].groupby('Name').agg(
-                POM=('File Name', 'nunique')
-            ).reset_index()
+            stats = matches
+            for df in [batting, bowling, ten_w, pom]:
+                stats = stats.merge(df, on='Name', how='outer') if not stats.empty or not df.empty else df
 
-            career_stats = career_stats.merge(pom_count, on='Name', how='left')
-            career_stats['POM'] = career_stats['POM'].fillna(0).astype(int)
-            career_stats['POM Per Match'] = (
-                (career_stats['POM'] / career_stats['Matches'].replace(0, np.inf)) * 100
-            ).round(2)
+            if stats.empty:
+                empty_cols = METRIC_COLUMNS + SUPPORT_COLUMNS
+                return pd.DataFrame(columns=empty_cols, index=pd.Index([], name='Name'))
 
-            return career_stats
+            stats = stats.fillna(0)
+            if 'Bowler_Wkts' in stats.columns:
+                stats = stats.rename(columns={'Bowler_Wkts': 'Wickets'})
+            else:
+                stats['Wickets'] = 0
 
-        player1_stats = calculate_stats(player1_choice)
-        player2_stats = calculate_stats(player2_choice)
+            stats['50+ Scores'] = stats.get('50s', 0) + stats.get('100s', 0)
+
+            stats['Matches'] = pd.to_numeric(stats.get('Matches', 0), errors='coerce').fillna(0).astype(int)
+            stats['Runs'] = pd.to_numeric(stats.get('Runs', 0), errors='coerce').fillna(0)
+            stats['Out'] = pd.to_numeric(stats.get('Out', 0), errors='coerce').fillna(0)
+            stats['Balls'] = pd.to_numeric(stats.get('Balls', 0), errors='coerce').fillna(0)
+            stats['50s'] = pd.to_numeric(stats.get('50s', 0), errors='coerce').fillna(0)
+            stats['100s'] = pd.to_numeric(stats.get('100s', 0), errors='coerce').fillna(0)
+            stats['Wickets'] = pd.to_numeric(stats.get('Wickets', 0), errors='coerce').fillna(0)
+            stats['5Ws'] = pd.to_numeric(stats.get('5Ws', 0), errors='coerce').fillna(0)
+            stats['10Ws'] = pd.to_numeric(stats.get('10Ws', 0), errors='coerce').fillna(0)
+            stats['POM'] = pd.to_numeric(stats.get('POM', 0), errors='coerce').fillna(0)
+            stats['Bowler_Runs'] = pd.to_numeric(stats.get('Bowler_Runs', 0), errors='coerce').fillna(0)
+            stats['Bowler_Balls'] = pd.to_numeric(stats.get('Bowler_Balls', 0), errors='coerce').fillna(0)
+
+            balls_total = stats['Bowler_Balls'].round().astype(int)
+            overs_whole = (balls_total // 6).astype(int)
+            overs_partial = (balls_total % 6) / 10
+            stats['Overs'] = overs_whole + overs_partial
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                stats['Bat Average'] = np.where(stats['Out'] > 0, stats['Runs'] / stats['Out'], np.inf)
+                stats['Balls Per Out'] = np.where(stats['Out'] > 0, stats['Balls'] / stats['Out'], np.inf)
+                stats['Bat Strike Rate'] = np.where(stats['Balls'] > 0, (stats['Runs'] / stats['Balls']) * 100, 0)
+                stats['Runs Per Match'] = np.where(stats['Matches'] > 0, stats['Runs'] / stats['Matches'], 0)
+                stats['Bowl Average'] = np.where(stats['Wickets'] > 0, stats['Bowler_Runs'] / stats['Wickets'], np.inf)
+                stats['Economy Rate'] = np.where(stats['Overs'] > 0, stats['Bowler_Runs'] / stats['Overs'], 0)
+                stats['Bowl Strike Rate'] = np.where(stats['Wickets'] > 0, stats['Bowler_Balls'] / stats['Wickets'], np.inf)
+                stats['Wickets Per Match'] = np.where(stats['Matches'] > 0, stats['Wickets'] / stats['Matches'], 0)
+                stats['100s Per Match'] = np.where(stats['Matches'] > 0, (stats['100s'] / stats['Matches']) * 100, 0)
+                stats['5Ws Per Match'] = np.where(stats['Matches'] > 0, (stats['5Ws'] / stats['Matches']) * 100, 0)
+                stats['50+ Scores Per Match'] = np.where(stats['Matches'] > 0, (stats['50+ Scores'] / stats['Matches']) * 100, 0)
+                stats['POM Per Match'] = np.where(stats['Matches'] > 0, (stats['POM'] / stats['Matches']) * 100, 0)
+
+            stats['Bat Average'] = np.round(stats['Bat Average'], 2)
+            stats['Balls Per Out'] = np.round(stats['Balls Per Out'], 2)
+            stats['Bat Strike Rate'] = np.round(stats['Bat Strike Rate'], 2)
+            stats['Runs Per Match'] = np.round(stats['Runs Per Match'], 2)
+            stats['Bowl Average'] = np.round(stats['Bowl Average'], 2)
+            stats['Economy Rate'] = np.round(stats['Economy Rate'], 2)
+            stats['Bowl Strike Rate'] = np.round(stats['Bowl Strike Rate'], 2)
+            stats['Wickets Per Match'] = np.round(stats['Wickets Per Match'], 2)
+            stats['100s Per Match'] = np.round(stats['100s Per Match'], 2)
+            stats['5Ws Per Match'] = np.round(stats['5Ws Per Match'], 2)
+            stats['50+ Scores Per Match'] = np.round(stats['50+ Scores Per Match'], 2)
+            stats['POM Per Match'] = np.round(stats['POM Per Match'], 2)
+
+            column_order = METRIC_COLUMNS + SUPPORT_COLUMNS
+            column_order += [col for col in ['Wickets'] if col not in column_order]
+            for col in column_order:
+                if col not in stats.columns:
+                    stats[col] = 0
+
+            stats = stats[['Name'] + column_order]
+            stats = stats.set_index('Name')
+            stats = stats.replace([np.nan, -0.0], 0)
+            return stats
+
+        player_stats_df = build_player_stats(filtered_bat_df, filtered_bowl_df)
+        if player_stats_df.empty:
+            base_columns = METRIC_COLUMNS + SUPPORT_COLUMNS + ['Wickets']
+            default_stats = pd.Series({col: 0.0 for col in base_columns})
+        else:
+            default_stats = pd.Series(0.0, index=player_stats_df.columns)
+
+        def get_player_stats(player_name: str) -> pd.Series:
+            if player_name in player_stats_df.index:
+                return player_stats_df.loc[player_name].reindex(default_stats.index, fill_value=0.0)
+            return default_stats.copy()
+
+        player1_stats = get_player_stats(player1_choice)
+        player2_stats = get_player_stats(player2_choice)
+
+        def get_metric_value(stats_series: pd.Series, metric: str) -> float:
+            value = stats_series.get(metric, 0.0)
+            if isinstance(value, (pd.Series, np.ndarray, list, tuple)):
+                value = value[0] if len(value) > 0 else 0.0
+            if pd.isna(value):
+                return 0.0
+            return float(value)
+
+        percentage_metrics = {"50+ Scores Per Match", "100s Per Match", "5Ws Per Match", "POM Per Match"}
+        integer_metrics = {"Matches", "Runs", "50+ Scores", "50s", "100s", "Wickets", "5Ws", "10Ws", "POM"}
+        higher_is_better = {
+            "Matches", "Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match",
+            "50+ Scores", "50s", "100s", "50+ Scores Per Match", "100s Per Match",
+            "Overs", "Wickets", "Wickets Per Match", "5Ws", "5Ws Per Match", "10Ws", "POM", "POM Per Match"
+        }
+
+        def format_metric_value(value: float, metric: str) -> str:
+            if np.isinf(value):
+                return "∞%" if metric in percentage_metrics else "∞"
+            if abs(value) < 1e-9:
+                value = 0.0
+            if metric in integer_metrics:
+                return str(int(round(value)))
+            if metric in percentage_metrics:
+                formatted = f"{value:.2f}".rstrip('0').rstrip('.')
+                return f"{formatted}%"
+            formatted = f"{value:.2f}".rstrip('0').rstrip('.')
+            return formatted
 
         # Enhanced comparison table with categories
         st.markdown("<div class='comparison-container'>", unsafe_allow_html=True)
@@ -395,32 +524,36 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
             st.markdown(f"<div class='metric-category'>{category}</div>", unsafe_allow_html=True)
             
             for metric in metrics:
-                player1_value = player1_stats[metric].values[0]
-                player2_value = player2_stats[metric].values[0]
-                
-                if metric in [
-                    "Matches", "Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out",
-                    "Runs Per Match", "50+ Scores", "50s", "100s", "50+ Scores Per Match",
-                    "100s Per Match", "Overs", "Wickets", "Wickets Per Match", "5Ws",
-                    "5Ws Per Match", "10Ws", "POM", "POM Per Match"
-                ]:
-                    player1_class = "highlight-green" if player1_value > player2_value else "highlight-red"
-                    player2_class = "highlight-green" if player2_value > player1_value else "highlight-red"
-                else:
-                    player1_class = "highlight-green" if player1_value < player2_value else "highlight-red"
-                    player2_class = "highlight-green" if player2_value < player1_value else "highlight-red"
+                player1_value = get_metric_value(player1_stats, metric)
+                player2_value = get_metric_value(player2_stats, metric)
 
-                if metric == "Economy Rate" and player1_value == 0.0 and player1_stats['Overs'].values[0] == 0.0:
-                    player1_class = "highlight-red"
-                if metric == "Economy Rate" and player2_value == 0.0 and player2_stats['Overs'].values[0] == 0.0:
-                    player2_class = "highlight-red"
-
-                if metric in ["100s Per Match", "5Ws Per Match", "POM Per Match", "50+ Scores Per Match"]:
-                    p1_display = f"{player1_value}%"
-                    p2_display = f"{player2_value}%"
+                if np.isinf(player1_value) and np.isinf(player2_value):
+                    values_equal = True
+                elif np.isinf(player1_value) or np.isinf(player2_value):
+                    values_equal = False
                 else:
-                    p1_display = player1_value
-                    p2_display = player2_value
+                    values_equal = np.isclose(player1_value, player2_value, equal_nan=True)
+
+                player1_class = ""
+                player2_class = ""
+
+                if metric in higher_is_better:
+                    if not values_equal:
+                        player1_class = "highlight-green" if player1_value > player2_value else "highlight-red"
+                        player2_class = "highlight-green" if player2_value > player1_value else "highlight-red"
+                else:
+                    if not values_equal:
+                        player1_class = "highlight-green" if player1_value < player2_value else "highlight-red"
+                        player2_class = "highlight-green" if player2_value < player1_value else "highlight-red"
+
+                if metric == "Economy Rate":
+                    if get_metric_value(player1_stats, "Overs") == 0:
+                        player1_class = "highlight-red"
+                    if get_metric_value(player2_stats, "Overs") == 0:
+                        player2_class = "highlight-red"
+
+                p1_display = format_metric_value(player1_value, metric)
+                p2_display = format_metric_value(player2_value, metric)
 
                 st.markdown(f"""
                 <div class='comparison-row'>
@@ -452,95 +585,77 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
                 "Awards": [0, 0]
             }
             
+            def compare_high(metric: str, category: str) -> None:
+                p1_val = get_metric_value(player1_stats, metric)
+                p2_val = get_metric_value(player2_stats, metric)
+                if np.isinf(p1_val) and np.isinf(p2_val):
+                    return
+                if not (np.isinf(p1_val) or np.isinf(p2_val)):
+                    if np.isclose(p1_val, p2_val, equal_nan=True):
+                        return
+                if p1_val > p2_val:
+                    scores[category][0] += 1
+                elif p2_val > p1_val:
+                    scores[category][1] += 1
+
+            def compare_low(metric: str, category: str) -> None:
+                p1_val = get_metric_value(player1_stats, metric)
+                p2_val = get_metric_value(player2_stats, metric)
+
+                if metric == "Economy Rate":
+                    overs1 = get_metric_value(player1_stats, "Overs")
+                    overs2 = get_metric_value(player2_stats, "Overs")
+                    if overs1 == 0 and overs2 == 0:
+                        return
+                    if overs1 == 0:
+                        scores[category][1] += 1
+                        return
+                    if overs2 == 0:
+                        scores[category][0] += 1
+                        return
+
+                if np.isinf(p1_val) and np.isinf(p2_val):
+                    return
+                if np.isinf(p1_val):
+                    scores[category][1] += 1
+                    return
+                if np.isinf(p2_val):
+                    scores[category][0] += 1
+                    return
+                if np.isclose(p1_val, p2_val, equal_nan=True):
+                    return
+                if p1_val < p2_val:
+                    scores[category][0] += 1
+                elif p2_val < p1_val:
+                    scores[category][1] += 1
+
             # Batting Performance metrics (higher is better)
             batting_perf_metrics = ["Runs", "Bat Average", "Bat Strike Rate", "Balls Per Out", "Runs Per Match"]
             for metric in batting_perf_metrics:
-                p1_val = player1_stats[metric].values[0]
-                p2_val = player2_stats[metric].values[0]
-                if p1_val > p2_val:
-                    scores["Batting Performance"][0] += 1
-                elif p2_val > p1_val:
-                    scores["Batting Performance"][1] += 1
+                compare_high(metric, "Batting Performance")
             
             # Batting Milestones (higher is better)
             batting_milestone_metrics = ["50+ Scores", "50s", "100s", "50+ Scores Per Match", "100s Per Match"]
             for metric in batting_milestone_metrics:
-                p1_val = player1_stats[metric].values[0]
-                p2_val = player2_stats[metric].values[0]
-                if p1_val > p2_val:
-                    scores["Batting Milestones"][0] += 1
-                elif p2_val > p1_val:
-                    scores["Batting Milestones"][1] += 1
+                compare_high(metric, "Batting Milestones")
             
             # Bowling Performance metrics (mix of higher/lower is better)
             bowling_perf_metrics = ["Overs", "Wickets", "Bowl Average", "Economy Rate", "Bowl Strike Rate", "Wickets Per Match"]
             for metric in bowling_perf_metrics:
-                p1_val = player1_stats[metric].values[0]
-                p2_val = player2_stats[metric].values[0]
-                
-                # For these metrics, higher is better
                 if metric in ["Overs", "Wickets", "Wickets Per Match"]:
-                    if p1_val > p2_val:
-                        scores["Bowling Performance"][0] += 1
-                    elif p2_val > p1_val:
-                        scores["Bowling Performance"][1] += 1
-                # For these metrics, lower is better (but avoid division by zero issues)
+                    compare_high(metric, "Bowling Performance")
                 else:
-                    # Handle special cases for averages/rates
-                    if metric == "Bowl Average":
-                        if p1_val == np.inf and p2_val == np.inf:
-                            continue  # Both players have no wickets
-                        elif p1_val == np.inf:
-                            scores["Bowling Performance"][1] += 1
-                        elif p2_val == np.inf:
-                            scores["Bowling Performance"][0] += 1
-                        elif p1_val < p2_val:
-                            scores["Bowling Performance"][0] += 1
-                        elif p2_val < p1_val:
-                            scores["Bowling Performance"][1] += 1
-                    elif metric == "Economy Rate":
-                        # Skip if both players haven't bowled
-                        if p1_val == 0.0 and p2_val == 0.0:
-                            continue
-                        elif p1_val == 0.0:
-                            scores["Bowling Performance"][1] += 1
-                        elif p2_val == 0.0:
-                            scores["Bowling Performance"][0] += 1
-                        elif p1_val < p2_val:
-                            scores["Bowling Performance"][0] += 1
-                        elif p2_val < p1_val:
-                            scores["Bowling Performance"][1] += 1
-                    elif metric == "Bowl Strike Rate":
-                        if p1_val == np.inf and p2_val == np.inf:
-                            continue
-                        elif p1_val == np.inf:
-                            scores["Bowling Performance"][1] += 1
-                        elif p2_val == np.inf:
-                            scores["Bowling Performance"][0] += 1
-                        elif p1_val < p2_val:
-                            scores["Bowling Performance"][0] += 1
-                        elif p2_val < p1_val:
-                            scores["Bowling Performance"][1] += 1
+                    compare_low(metric, "Bowling Performance")
             
             # Bowling Milestones (higher is better)
             bowling_milestone_metrics = ["5Ws", "5Ws Per Match", "10Ws"]
             for metric in bowling_milestone_metrics:
-                p1_val = player1_stats[metric].values[0]
-                p2_val = player2_stats[metric].values[0]
-                if p1_val > p2_val:
-                    scores["Bowling Milestones"][0] += 1
-                elif p2_val > p1_val:
-                    scores["Bowling Milestones"][1] += 1
+                compare_high(metric, "Bowling Milestones")
             
             # Awards (higher is better)
             award_metrics = ["POM", "POM Per Match"]
             for metric in award_metrics:
-                p1_val = player1_stats[metric].values[0]
-                p2_val = player2_stats[metric].values[0]
-                if p1_val > p2_val:
-                    scores["Awards"][0] += 1
-                elif p2_val > p1_val:
-                    scores["Awards"][1] += 1
+                compare_high(metric, "Awards")
             
             return scores
         
@@ -582,18 +697,31 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
         
         radar_metrics = ["Bat Average", "Bat Strike Rate", "Balls Per Out", "Bowl Average", "Bowl Strike Rate"]
         
+        radar_player1 = [get_metric_value(player1_stats, metric) for metric in radar_metrics]
+        radar_player2 = [get_metric_value(player2_stats, metric) for metric in radar_metrics]
+
+        radar_player1 = [value if np.isfinite(value) else 0 for value in radar_player1]
+        radar_player2 = [value if np.isfinite(value) else 0 for value in radar_player2]
+
+        combined_radar_values = radar_player1 + radar_player2
+        max_radar_value = max(combined_radar_values) if combined_radar_values else 1
+        if max_radar_value <= 0:
+            max_radar_value = 1
+        radial_max = max_radar_value * 1.1
+
         fig = go.Figure()
         
         fig.add_trace(go.Scatterpolar(
-            r=[player1_stats[m].values[0] for m in radar_metrics],
+            r=radar_player1,
             theta=radar_metrics,
             fill='toself',
             name=player1_choice,
             line=dict(color='#667eea', width=3),
-            fillcolor='rgba(102, 126, 234, 0.2)'        ))
+            fillcolor='rgba(102, 126, 234, 0.2)'
+        ))
         
         fig.add_trace(go.Scatterpolar(
-            r=[player2_stats[m].values[0] for m in radar_metrics],
+            r=radar_player2,
             theta=radar_metrics,
             fill='toself',
             name=player2_choice,
@@ -605,8 +733,7 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
             polar=dict(
                 radialaxis=dict(
                     visible=True,
-                    range=[0, max([max([player1_stats[m].values[0] for m in radar_metrics]),
-                                 max([player2_stats[m].values[0] for m in radar_metrics])])],
+                    range=[0, radial_max],
                     gridcolor='rgba(128, 128, 128, 0.2)',
                     linecolor='rgba(128, 128, 128, 0.2)'
                 ),
@@ -615,7 +742,8 @@ def display_comparison_view():    # Clean modern styling consistent with home pa
                     gridcolor='rgba(128, 128, 128, 0.2)',
                     linecolor='rgba(128, 128, 128, 0.2)'
                 )
-            ),            showlegend=True,
+            ),
+            showlegend=True,
             height=500,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
