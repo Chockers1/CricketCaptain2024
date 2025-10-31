@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import random
+import re
 
 
 # Modern CSS for beautiful UI - Full Home.py styling
@@ -529,7 +530,7 @@ if sc_match_df is not None:
                     innings_num = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}[innings['Display_Order']]
                 
                 following_on_text = " Following On" if follow_on and innings['Display_Order'] == 3 else ""
-                
+
                 # Get the match format
                 match_format_value = selected_row["Match Format"].iloc[0]
 
@@ -541,6 +542,18 @@ if sc_match_df is not None:
                         lead_trail_text = f" lead by {second_innings_score - first_innings_score} runs"
                     else:
                         lead_trail_text = f" trail by {first_innings_score - second_innings_score} runs"
+
+                overs_value = innings.get('Overs')
+                try:
+                    overs_display = f"{float(overs_value):.1f}"
+                except (TypeError, ValueError):
+                    overs_display = str(overs_value) if overs_value not in [None, ""] else "-"
+
+                run_rate_value = innings.get('Run_Rate')
+                try:
+                    run_rate_display = f"{float(run_rate_value):.2f}"
+                except (TypeError, ValueError):
+                    run_rate_display = str(run_rate_value) if run_rate_value not in [None, ""] else "-"
                 
                 # Beautiful innings header card
                 innings_gradient = {
@@ -552,6 +565,15 @@ if sc_match_df is not None:
                 
                 gradient = innings_gradient.get(innings_num, "linear-gradient(135deg, #667eea 0%, #764ba2 100%)")
                 
+                wickets_value = innings.get('Wickets')
+                all_out_label = ""
+                try:
+                    wickets_int = int(wickets_value)
+                    if wickets_int == 10:
+                        all_out_label = " (all out)"
+                except (TypeError, ValueError):
+                    wickets_int = None
+
                 st.markdown(
                     f"""
                     <div style='background: {gradient}; 
@@ -561,10 +583,10 @@ if sc_match_df is not None:
                             🏏 {innings_num} Innings{following_on_text}
                         </div>
                         <div style='color: white; font-size: 24px; font-weight: bold; margin-bottom: 8px;'>
-                            {innings['Bat_Team']} - {innings['Total_Runs']}/{innings['Wickets']}
+                            {innings['Bat_Team']} - {innings['Total_Runs']}/{innings['Wickets']}{all_out_label}
                         </div>
                         <div style='color: rgba(255,255,255,0.9); font-size: 16px;'>
-                            📊 Overs: {innings['Overs']} | Run Rate: {innings['Run_Rate']}{lead_trail_text}
+                            📊 Overs: {overs_display} | Run Rate: {run_rate_display}{lead_trail_text}
                         </div>
                     </div>
                     """,
@@ -644,6 +666,51 @@ if sc_match_df is not None:
                             "Strike Rate": st.column_config.NumberColumn("SR", width="small", format="%.1f")
                         }
                     )
+
+                    fall_text = innings.get('Fall_of_Wickets', '')
+                    if isinstance(fall_text, str) and fall_text.strip():
+                        raw_entries = [value.strip() for value in fall_text.split('|') if value.strip()]
+                        formatted_entries = []
+                        previous_runs = 0
+
+                        for entry in raw_entries:
+                            match = re.match(r"(\d+)\s*-\s*(\d+)", entry)
+                            if not match:
+                                formatted_entries.append(entry)
+                                continue
+
+                            wicket_no = match.group(1)
+                            runs_total = int(match.group(2))
+                            runs_delta = max(runs_total - previous_runs, 0)
+                            previous_runs = runs_total
+                            suffix = "run" if runs_delta == 1 else "runs"
+                            remainder = entry[match.end():].strip()
+                            remainder_prefix = f" {remainder}" if remainder else ""
+                            formatted_entries.append(f"{wicket_no}-{runs_total} ({runs_delta} {suffix}){remainder_prefix}")
+
+                        if formatted_entries:
+                            chips_html = ''.join(
+                                f"<span style='background: rgba(102, 126, 234, 0.15); color: #4338ca; padding: 6px 12px; border-radius: 999px; margin: 4px; font-weight: 600; font-size: 14px; display: inline-block;'>{entry}</span>"
+                                for entry in formatted_entries
+                            )
+
+                            extra_note = ""
+
+                            if wickets_int == 10 and len(formatted_entries) < 10:
+                                extra_note = "<div style='margin-top: 10px; color: #5b21b6; font-size: 13px; font-weight: 500;'>*Retired hurt dismissals are not captured in Fall of Wickets.</div>"
+
+                            st.markdown(
+                                f"""
+                                <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.18) 100%); padding: 16px; border-radius: 14px; margin: 12px 0; box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);'>
+                                    <div style='font-weight: 700; color: #4c51bf; margin-bottom: 10px; font-size: 15px;'>🧱 Fall of Wickets</div>
+                                    <div style='display: flex; flex-wrap: wrap; gap: 6px;'>
+                                        {chips_html}
+                                    </div>
+                                    {extra_note}
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
                 if not bowling_details.empty:
                     # Add beautiful bowling section header

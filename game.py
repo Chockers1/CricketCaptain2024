@@ -2,7 +2,7 @@ import os
 import re
 import traceback
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover - optional when running standalone
 ALL_OUT_PATTERN = re.compile(r"TOTAL: \(all out, (\d+\.\d+|\d+) overs\)\s+(\d+)")
 WICKETS_PATTERN = re.compile(r"TOTAL: \((\d+) wkts, (\d+\.\d+|\d+) overs\)")
 BALLS_PATTERN = re.compile(r"TOTAL: \((\d+) wkts, (\d+) balls\)")
+FALL_OF_WICKETS_PATTERN = re.compile(r"(\d+)\s*-\s*(\d+)")
 
 def process_game_stats(directory_path, match_df):
     """
@@ -42,6 +43,50 @@ def process_game_stats(directory_path, match_df):
             memory_part = f" memory_bytes={memory_bytes}" if memory_bytes >= 0 else ""
             columns_part = f" columns=[{columns_preview}]" if columns_preview else ""
             print(f"{prefix} {label}: rows={rows} cols={cols}{memory_part}{columns_part}")
+
+        def _parse_fow_values(text: str) -> List[str]:
+            return [f"{first}-{second}" for first, second in FALL_OF_WICKETS_PATTERN.findall(text)]
+
+        def _extract_fall_of_wickets(lines: List[str], total_index: int) -> str:
+            if total_index is None or total_index < 0:
+                return ""
+
+            search_end = min(len(lines), total_index + 200)
+            label_index = -1
+            collected: List[str] = []
+
+            for idx in range(total_index + 1, search_end):
+                content = lines[idx].strip()
+                if not content:
+                    continue
+                lowered = content.lower()
+                if lowered.startswith("fall of wickets"):
+                    label_index = idx
+                    collected.extend(_parse_fow_values(content))
+                    break
+
+            if label_index == -1:
+                return ""
+
+            for idx in range(label_index + 1, search_end):
+                content = lines[idx].strip()
+                if not content:
+                    break
+                lowered = content.lower()
+                if lowered.startswith("fall of wickets"):
+                    collected.extend(_parse_fow_values(content))
+                    continue
+                if lowered.startswith("extras") or lowered.startswith("total:"):
+                    continue
+                if content.startswith("********"):
+                    break
+                if "innings" in lowered and " - " in content:
+                    break
+                collected.extend(_parse_fow_values(content))
+
+            unique_ordered = [value for idx, value in enumerate(collected) if value and value not in collected[:idx]]
+            return "|".join(unique_ordered)
+
 
         # Log the start of processing and input data dimensions
         print("[GAME] Starting game stats processing")
@@ -117,6 +162,8 @@ def process_game_stats(directory_path, match_df):
                         Overs = None
                         Wickets = 0
                         Bowled_Balls = 0
+                        total_line_index = -1
+                        fall_of_wickets = ""
 
                         # Extract total runs, overs, and wickets from the TOTAL line
                         # Limit search to next 50 lines for efficiency
@@ -131,6 +178,7 @@ def process_game_stats(directory_path, match_df):
                                 Runs = int(all_out_match.group(2))  # Total runs
                                 Overs = float(all_out_match.group(1))  # Overs
                                 Wickets = 10  # All out = 10 wickets
+                                total_line_index = j
                                 print(f"All out: Runs={Runs}, Overs={Overs}, Wickets={Wickets}")
                                 break
                                 
@@ -140,6 +188,7 @@ def process_game_stats(directory_path, match_df):
                                 Runs = int(total_line.split()[-1])  # Extract runs from the end of the line
                                 Wickets = int(wickets_match.group(1))  # Number of wickets
                                 Overs = float(wickets_match.group(2))  # Overs
+                                total_line_index = j
                                 print(f"Wickets with overs: Runs={Runs}, Overs={Overs}, Wickets={Wickets}")
                                 break
                                 
@@ -151,8 +200,13 @@ def process_game_stats(directory_path, match_df):
                                 Wickets = int(balls_match.group(1))  # Number of wickets
                                 Bowled_Balls = int(balls_match.group(2))  # Balls
                                 Overs = Bowled_Balls / 5  # Convert balls to overs using 5-ball overs for The Hundred
+                                total_line_index = j
                                 print(f"Wickets with balls: Runs={Runs}, Overs={Overs}, Wickets={Wickets}, Bowled_Balls={Bowled_Balls}")
                                 break
+
+                        if total_line_index != -1:
+                            fall_of_wickets = _extract_fall_of_wickets(file_lines, total_line_index)
+                            print(f"Extracted Fall of Wickets: {fall_of_wickets}")
 
                         # Default wickets to 0 if not found
                         if Wickets is None:
@@ -160,7 +214,7 @@ def process_game_stats(directory_path, match_df):
                             print("No wickets data found, setting Wickets to 0")
 
                         # Add all extracted innings data directly to main list
-                        match_data = [filename, Home_Team, Away_Team, Bat_Team, Bowl_Team, Inns, Runs, Overs, Wickets, Bowled_Balls]
+                        match_data = [filename, Home_Team, Away_Team, Bat_Team, Bowl_Team, Inns, Runs, Overs, Wickets, Bowled_Balls, fall_of_wickets]
                         all_match_data.append(match_data)
                         print(f"Appended match data: {match_data}")
 
@@ -168,15 +222,15 @@ def process_game_stats(directory_path, match_df):
         if not all_match_data:
             return pd.DataFrame(columns=[
                 'File Name', 'Home_Team', 'Away_Team', 'Bat_Team', 
-                'Bowl_Team', 'Innings', 'Total_Runs', 'Overs', 
-                'Wickets', 'Bowled_Balls', 'Run_Rate', 'Balls_Per_Wicket',
+                            'Bowl_Team', 'Innings', 'Total_Runs', 'Overs', 
+                            'Wickets', 'Bowled_Balls', 'Fall_of_Wickets', 'Run_Rate', 'Balls_Per_Wicket',
                 'Competition', 'Match_Format', 'Player_of_the_Match', 'Date'
             ])
             
         final_df = pd.DataFrame(all_match_data, columns=[
             'File Name', 'Home_Team', 'Away_Team', 'Bat_Team', 
-            'Bowl_Team', 'Innings', 'Total_Runs', 'Overs', 
-            'Wickets', 'Bowled_Balls'
+                        'Bowl_Team', 'Innings', 'Total_Runs', 'Overs', 
+                        'Wickets', 'Bowled_Balls', 'Fall_of_Wickets'
         ])
         print("Created final DataFrame:")
         print(final_df)
