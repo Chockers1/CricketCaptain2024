@@ -33,11 +33,10 @@ if not FAST_PROCESSING_AVAILABLE:
     st.session_state['fast_processing_error'] = None
 
 # --- CONFIGURATION (NEW) ---
-# Calibrated based on user feedback (1664 files took ~112s).
-# This value represents the average processing time per scorecard in seconds.
-# You can adjust this value if you find the estimate is consistently off
-# on your machine. A lower value (e.g., 0.06) means a faster estimate.
-PROCESSING_TIME_PER_FILE = 0.065
+# Calibrated using recent runs (standard: ~65ms/file, fast pipeline: ~7ms/file).
+# Adjust these values if you notice estimates drifting on your machine.
+PROCESSING_TIME_PER_FILE_STANDARD = 0.065
+PROCESSING_TIME_PER_FILE_FAST = 0.007
 # --- HELPER FUNCTIONS (FROM YOUR ORIGINAL FILE) ---
 def process_duplicates(bat_df):
     """Process duplicate player detection."""
@@ -478,8 +477,10 @@ with col_txt:
     )
     if uploaded_files_txt:
         # Adjust time estimate based on processing mode
-        time_multiplier = 0.3 if using_fast_processing else 1.0  # Fast processing is ~3x faster
-        estimated_time = len(uploaded_files_txt) * PROCESSING_TIME_PER_FILE * time_multiplier
+        time_per_file = (
+            PROCESSING_TIME_PER_FILE_FAST if using_fast_processing else PROCESSING_TIME_PER_FILE_STANDARD
+        )
+        estimated_time = len(uploaded_files_txt) * time_per_file
 
         if estimated_time < 60:
             time_estimate_str = f"~{max(1, round(estimated_time))} seconds"
@@ -529,8 +530,10 @@ with col_zip:
             st.error("The uploaded ZIP looks invalid. Please try re-zipping your files.")
 
         if total > 0:
-            time_multiplier = 0.3 if using_fast_processing else 1.0
-            estimated_time = total * PROCESSING_TIME_PER_FILE * time_multiplier
+            time_per_file = (
+                PROCESSING_TIME_PER_FILE_FAST if using_fast_processing else PROCESSING_TIME_PER_FILE_STANDARD
+            )
+            estimated_time = total * time_per_file
             if estimated_time < 60:
                 time_estimate_str = f"~{max(1, round(estimated_time))} seconds"
             else:
