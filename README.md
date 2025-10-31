@@ -1,172 +1,90 @@
 # Cricket Captain Stat Pack
 
-Streamlit-powered analytics suite for Cricket Captain 2025 saves. Upload thousands of scorecards, slice performance by format or competition, and explore rich visual dashboards designed for serious stat-heads.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.10 or newer
-- `pip` (or `pipenv`/`uv` if you prefer)
-- A subscription to the **Cricket Captain 2024 Stats Pack** (credentials are required to log in)
-
-## 📥 Uploading Scorecards
-
-1. **Gather scorecards**
-   - Windows: `C:\Users\<you>\AppData\Roaming\Childish Things\Cricket Captain 2025\Saves\Scorecards`
-   - macOS: `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`
-2. **Choose an import mode**
-   - *ZIP mode* (recommended for large archives): compress the folder, upload once, and the app flattens nested directories automatically.
-   - *TXT mode*: select individual `.txt` files for smaller batches.
-3. Hit **Process Scorecards**. The pipeline reads every file, standardises competition names, stores match/game/batting/bowling extracts, and caches the results in session state.
-
-The default ingestion path automatically uses the **FastCricketProcessor** Polars pipeline. First passes ingest ~3,000 scorecards in under a second per discipline; subsequent reloads reuse cached parses for near-instant refreshes. Look for the `[FAST]` console entries (enabled when `use_fast_processing` is true) to confirm timing breakdowns.
-
-Progress feedback appears as each stage (match, game, bowling, batting) completes. Duplicate detection, player team switches, and innings overlap checks run automatically.
-
-## 🧭 Navigating the App
-
-### 🏠 **Home**
-Data upload hub with ZIP/TXT file processing and progress summaries. Features quick-start guide and helpful resource links.
-
-### 🏏 **Batting View** (`batview.py`)
-Comprehensive batting analytics across multiple dimensions:
-- **Stats Used:** Runs, balls faced, dismissals, boundaries, milestones (50s, 100s, 200s), strike rates
-- **Analysis Types:** 
-  - Career stats (lifetime aggregated performance)
-  - Season-by-season breakdowns
-  - Opposition-specific performance 
-  - Location/venue analysis (home vs away)
-  - Batting position trends
-  - Form tracking (recent innings performance)
-- **Calculations:** Batting averages, strike rates, balls per dismissal, runs per match, milestone frequencies, dismissal patterns
-
-### 🎳 **Bowling View** (`bowlview.py`)
-Detailed bowling performance analysis:
-- **Stats Used:** Overs, runs conceded, wickets, maidens, economy rates, bowling figures
-- **Analysis Types:**
-  - Career bowling statistics
-  - Season performance trends
-  - Opposition-specific effectiveness
-  - Location-based analysis
-  - Bowling position/role analysis
-- **Calculations:** Bowling averages, economy rates, strike rates, dot ball percentages, 5-wicket and 10-wicket hauls, wickets per match
-
-### 🚀 **All Rounders** (`allrounders.py`)
-Combined batting and bowling performance for multi-skilled players:
-- **Stats Used:** Merged batting and bowling statistics with weighted performance ratings
-- **Analysis Types:**
-  - Career all-rounder stats
-  - Season-based dual-discipline tracking
-  - Opposition effectiveness in both disciplines
-- **Calculations:** Combined batting/bowling ratings, all-rounder rankings, dual-discipline performance indices
-
-### 🏆 **Team View** (`teamview.py`)
-Team-level performance analytics and comparisons:
-- **Stats Used:** Aggregated team batting/bowling statistics, match results, performance indices
-- **Analysis Types:**
-  - Team career statistics (batting and bowling combined)
-  - Season performance comparisons
-  - Opposition-specific team records
-  - Location-based team performance
-  - Team rankings and performance indices
-- **Calculations:** Team batting/bowling averages, performance indices (weighted against format means), batting vs bowling average differentials, team rankings
-
-### ⚖️ **Compare Players** (`compare.py`)
-Head-to-head player comparisons:
-- **Stats Used:** Complete batting and bowling career statistics for selected players
-- **Analysis Types:**
-  - Side-by-side statistical comparisons
-  - Category-based scoring (batting performance, milestones, bowling effectiveness)
-  - Year-over-year performance tracking
-- **Calculations:** Performance differentials, category winners, career trajectory analysis
-
-### � **Similar Players** (`views/similarplayers.py`)
-Discover batting and bowling doppelgängers using dual-mode similarity engines:
-- **Core Features:** Parallel batting/bowling tabs, tolerance filters, distance-weighted comparisons, match-format and team filters, position-specific slicing
-- **Visualisations:** Scatter similarity maps, radar skill profiles, metric-difference bar charts, correlation heatmaps for both disciplines
-- **Calculations:** Weighted Euclidean distances, tolerance-matched cohorts, normalized metric scoring, similarity percentages with interactive progress columns
-- **Use Cases:** Talent scouting, role-based replacements, player archetype searches across formats and eras
-
-### �📈 **Player Rankings** (`Playerrankings.py`)
-Comprehensive player ranking system:
-- **Stats Used:** Advanced batting and bowling rating formulas incorporating performance context
-- **Analysis Types:**
-  - Global player rankings across formats
-  - Batting-specific rankings
-  - Bowling-specific rankings  
-  - All-rounder rankings (combined discipline ratings)
-- **Calculations:** Weighted batting/bowling ratings, format-specific rankings, performance-based scoring systems
-
-### ♟️ **Elo Ratings** (`elorating.py`)
-Dynamic team strength ratings based on match results:
-- **Stats Used:** Match results, team performance over time, competition context
-- **Analysis Types:**
-  - Time-series Elo rating evolution
-  - Format-specific ratings (Test, ODI, T20I)
-  - Competition scope filtering (Domestic vs International)
-- **Calculations:** Elo rating system with K-factor adjustments, expected match outcomes, rating changes based on results
-
-### 🆚 **Head-to-Head** (`headtohead.py`)
-Team vs team historical analysis:
-- **Stats Used:** Match results, series records, recent form, tournament histories
-- **Analysis Types:**
-  - Results grids and win/loss records
-  - Tournament histories including Asia Trophy variants
-  - Recent form cards and trends
-- **Calculations:** Win percentages, series statistics, form trends, head-to-head records
-
-### 📜 **Records** (`recordsview.py`)
-Historical records and milestone achievements:
-- **Stats Used:** Individual batting/bowling performances, match figures, series statistics
-- **Analysis Types:**
-  - Best batting performances (highest scores, partnerships)
-  - Best bowling figures (5-wicket hauls, best match figures)
-  - Series records and tournament achievements
-- **Calculations:** Record identification, ranking of performances, milestone tracking
-
-### 📜 **Scorecards** (`scorecards.py`)
-Individual match scorecard viewer:
-- **Stats Used:** Complete match data including innings details, batting/bowling figures
-- **Analysis Types:** Detailed match recreations with full scorecards
-- **Calculations:** Match summaries, innings totals, individual contributions
-
-### 📖 **Versions** (`versions.py`)
-In-app changelog and version history detailing feature updates and improvements.
-
-## ⚡ Performance & Benchmarking (Oct 2025)
-
-- **Fast ingestion:** `FastCricketProcessor` + Polars-backed aggregations cut load times to under a second for 3,000+ scorecards. Batting and bowling tabs now share a single cached metrics dictionary (`compute_bat_metrics` / `compute_bowl_metrics`).
-- **Instrumentation:** Setting `st.session_state['use_fast_processing'] = True` surfaces `[FAST][ViewName]` timing logs so you can verify preprocessing, aggregation, and render totals in real-time.
-- **Memory discipline:** All major views read directly from session state (no `.copy()` noise) and surface sidebar monitoring / cleanup actions.
-- **Regression guard:** Run `python benchmark_performance.py` to compare legacy processors against the fast pipeline on your dataset before shipping new builds.
-
-## 🔧 Under the Hood
-
-The ingestion scripts inside the project root orchestrate the data model:
-
-| Module | Description |
-| --- | --- |
-| `match.py` | Extracts match metadata, detects results/outcomes, and normalises competition names (trophies, league phases, international titles). |
-| `game.py` | Captures innings totals, run rates, wickets, overs, and merges match context. |
-| `bat.py` | Parses every batting line, calculates milestones, strike rates, dismissal types, and maps competitions using the latest naming rules. |
-| `bowl.py` | Processes bowling figures, computes advanced metrics (dot percentage, economy, strike rate), and aligns competition labels with batting/match data. |
-| `cricketcaptain.py` | Streamlit entry-point handling authentication, navigation, and session lifetime. |
-
-Processed DataFrames (`match_data.csv`, `game_data.csv`, `bat_df`, `bowl_df`) persist in memory during a session and can be exported if you extend the app.
-
-## 🔐 Access & Sessions
-
-- Login is required for every browser session. Credentials are supplied to subscribers via [Buy Me A Coffee – Leading Edge](https://buymeacoffee.com/leadingedgepod).
-- Sessions remain active for 24 hours or until you choose **Logout** from the sidebar.
-
-## 🙌 Supporting Resources
-
-- YouTube: [Rob Taylor](https://www.youtube.com/@RobTaylor1985)
-- Support the project: [Buy Me A Coffee](https://buymeacoffee.com/leadingedgepod)
-- Release notes live inside the app on the **Versions** tab (v1.24 details the ZIP importer, Asia Trophy coverage, Elo scope filter, and competition clean-up).
+Streamlit-powered performance analytics for Cricket Captain 2024/2025 career saves. The Stat Pack ingests thousands of scorecards, builds competition-aware metrics, and surfaces polished dashboards for serious analysis.
 
 ---
 
-*The Cricket Captain Stat Pack is a subscription product. Please keep your credentials private.*
+## What It Does
+- Bulk-ingest ZIP or TXT scorecards with a Polars-first pipeline optimised for speed and memory.
+- Auto-standardise competitions, formats, and player identities so every view is filter-safe.
+- Serve interactive Streamlit dashboards covering batting, bowling, Elo ratings, records, head-to-head, and more.
+- Track every release inside the app via the Versions view (`views/versions.py`), including regression checklists and benchmarks.
+
+## How It Works
+- **Ingestion** – `fast_processing.py` powers the FastCricketProcessor, flattening uploads into `bat`, `bowl`, `match`, and `game` tables while logging `[FAST]` timing telemetry.
+- **Analytics layer** – Each dashboard in `views/` reads shared cached DataFrames, applying lightweight transforms for its own layout.
+- **Caching & memory** – `performance_utils.py` and `memory_efficient_cache` decorators avoid redundant copies and expose sidebar memory controls.
+- **Release governance** – `views/versions.py` centralises the changelog, pulls optional benchmarks from `tools/benchmark_performance`, and displays regression notes directly inside the app.
+
+## Quick Start
+**Prerequisites**
+- Python 3.10+
+- `pip`
+- Active Cricket Captain Stat Pack subscription (credentials required at login)
+
+**Install & run**
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run cricketcaptain.py
+```
+
+## Operational Checklist
+1. `python -m tools.fast_processing_diagnostics` – validate regex wiring and ingestion helpers.
+2. `python -m tools.benchmark_performance` – compare fast vs legacy pipeline timings (log the results under `docs/benchmarks/`).
+3. Launch Streamlit, upload a ZIP of scorecards, and confirm `[FAST]` timings plus tab-level cache hits in the console.
+
+## Project Layout
+```
+├── bat.py / bowl.py / match.py / game.py  # Core ingestion modules
+├── cricketcaptain.py                      # Streamlit entry point
+├── fast_processing.py                     # FastCricketProcessor + helpers
+├── performance_utils.py                   # Memory + caching utilities
+├── views/                                 # Streamlit page definitions (incl. Versions changelog)
+├── tools/                                 # CLI utilities for benchmarks and diagnostics
+├── docs/                                  # Optimisation plan, implementation guide, status reports
+├── examples/                              # Reference snippets and helper utilities
+└── data/sample_scorecards/                # Anonymised sample scorecards for local testing
+```
+
+Key documentation lives in `docs/`:
+- `performance_optimization_plan.md` – roadmap, priorities, and upcoming experiments.
+- `performance_implementation_guide.md` – step-by-step optimisation checklist.
+- `optimization_status_report.md` – rolling summary of completed work and open items.
+
+## Release Management
+- Latest release: **v1.26 (2025-10-31)** – ship the Polars-powered Fast Mode pipeline, speeding end-to-end ingest by 60–75% and wiring benchmarks into the Versions tab.
+- The Versions Streamlit tab reads directly from `views/versions.py`. Add new releases here (date, title, narrative, optional screenshots) and document regression checks.
+- Use the benchmark expander in the Versions tab to capture ingest timings before shipping.
+
+## Running the App
+1. Collect scorecards:
+   - Windows: `C:\Users\<you>\AppData\Roaming\Childish Things\Cricket Captain 2025\Saves\Scorecards`
+   - macOS: `~/Library/Containers/com.childishthings.cricketcaptain2025mac/Data/Library/Application Support/Cricket Captain 2025/childish things/cricket captain 2025/saves`
+2. Choose an import mode:
+   - **ZIP mode** (recommended) – drag entire archives; the app flattens and deduplicates automatically.
+   - **TXT mode** – pick individual scorecards for quick validation.
+3. Click **Process Scorecards**. The pipeline normalises competitions, hydrates aggregated tables, and caches them for instant reuse across tabs.
+
+Navigation highlights:
+- **Home** – upload wizard, progress indicator, ingest telemetry.
+- **Bat/Bowl/All-Rounders** – Polars-backed analytics with memory monitors and export-ready tables.
+- **Compare & Similar Players** – deep scouting tools including tolerance/distance weighting.
+- **Head-to-Head & Records** – historical matrices, tournament winners, and percentiles.
+- **Versions** – curated changelog, regression checklist, and optional screenshots per release.
+
+## Data & Samples
+- `data/sample_scorecards/` ships with anonymised examples for tests and demos.
+- Re-uploading the same archive rehydrates from cache instantly; clear session state from the sidebar to force a clean ingest.
+- Extend `fast_processing.py` if you need to export processed tables to Parquet or other downstream formats.
+
+## Support & Contact
+- YouTube: [Rob Taylor](https://www.youtube.com/@RobTaylor1985)
+- Support: [Buy Me A Coffee – Leading Edge](https://buymeacoffee.com/leadingedgepod)
+- Release notes: available in-app on the **Versions** tab.
+
+---
+
+_The Cricket Captain Stat Pack is a subscription product. Keep your credentials private and do not distribute processed data without permission._
 ````

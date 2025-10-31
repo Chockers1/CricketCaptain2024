@@ -1,7 +1,13 @@
 import pandas as pd
+import numpy as np
 import os
 import re
 import traceback
+
+try:
+    from performance_utils import perf_manager
+except Exception:  # pragma: no cover - optional dependency when running standalone
+    perf_manager = None
 
 def process_bowl_stats(directory_path, game_df, match_df):
     """
@@ -162,68 +168,7 @@ def process_bowl_stats(directory_path, game_df, match_df):
 
         bowl_df = merged_df
 
-        # Add derived boolean column to indicate bowler participation
-        bowl_df['Bowled'] = 1
-
-        # Add milestone bowling performance indicators
-        bowl_df['5Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if 5 <= x < 10 else 0)
-        bowl_df['10Ws'] = bowl_df['Bowler_Wkts'].apply(lambda x: 1 if x >= 10 else 0)
-
-        # Function to calculate balls and adjust overs/economy based on match format
-        def calculate_balls_and_overs(row):
-            # Special calculation for The Hundred format (5-ball overs)
-            if row['Match_Format'] in ['The Hundred', '100 Ball Trophy']:
-                # For The Hundred, balls are the same as the overs value
-                balls = row['Bowler_Overs']
-                # Convert balls to overs (divide by 5 as each over is 5 balls)
-                overs = balls / 5
-                # Calculate economy rate for The Hundred format (runs per 5 balls)
-                economy = (row['Bowler_Runs'] / balls) * 5 if balls > 0 else 0
-                return pd.Series({
-                    'Bowler_Balls': balls, 
-                    'Bowler_Overs': overs,
-                    'Bowler_Econ': economy
-                })
-            else:
-                # Regular format calculation (6-ball overs)
-                # Convert overs to balls: whole_overs * 6 + partial_overs
-                balls = int(row['Bowler_Overs']) * 6 + round((row['Bowler_Overs'] - int(row['Bowler_Overs'])) * 10)
-                return pd.Series({
-                    'Bowler_Balls': balls, 
-                    'Bowler_Overs': row['Bowler_Overs'],
-                    'Bowler_Econ': row['Bowler_Econ']
-                })
-
-        # Apply the ball and over calculation to all rows
-        ball_over_calc = bowl_df.apply(calculate_balls_and_overs, axis=1)
-        bowl_df['Bowler_Balls'] = ball_over_calc['Bowler_Balls']
-        bowl_df['Bowler_Overs'] = ball_over_calc['Bowler_Overs']
-        bowl_df['Bowler_Econ'] = ball_over_calc['Bowler_Econ']
-
-        # Remove rows where the 'Name' column is blank (empty bowler entries)
-        bowl_df = bowl_df[bowl_df['Name'].str.strip() != '']
-
-        # Calculate additional bowling metrics
-        # Runs per over - useful for comparing economy across formats
-        bowl_df['Runs_Per_Over'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Overs']
-
-        # Balls per wicket - how many balls bowled per wicket taken
-        # Replace 0 wickets with 1 to avoid division by zero
-        bowl_df['Balls_Per_Wicket'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)
-
-        # Dot ball percentage - percentage of balls that were maidens (no runs)
-        # Each maiden is 6 dot balls (or 5 in The Hundred)
-        bowl_df['Dot_Ball_Percentage'] = (bowl_df['Maidens'] * 6) / bowl_df['Bowler_Balls'] * 100
-
-        # Strike rate - balls per wicket
-        bowl_df['Strike_Rate'] = bowl_df['Bowler_Balls'] / bowl_df['Bowler_Wkts'].replace(0, 1)
-
-        # Bowling average - runs conceded per wicket
-        bowl_df['Average'] = bowl_df['Bowler_Runs'] / bowl_df['Bowler_Wkts'].replace(0, 1)
-
-        # Transform competition names to standardized format
         def transform_competition(row):
-            # Define mappings for Test trophy names based on participating teams
             test_trophies = {
                 ('Australia', 'England'): 'The Ashes',
                 ('England', 'Australia'): 'The Ashes',
@@ -248,62 +193,150 @@ def process_bowl_stats(directory_path, game_df, match_df):
             }
 
             comp = row['Competition']
-            # Handle NaN/None/float values safely
-            if pd.isna(comp) or comp is None or not isinstance(comp, str):
-                return ''
-                
-            # Apply different transformations based on competition name patterns
+            if not isinstance(comp, str):
+                return '' if pd.isna(comp) else comp
+
             if 'Test Match' in comp:
-                # Use specific trophy names for Test matches between certain teams
                 team_pair = (row['Home_Team'], row['Away_Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
                 return 'Test Match'
-            elif comp.startswith('World Cup 20'):
+            if comp.startswith('World Cup 20'):
                 return 'T20 World Cup'
-            elif comp.startswith('World Cup'):
+            if comp.startswith('World Cup'):
                 return 'ODI World Cup'
-            elif comp.startswith('Champions Cup'):
+            if comp.startswith('Champions Cup'):
                 return 'Champions Cup'
-            elif comp.startswith('Asia Trophy ODI'):
+            if comp.startswith('Asia Trophy ODI'):
                 return 'ODI Asia Cup'
-            elif comp.startswith('Asia Trophy 20'):
+            if comp.startswith('Asia Trophy 20'):
                 return 'T20 Asia Cup'
-            elif 'One Day International' in comp:
+            if 'One Day International' in comp:
                 return 'ODI'
-            elif '20 Over International' in comp:
+            if '20 Over International' in comp:
                 return 'T20I'
-            elif comp.startswith('FC League'):
+            if comp.startswith('FC League'):
                 return 'FC League'
-            elif comp.startswith('Super Cup'):
+            if comp.startswith('Super Cup'):
                 return 'Super Cup'
-            elif comp.startswith('20 Over Trophy'):
+            if comp.startswith('20 Over Trophy'):
                 return '20 Over Trophy'
-            elif comp.startswith('One Day Cup'):
+            if comp.startswith('One Day Cup'):
                 return 'One Day Cup'
+            return comp
+
+        bowl_df = bowl_df[bowl_df['Name'].astype(str).str.strip() != '']
+
+        if not bowl_df.empty:
+            for col in ['Bowler_Overs', 'Bowler_Econ', 'Bowler_Runs', 'Bowler_Wkts', 'Maidens']:
+                if col in bowl_df.columns:
+                    bowl_df[col] = pd.to_numeric(bowl_df[col], errors='coerce')
+
+            def enrich_bowling_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
+                chunk = chunk.copy()
+
+                wickets = pd.to_numeric(chunk.get('Bowler_Wkts'), errors='coerce').fillna(0)
+                runs = pd.to_numeric(chunk.get('Bowler_Runs'), errors='coerce').fillna(0.0)
+                overs_original = pd.to_numeric(chunk.get('Bowler_Overs'), errors='coerce').fillna(0.0)
+                econ_original = pd.to_numeric(chunk.get('Bowler_Econ'), errors='coerce').fillna(0.0)
+                maidens = pd.to_numeric(chunk.get('Maidens'), errors='coerce').fillna(0.0)
+
+                chunk['Bowled'] = 1
+                chunk['5Ws'] = ((wickets >= 5) & (wickets < 10)).astype(int)
+                chunk['10Ws'] = (wickets >= 10).astype(int)
+
+                match_format_series = (
+                    chunk['Match_Format'] if 'Match_Format' in chunk.columns else pd.Series([''] * len(chunk))
+                )
+                hundred_mask = match_format_series.isin(['The Hundred', '100 Ball Trophy']).to_numpy()
+
+                whole = np.floor(overs_original).astype(int)
+                partial = np.round((overs_original - whole) * 10).astype(int)
+                balls_regular = (whole * 6 + partial).astype(float)
+                runs_array = runs.to_numpy(dtype=float)
+                overs_array_original = overs_original.to_numpy(dtype=float)
+                balls = np.where(hundred_mask, overs_array_original, balls_regular)
+                balls = np.where(balls < 0, 0, balls)
+
+                adjusted_overs = np.where(hundred_mask, np.where(balls > 0, balls / 5, 0), overs_array_original)
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    adjusted_econ = np.where(
+                        hundred_mask,
+                        np.where(balls > 0, (runs_array / balls) * 5, 0),
+                        econ_original.to_numpy(dtype=float),
+                    )
+
+                chunk['Bowler_Balls'] = balls
+                chunk['Bowler_Overs'] = adjusted_overs
+                chunk['Bowler_Econ'] = adjusted_econ
+
+                overs_array = np.asarray(adjusted_overs, dtype=float)
+                wickets_array = wickets.to_numpy(dtype=float)
+                maidens_array = maidens.to_numpy(dtype=float)
+
+                runs_per_over = np.divide(
+                    runs_array,
+                    overs_array,
+                    out=np.zeros_like(runs_array, dtype=float),
+                    where=overs_array > 0,
+                )
+                chunk['Runs_Per_Over'] = runs_per_over
+
+                balls_per_wicket = np.divide(
+                    balls,
+                    wickets_array,
+                    out=balls.astype(float),
+                    where=wickets_array > 0,
+                )
+                chunk['Balls_Per_Wicket'] = balls_per_wicket
+
+                ball_factor = np.where(hundred_mask, 5, 6)
+                dot_percentage = np.divide(
+                    maidens_array * ball_factor * 100,
+                    balls,
+                    out=np.zeros_like(maidens_array, dtype=float),
+                    where=balls > 0,
+                )
+                chunk['Dot_Ball_Percentage'] = dot_percentage
+
+                strike_rate = np.divide(
+                    balls,
+                    wickets_array,
+                    out=balls.astype(float),
+                    where=wickets_array > 0,
+                )
+                chunk['Strike_Rate'] = strike_rate
+
+                averages = np.divide(
+                    runs_array,
+                    wickets_array,
+                    out=runs_array,
+                    where=wickets_array > 0,
+                )
+                chunk['Average'] = averages
+
+                try:
+                    chunk['comp'] = chunk.apply(transform_competition, axis=1)
+                except Exception:
+                    chunk['comp'] = chunk.get('Competition')
+
+                chunk['comp'] = chunk['comp'].fillna(chunk.get('Competition'))
+                return chunk
+
+            if perf_manager:
+                chunk_size = getattr(perf_manager, 'chunk_size', 10_000)
+                enriched_chunks = perf_manager.process_in_chunks(bowl_df, enrich_bowling_chunk, chunk_size)
+                bowl_df = pd.concat(enriched_chunks, ignore_index=True)
             else:
-                # Default: use original competition name
-                return comp
+                bowl_df = enrich_bowling_chunk(bowl_df)
 
-        # Apply competition name transformation
-        try:
-            bowl_df['comp'] = bowl_df.apply(transform_competition, axis=1)
-        except Exception as e:
-            # Log error and fall back to original competition name
-            print(f"Error creating comp column: {e}")
-            bowl_df['comp'] = bowl_df['Competition']
-
-        # Verify comp column exists before returning
         if 'comp' not in bowl_df.columns:
-            print("Warning: comp column not created, using Competition instead")
-            bowl_df['comp'] = bowl_df['Competition']
+            bowl_df['comp'] = bowl_df.get('Competition')
 
-        # Log successful completion and return statistics
         print("Bowl stats processing completed successfully")
         print(f"Final bowl_df shape: {bowl_df.shape}")
         print(f"Final bowl_df columns: {bowl_df.columns}")
 
-        # Return the fully processed bowling statistics DataFrame
         return bowl_df
 
     except Exception as e:

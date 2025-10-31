@@ -6,10 +6,8 @@ Add this to your main application to implement memory optimizations
 import streamlit as st
 import pandas as pd
 import numpy as np
-from performance_utils import PerformanceManager
-
-# Initialize performance manager
-perf_manager = PerformanceManager()
+import time
+from performance_utils import perf_manager
 
 def optimize_dataframes_on_load():
     """
@@ -28,9 +26,15 @@ def optimize_dataframes_on_load():
                 
                 # Optimize the DataFrame
                 optimized_df = perf_manager.optimize_dataframe(df)
-                
-                # Update session state
-                st.session_state[key] = optimized_df
+
+                # Update session state with metadata tracking
+                perf_manager.register_dataframe(
+                    key,
+                    optimized_df,
+                    optimize=False,
+                    invalidate_cache=False,
+                    reason='optimize_dataframes_on_load',
+                )
                 
                 # Calculate memory savings
                 new_memory = optimized_df.memory_usage(deep=True).sum()
@@ -45,48 +49,59 @@ def add_memory_sidebar():
     Add memory monitoring to the sidebar - call this in your main views
     """
     with st.sidebar:
+        perf_manager.maybe_cleanup()
         st.markdown("### 📊 Performance Monitor")
-        
-        # Get memory usage
+
+        # Get memory usage and metrics
         usage = perf_manager.get_memory_usage()
+        metrics = perf_manager.get_metrics_snapshot()
         total_mb = usage['total'] / 1_000_000
         limit_mb = perf_manager.memory_limit / 1_000_000
-        
+
         # Progress bar for memory usage
         progress_value = min(usage['total'] / perf_manager.memory_limit, 1.0)
-        
+
         # Color coding for memory usage
         if progress_value < 0.5:
             color = "🟢"
             status = "Good"
         elif progress_value < 0.8:
-            color = "🟡"  
+            color = "🟡"
             status = "Moderate"
         else:
             color = "🔴"
             status = "High"
-            
+
         st.markdown(f"**Memory Usage** {color} {status}")
         st.progress(progress_value)
         st.markdown(f"{total_mb:.1f} MB / {limit_mb:.1f} MB")
-        
+
         # Show DataFrame breakdown
         if len(usage) > 1:
             st.markdown("**Largest DataFrames:**")
             df_usage = [(k, v) for k, v in usage.items() if k != 'total']
             df_usage.sort(key=lambda x: x[1], reverse=True)
-            
+
             for name, size in df_usage[:3]:
                 size_mb = size / 1_000_000
                 st.markdown(f"- **{name}**: {size_mb:.1f} MB")
-        
+
+        last_cleanup = metrics.get('last_cleanup')
+        if last_cleanup:
+            elapsed = max(time.time() - last_cleanup, 0)
+            st.caption(f"Last cleanup {elapsed:.0f}s ago")
+        if metrics.get('evictions'):
+            last_eviction = metrics['evictions'][-1]
+            size_mb = last_eviction['size_bytes'] / 1_000_000
+            st.caption(f"Most recent eviction: {last_eviction['key']} ({size_mb:.1f} MB)")
+
         # Action buttons
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🧹 Clean"):
                 perf_manager.cleanup_session_state()
                 st.rerun()
-        
+
         with col2:
             if st.button("⚡ Optimize"):
                 optimize_dataframes_on_load()
@@ -108,6 +123,7 @@ def efficient_dataframe_filter(df_key: str, query_string: str = None, filters: d
         return pd.DataFrame()
     
     df = st.session_state[df_key]
+    perf_manager.touch_dataframe(df_key)
     
     # Use pandas query for efficient filtering (no copy)
     if query_string:

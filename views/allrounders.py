@@ -229,10 +229,18 @@ def display_ar_view():
         bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
         bowl_df['Year'] = pd.to_numeric(bowl_df['Year'], errors='coerce').fillna(0).astype(int)
 
+        # Ensure team columns exist regardless of ingestion path
+        if 'Bat_Team_y' not in bat_df.columns:
+            bat_team_fallback = next((col for col in ['Bat_Team', 'Bat_Team_x', 'Bat Team'] if col in bat_df.columns), None)
+            bat_df['Bat_Team_y'] = bat_df[bat_team_fallback] if bat_team_fallback else np.nan
+        if 'Bowl_Team_y' not in bat_df.columns:
+            bowl_team_fallback = next((col for col in ['Bowl_Team', 'Bowl_Team_x', 'Bowl Team'] if col in bat_df.columns), None)
+            bat_df['Bowl_Team_y'] = bat_df[bowl_team_fallback] if bowl_team_fallback else np.nan
+
         # Get filter options (exclude year 0 from the years list)
         names = ['All'] + sorted(bat_df['Name'].unique().tolist())
-        bat_teams = ['All'] + sorted(bat_df['Bat_Team_y'].unique().tolist())
-        bowl_teams = ['All'] + sorted(bat_df['Bowl_Team_y'].unique().tolist())
+        bat_teams = ['All'] + sorted(bat_df['Bat_Team_y'].dropna().unique().tolist())
+        bowl_teams = ['All'] + sorted(bat_df['Bowl_Team_y'].dropna().unique().tolist())
         match_formats = ['All'] + sorted(bat_df['Match_Format'].unique().tolist())
         years = sorted(list(set(bat_df['Year'].unique()) | set(bowl_df['Year'].unique())))
         years = [year for year in years if year != 0]  # Remove year 0 if present

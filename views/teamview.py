@@ -45,6 +45,15 @@ def sanitize_df_for_polars(df: pd.DataFrame) -> pd.DataFrame:
                 df[col] = s.astype(str)
     return df
 
+
+def _safe_ratio(numerator_expr, denominator_expr, decimals: int = 2):
+    """Compute numerator/denominator with zero-division guard for Polars expressions."""
+    return (
+        pl.when(denominator_expr == 0)
+        .then(None)
+        .otherwise(numerator_expr / denominator_expr)
+    ).round(decimals).fill_null(0)
+
 # ===================== CACHED TEAM BATTING FUNCTIONS =====================
 @st.cache_data
 def compute_team_batting_career(df):
@@ -382,6 +391,32 @@ def compute_team_bowling_career(df):
 def compute_team_bowling_season(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    try:
+        pl_df = pl.from_pandas(sanitize_df_for_polars(df))
+    except Exception:
+        pl_df = None
+
+    if pl_df is not None:
+        agg = (
+            pl_df.group_by(['Bowl_Team', 'Year'])
+            .agg([
+                pl.col('File Name').n_unique().alias('Matches'),
+                pl.col('Bowler_Balls').sum().alias('Balls'),
+                pl.col('Maidens').sum().alias('M/D'),
+                pl.col('Bowler_Runs').sum().alias('Runs'),
+                pl.col('Bowler_Wkts').sum().alias('Wickets'),
+            ])
+        )
+        agg = agg.with_columns(
+            ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs')
+        )
+        agg = agg.with_columns([
+            _safe_ratio(pl.col('Balls'), pl.col('Wickets')).alias('Strike Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Overs')).alias('Economy Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Wickets')).alias('Avg'),
+        ])
+        return agg.sort(['Year', 'Avg'], descending=[True, False]).to_pandas()
+
     bowl_team_season_df = df.groupby(['Bowl_Team', 'Year'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
@@ -399,6 +434,33 @@ def compute_team_bowling_season(df):
 def compute_team_bowling_opponent(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    try:
+        pl_df = pl.from_pandas(sanitize_df_for_polars(df))
+    except Exception:
+        pl_df = None
+
+    if pl_df is not None:
+        agg = (
+            pl_df.group_by(['Bowl_Team', 'Bat_Team'])
+            .agg([
+                pl.col('File Name').n_unique().alias('Matches'),
+                pl.col('Bowler_Balls').sum().alias('Balls'),
+                pl.col('Maidens').sum().alias('M/D'),
+                pl.col('Bowler_Runs').sum().alias('Runs'),
+                pl.col('Bowler_Wkts').sum().alias('Wickets'),
+            ])
+            .rename({'Bat_Team': 'Opposition'})
+        )
+        agg = agg.with_columns(
+            ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs')
+        )
+        agg = agg.with_columns([
+            _safe_ratio(pl.col('Balls'), pl.col('Wickets')).alias('Strike Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Overs')).alias('Economy Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Wickets')).alias('Avg'),
+        ])
+        return agg.sort(['Bowl_Team', 'Avg']).to_pandas()
+
     opponent_summary = df.groupby(['Bowl_Team', 'Bat_Team'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
@@ -416,6 +478,33 @@ def compute_team_bowling_opponent(df):
 def compute_team_bowling_location(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    try:
+        pl_df = pl.from_pandas(sanitize_df_for_polars(df))
+    except Exception:
+        pl_df = None
+
+    if pl_df is not None:
+        agg = (
+            pl_df.group_by(['Bowl_Team', 'Home_Team'])
+            .agg([
+                pl.col('File Name').n_unique().alias('Matches'),
+                pl.col('Bowler_Balls').sum().alias('Balls'),
+                pl.col('Maidens').sum().alias('M/D'),
+                pl.col('Bowler_Runs').sum().alias('Runs'),
+                pl.col('Bowler_Wkts').sum().alias('Wickets'),
+            ])
+            .rename({'Bowl_Team': 'Team', 'Home_Team': 'Location'})
+        )
+        agg = agg.with_columns(
+            ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs')
+        )
+        agg = agg.with_columns([
+            _safe_ratio(pl.col('Balls'), pl.col('Wickets')).alias('Strike Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Overs')).alias('Economy Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Wickets')).alias('Avg'),
+        ])
+        return agg.sort(['Team', 'Avg']).to_pandas()
+
     location_summary = df.groupby(['Bowl_Team', 'Home_Team'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
@@ -433,6 +522,32 @@ def compute_team_bowling_location(df):
 def compute_team_bowling_position(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    try:
+        pl_df = pl.from_pandas(sanitize_df_for_polars(df))
+    except Exception:
+        pl_df = None
+
+    if pl_df is not None:
+        agg = (
+            pl_df.group_by(['Bowl_Team', 'Position'])
+            .agg([
+                pl.col('File Name').n_unique().alias('Matches'),
+                pl.col('Bowler_Balls').sum().alias('Balls'),
+                pl.col('Maidens').sum().alias('M/D'),
+                pl.col('Bowler_Runs').sum().alias('Runs'),
+                pl.col('Bowler_Wkts').sum().alias('Wickets'),
+            ])
+        )
+        agg = agg.with_columns(
+            ((pl.col('Balls') // 6) + (pl.col('Balls') % 6) / 10).round(1).alias('Overs')
+        )
+        agg = agg.with_columns([
+            _safe_ratio(pl.col('Balls'), pl.col('Wickets')).alias('Strike Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Overs')).alias('Economy Rate'),
+            _safe_ratio(pl.col('Runs'), pl.col('Wickets')).alias('Avg'),
+        ])
+        return agg.sort(['Bowl_Team', 'Position']).to_pandas()
+
     position_summary = df.groupby(['Bowl_Team', 'Position'], observed=False).agg({
         'File Name': 'nunique', 'Bowler_Balls': 'sum', 'Maidens': 'sum',
         'Bowler_Runs': 'sum', 'Bowler_Wkts': 'sum'
@@ -722,8 +837,20 @@ def display_team_view():
     # Check if required DataFrames exist in session state
     if 'bat_df' in st.session_state and 'bowl_df' in st.session_state:
         # OPTIMIZATION: Use references instead of copies - 60% memory reduction
-        bat_df = st.session_state['bat_df']  # No .copy() - saves memory
-        bowl_df = st.session_state['bowl_df']  # No .copy() - saves memory
+        bat_base = st.session_state['bat_df']
+        bowl_base = st.session_state['bowl_df']
+
+        bat_assignments = {}
+        if 'Bat_Team_y' not in bat_base.columns and 'Bat_Team' in bat_base.columns:
+            bat_assignments['Bat_Team_y'] = bat_base['Bat_Team']
+        if 'Bowl_Team_y' not in bat_base.columns and 'Bowl_Team' in bat_base.columns:
+            bat_assignments['Bowl_Team_y'] = bat_base['Bowl_Team']
+        if bat_assignments:
+            bat_df = bat_base.assign(**bat_assignments)
+        else:
+            bat_df = bat_base.copy()
+
+        bowl_df = bowl_base.copy()
 
         logger.log_dataframe("bat_df source", bat_df, include_dtypes=True)
         logger.log_dataframe("bowl_df source", bowl_df, include_dtypes=True)

@@ -2,8 +2,142 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from pandas.api.types import CategoricalDtype
+
+try:
+    import polars as pl
+except Exception:  # pragma: no cover - optional dependency
+    pl = None
+
+try:
+    from .logging_utils import FastViewLogger
+except ImportError:  # pragma: no cover - support direct execution
+    from views.logging_utils import FastViewLogger
+
+try:
+    from performance_utils import memory_efficient_cache
+except ImportError:  # pragma: no cover - support package-relative imports
+    from ..performance_utils import memory_efficient_cache  # type: ignore
+
+logger = FastViewLogger(st, "EloRating")
 
 INTERNATIONAL_FORMATS = {'T20I', 'ODI', 'Test Match'}
+
+logger.log("Entering Elo Ratings view", fast_mode=logger.enabled)
+
+
+def _sanitize_for_polars(df: pd.DataFrame) -> pd.DataFrame:
+    """Cast DataFrame columns to Polars-friendly types."""
+    if df is None or df.empty:
+        return df
+    # Only copy when modifications are required
+    sanitized = df.copy()
+    for column in sanitized.columns:
+        series = sanitized[column]
+        try:
+            if isinstance(series.dtype, CategoricalDtype) or str(series.dtype).startswith("period"):
+                sanitized[column] = series.astype(str)
+                continue
+        except Exception:
+            sanitized[column] = series.astype(str)
+            continue
+        if series.dtype == object:
+            try:
+                sanitized[column] = series.astype(str)
+            except Exception:
+                sanitized[column] = series.apply(str)
+    return sanitized
+
+
+def _to_polars_frame(df: pd.DataFrame):
+    if pl is None or df is None or df.empty:
+        return None
+    try:
+        return pl.from_pandas(_sanitize_for_polars(df))
+    except Exception:
+        return None
+
+
+def _filter_match_dataframe(
+    match_df: pd.DataFrame,
+    allowed_formats: set[str],
+    selected_formats: set[str],
+):
+    if match_df is None or match_df.empty:
+        return pd.DataFrame()
+    polars_df = _to_polars_frame(match_df)
+    if polars_df is not None:
+        filter_expr = pl.lit(True)
+        if allowed_formats:
+            filter_expr &= pl.col('Match_Format').is_in(list(allowed_formats))
+        if selected_formats:
+            filter_expr &= pl.col('Match_Format').is_in(list(selected_formats))
+        return polars_df.filter(filter_expr).to_pandas()
+    filtered = match_df
+    if allowed_formats:
+        filtered = filtered[filtered['Match_Format'].isin(allowed_formats)]
+    if selected_formats:
+        filtered = filtered[filtered['Match_Format'].isin(selected_formats)]
+    return filtered
+
+
+def _filter_elo_dataframe(
+    elo_df: pd.DataFrame,
+    formats: set[str],
+    team_choice: list[str],
+    opponent_choice: list[str],
+):
+    if elo_df is None or elo_df.empty:
+        return pd.DataFrame()
+    polars_df = _to_polars_frame(elo_df)
+    if polars_df is not None:
+        expr = pl.lit(True)
+        if formats:
+            expr &= pl.col('Match_Format').is_in(list(formats))
+        if team_choice and 'All' not in team_choice:
+            expr &= pl.col('Team').is_in(team_choice)
+        if opponent_choice and 'All' not in opponent_choice:
+            expr &= pl.col('Opponent').is_in(opponent_choice)
+        filtered = polars_df.filter(expr)
+        if 'Diff' in filtered.columns:
+            return filtered.to_pandas()
+        filtered = filtered.with_columns(
+            (pl.col('Team_Elo_Start') - pl.col('Opponent_Elo_Start')).alias('Diff')
+        )
+        return filtered.to_pandas()
+    filtered = elo_df
+    if formats:
+        filtered = filtered[filtered['Match_Format'].isin(formats)]
+    if team_choice and 'All' not in team_choice:
+        filtered = filtered[filtered['Team'].isin(team_choice)]
+    if opponent_choice and 'All' not in opponent_choice:
+        filtered = filtered[filtered['Opponent'].isin(opponent_choice)]
+    if 'Diff' not in filtered.columns:
+        filtered = filtered.copy()
+        filtered['Diff'] = filtered['Team_Elo_Start'] - filtered['Opponent_Elo_Start']
+    return filtered
+
+
+def _prepare_current_ratings_df(current_ratings_df: pd.DataFrame) -> pd.DataFrame:
+    if current_ratings_df is None or current_ratings_df.empty:
+        return pd.DataFrame()
+    polars_df = _to_polars_frame(current_ratings_df)
+    if polars_df is not None:
+        try:
+            ranked = polars_df.with_columns(
+                pl.col('Current_ELO')
+                .rank(method='dense', descending=True)
+                .over('Format')
+                .cast(pl.Int64)
+                .alias('Rank')
+            ).sort(['Format', 'Rank'])
+            return ranked.to_pandas()
+        except Exception:
+            pass
+    df = current_ratings_df.copy()
+    df['Rank'] = df.groupby('Format')['Current_ELO'] \
+        .rank(method='dense', ascending=False).astype(int)
+    return df.sort_values(['Format', 'Rank'])
 
 
 def parse_date(date_str):
@@ -21,7 +155,7 @@ def parse_date(date_str):
         return pd.NaT
 
 
-@st.cache_data
+@memory_efficient_cache(ttl=3600, data_types=['match'])
 def calculate_elo_ratings(match_df):
     # OPTIMIZATION: Only copy when we need to modify the DataFrame
     df = match_df.copy()  # Keep copy as we're adding Date_Sort column
@@ -284,6 +418,9 @@ if 'match_df' in st.session_state:
     match_df = st.session_state['match_df']
     all_teams.update(match_df['Home_Team'].unique())
     all_teams.update(match_df['Away_Team'].unique())
+    logger.log_dataframe("elo_match_df source", match_df, include_dtypes=True)
+else:
+    logger.log("elo match_df missing")
 
 # Create beautiful header section with purple gradient background
 st.markdown("""
@@ -317,6 +454,7 @@ else:
     allowed_formats = sorted(list(all_formats))
 
 allowed_formats_set = set(allowed_formats)
+logger.log("elo allowed formats", total=len(allowed_formats_set))
 
 with col1:
     formats = ['All'] + allowed_formats if allowed_formats else ['All']
@@ -332,24 +470,27 @@ if 'match_df' in st.session_state:
 else:
     scope_filtered_match_df = pd.DataFrame()
 
-if allowed_formats_set:
-    scope_filtered_match_df = scope_filtered_match_df[
-        scope_filtered_match_df['Match_Format'].isin(allowed_formats_set)
-    ]
-else:
-    scope_filtered_match_df = scope_filtered_match_df.iloc[0:0]
-
 if 'All' in format_choice or not format_choice:
     format_filter_set = set(allowed_formats_set)
 else:
-    format_filter_set = set(format_choice)
+    format_filter_set = {opt for opt in format_choice if opt != 'All'}
+    if allowed_formats_set:
+        format_filter_set &= allowed_formats_set
 
-if scope_filtered_match_df is not None and not scope_filtered_match_df.empty and format_filter_set:
-    scope_filtered_match_df = scope_filtered_match_df[
-        scope_filtered_match_df['Match_Format'].isin(format_filter_set)
-    ]
-elif scope_filtered_match_df is not None and scope_filtered_match_df.empty:
+if allowed_formats_set:
+    scope_filtered_match_df = _filter_match_dataframe(
+        scope_filtered_match_df,
+        allowed_formats_set,
+        format_filter_set,
+    )
+else:
+    scope_filtered_match_df = scope_filtered_match_df.iloc[0:0]
     format_filter_set = set()
+
+if scope_filtered_match_df is None or scope_filtered_match_df.empty:
+    format_filter_set = set()
+
+logger.log_dataframe("elo scope_filtered_match_df", scope_filtered_match_df)
 
 if scope_filtered_match_df is not None and not scope_filtered_match_df.empty:
     dynamic_teams = sorted(
@@ -387,19 +528,24 @@ format_filter_list = sorted(format_filter_set)
 
 # Enhanced filter function to handle all three filters
 def filter_by_all(df):
+    if df is None:
+        return pd.DataFrame()
+    if not format_filter_list:
+        return df.iloc[0:0] if hasattr(df, 'iloc') else pd.DataFrame()
+    if {'Match_Format', 'Team', 'Opponent'}.issubset(df.columns):
+        return _filter_elo_dataframe(
+            df,
+            set(format_filter_list),
+            team_choice,
+            opponent_choice,
+        )
     filtered_df = df.copy()
-
-    if format_filter_list:
+    if 'Match_Format' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Match_Format'].isin(format_filter_list)]
-    else:
-        filtered_df = filtered_df.iloc[0:0]
-
-    if 'All' not in team_choice:
+    if 'All' not in team_choice and 'Team' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Team'].isin(team_choice)]
-
-    if 'All' not in opponent_choice:
+    if 'All' not in opponent_choice and 'Opponent' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Opponent'].isin(opponent_choice)]
-
     return filtered_df
 
 # Build an initially scope-filtered DataFrame
@@ -423,26 +569,40 @@ filtered_teams = sorted(
     set(base_df['Home_Team'].unique()) | set(base_df['Away_Team'].unique())
 ) if not base_df.empty else []
 
+logger.log_dataframe("elo base_df", base_df)
+
 #########====================CREATE HEAD TO HEAD TABLE===================######################
 if 'match_df' in st.session_state:
     with st.spinner("Calculating ELO ratings for all matches..."):
-        elo_combined_df, elo_ratings = calculate_elo_ratings(st.session_state['match_df'])
+        with logger.time_block("calculate_elo_ratings"):
+            elo_combined_df, elo_ratings = calculate_elo_ratings(st.session_state['match_df'])
+    logger.log_dataframe("elo combined_df", elo_combined_df)
+
+    # Persist combined dataframe for downstream usage when filters change without recomputation
+    st.session_state['elo_combined_df'] = elo_combined_df
 
     # Now, apply the interactive filters to the FAST, in-memory DataFrame
-    filtered_elo_df = elo_combined_df.copy()
     if format_filter_list:
-        filtered_elo_df = filtered_elo_df[filtered_elo_df['Match_Format'].isin(format_filter_list)]
+        filtered_elo_df = _filter_elo_dataframe(
+            elo_combined_df,
+            set(format_filter_list),
+            team_choice,
+            opponent_choice,
+        )
     else:
-        filtered_elo_df = filtered_elo_df.iloc[0:0]
-    if 'All' not in team_choice:
-        filtered_elo_df = filtered_elo_df[filtered_elo_df['Team'].isin(team_choice)]
-    if 'All' not in opponent_choice:
-        filtered_elo_df = filtered_elo_df[filtered_elo_df['Opponent'].isin(opponent_choice)]
-    filtered_elo_df['Diff'] = filtered_elo_df['Team_Elo_Start'] - filtered_elo_df['Opponent_Elo_Start']
+        filtered_elo_df = elo_combined_df.iloc[0:0].copy()
+        filtered_elo_df['Diff'] = pd.Series(dtype=float)
+
+    logger.log_dataframe("elo filtered_df", filtered_elo_df)
 
     # Store in session state for downstream use
     st.session_state['elo_df'] = filtered_elo_df
     st.session_state['current_elo_ratings'] = elo_ratings
+
+# Ensure downstream sections always have a dataframe to work with
+filtered_elo_df = st.session_state.get('elo_df', pd.DataFrame())
+elo_combined_df = st.session_state.get('elo_combined_df', pd.DataFrame())
+elo_ratings = st.session_state.get('current_elo_ratings', {})
 
 # Define team colors
 team_colors = {
@@ -469,58 +629,62 @@ team_colors = {
     'Zimbabwe': '#EF3340'
 }
 
+selected_teams = set(team_choice) if 'All' not in team_choice else set()
+elo_has_required_columns = {
+    'Match_Format',
+    'Team',
+    'Team_Elo_Start',
+    'Team_Elo_End'
+}.issubset(elo_combined_df.columns)
+
 # Filter and display current ELO ratings
 current_ratings = []
-for format_name, teams in elo_ratings.items():
-    if not format_filter_list:
-        continue
-    if format_name not in format_filter_list:
-        continue
-        
-    for team, rating in teams.items():
-        # Skip if team is filtered out
-        if 'All' not in team_choice and team not in team_choice:
+if format_filter_list:
+    for format_name in format_filter_list:
+        teams = elo_ratings.get(format_name, {})
+        if not teams:
             continue
-            
-        # Get team's historical Elo ratings for this format
-        team_history = filtered_elo_df[
-            (filtered_elo_df['Team'] == team) & 
-            (filtered_elo_df['Match_Format'] == format_name)
+
+        if not elo_has_required_columns:
+            continue
+
+        format_history = elo_combined_df[
+            elo_combined_df['Match_Format'] == format_name
         ]
-        
-        # Calculate max and min Elo from both start and end ratings
-        all_ratings = pd.concat([
-            team_history['Team_Elo_Start'],
-            team_history['Team_Elo_End']
-        ])
-        
-        max_elo = all_ratings.max() if not all_ratings.empty else rating
-        min_elo = all_ratings.min() if not all_ratings.empty else rating
-            
-        current_ratings.append({
-            'Format': format_name,
-            'Team': team,
-            'Current_ELO': rating,
-            'Max_ELO': max_elo,
-            'Min_ELO': min_elo
-        })
+
+        for team, rating in teams.items():
+            team_history = format_history[format_history['Team'] == team]
+
+            all_ratings = pd.concat([
+                team_history['Team_Elo_Start'],
+                team_history['Team_Elo_End']
+            ]) if not team_history.empty else pd.Series(dtype=float)
+
+            max_elo = all_ratings.max() if not all_ratings.empty else rating
+            min_elo = all_ratings.min() if not all_ratings.empty else rating
+
+            current_ratings.append({
+                'Format': format_name,
+                'Team': team,
+                'Current_ELO': rating,
+                'Max_ELO': max_elo,
+                'Min_ELO': min_elo
+            })
 
 if current_ratings:
     current_ratings_df = pd.DataFrame(current_ratings)
     
     # Ensure no null values in critical columns
     current_ratings_df = current_ratings_df.dropna(subset=['Current_ELO', 'Format', 'Team'])
-    
-    # Add rank by grouping on format
-    current_ratings_df['Rank'] = current_ratings_df.groupby('Format')['Current_ELO'] \
-        .rank(method='dense', ascending=False).astype(int)
 
     # Remove Max_ELO and Min_ELO
     if 'Max_ELO' in current_ratings_df.columns:
         current_ratings_df.drop(columns=['Max_ELO', 'Min_ELO'], inplace=True)
 
-    # Sort by Format and Rank
-    current_ratings_df = current_ratings_df.sort_values(['Format', 'Rank'])
+    if not current_ratings_df.empty:
+        current_ratings_df = _prepare_current_ratings_df(current_ratings_df)
+
+    logger.log_dataframe("elo current_ratings", current_ratings_df)
 
     # Beautiful section banner
     st.markdown("""
@@ -531,19 +695,25 @@ if current_ratings:
 
     # Apply conditional formatting to the entire row
     def apply_row_formatting(row):
+        styles = [''] * len(row)
         try:
-            if pd.isna(row['Rank']) or row['Rank'] is None:
-                return [''] * len(row)
-            rank_val = int(row['Rank'])
-            if rank_val == 1:
-                return ['background-color: gold; color: black;'] * len(row)
-            elif rank_val == 2:
-                return ['background-color: silver; color: black;'] * len(row)
-            elif rank_val == 3:
-                return ['background-color: #cd7f32; color: black;'] * len(row)  # Bronze color
-            return [''] * len(row)
+            if not pd.isna(row['Rank']) and row['Rank'] is not None:
+                rank_val = int(row['Rank'])
+                if rank_val == 1:
+                    styles = ['background-color: gold; color: black;'] * len(row)
+                elif rank_val == 2:
+                    styles = ['background-color: silver; color: black;'] * len(row)
+                elif rank_val == 3:
+                    styles = ['background-color: #cd7f32; color: black;'] * len(row)  # Bronze color
         except (ValueError, TypeError):
-            return [''] * len(row)
+            pass
+
+        if selected_teams and row.get('Team') in selected_teams:
+            styles = [
+                f"{style} border: 2px solid #f04f53;" if style else 'border: 2px solid #f04f53;'
+                for style in styles
+            ]
+        return styles
 
     styled_current_ratings_df = current_ratings_df.style.apply(apply_row_formatting, axis=1).format({
         'Current_ELO': '{:.2f}'
@@ -607,61 +777,59 @@ if current_ratings:
         index='Team',
         columns='Format',
         values='Rank'
-    ).fillna('')  # Use empty string instead of '-'
-
-    # Convert non-empty values to integers
-    for col in rank_matrix.columns:
-        rank_matrix[col] = rank_matrix[col].apply(lambda x: int(x) if x != '' else x)
-
-    # Custom sort function to put blank values at bottom and ensure proper numerical sorting
-    def sort_with_blanks_at_bottom(df):
-        # For each row, count number of non-blank values and calculate average rank
-        df['sort_score'] = df.apply(lambda x: (
-            sum(1 for v in x if v == ''),  # Count of blank values (higher count means lower priority)
-            sum(v for v in x if v != '')/sum(1 for v in x if v != '') if sum(1 for v in x if v != '') > 0 else float('inf')
-        ), axis=1)
-        sorted_df = df.sort_values('sort_score').drop('sort_score', axis=1)
-        return sorted_df
-
-    # Sort the matrix
-    rank_matrix = sort_with_blanks_at_bottom(rank_matrix)
-
-    # Ensure proper numerical sorting for columns
-    rank_matrix = rank_matrix.apply(lambda col: pd.to_numeric(col, errors='coerce')).sort_values(by=list(rank_matrix.columns), na_position='last')
-
-    # Sort by 'Team' column alphabetically
-    rank_matrix = rank_matrix.sort_index()
-
-    # Apply conditional formatting
-    def apply_formatting(val):
-        if pd.isna(val) or val is None or val == '':
-            return ''
-        try:
-            val = int(val)
-            if val == 1:
-                return 'background-color: gold; color: black;'
-            elif val == 2:
-                return 'background-color: silver; color: black;'
-            elif val == 3:
-                return 'background-color: #cd7f32; color: black;'  # Bronze color
-            return ''
-        except (ValueError, TypeError):
-            return ''
-
-    styled_rank_matrix = rank_matrix.style.map(apply_formatting).format(precision=0, na_rep='')
-
-    # Beautiful section banner for rankings by format
-    st.markdown("""
-        <div class="result-banner">
-            🥇 Team Rankings Matrix
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.dataframe(
-        styled_rank_matrix,
-        use_container_width=True,
-        height=20 * 35  # Set height to display 18 rows (approx. 35 pixels per row)
     )
+
+    # Convert values to numeric for ranking operations while keeping NaNs
+    try:
+        rank_matrix = rank_matrix.astype(float)
+    except (TypeError, ValueError):
+        rank_matrix = rank_matrix.apply(pd.to_numeric, errors='coerce')
+
+    # Limit to requested formats so Streamlit doesn't receive empty columns
+    if format_filter_list:
+        active_formats = [fmt for fmt in rank_matrix.columns if fmt in format_filter_list]
+        if active_formats:
+            rank_matrix = rank_matrix[active_formats]
+        else:
+            rank_matrix = rank_matrix.iloc[:, 0:0]
+
+    if not rank_matrix.empty:
+        rank_matrix = rank_matrix.sort_index()
+
+    if rank_matrix.empty or rank_matrix.shape[1] == 0:
+        st.info("No current rankings available for the selected filters.")
+    else:
+        medal_map = {1: '🥇', 2: '🥈', 3: '🥉'}
+
+        def format_rank_value(val):
+            if pd.isna(val) or val is None:
+                return ''
+            try:
+                rank_int = int(val)
+                medal = medal_map.get(rank_int, '')
+                return f"{rank_int}{' ' + medal if medal else ''}"
+            except (ValueError, TypeError):
+                return ''
+
+        formatted_matrix = rank_matrix.apply(lambda col: col.map(format_rank_value)).fillna('')
+
+        if selected_teams:
+            formatted_matrix.insert(
+                0,
+                'Selected',
+                formatted_matrix.index.map(
+                    lambda team: '✅' if team in selected_teams else ''
+                )
+            )
+
+        # Beautiful section banner for rankings by format
+        st.markdown("""
+            <div class="result-banner">
+                🥇 Team Rankings Matrix
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.table(formatted_matrix)
 
 #####===================GRAPH=====================#####
 # Beautiful section banner for progression
@@ -672,119 +840,123 @@ st.markdown("""
 """, unsafe_allow_html=True)
 graph_df = filtered_elo_df.copy()
 
-# Convert Date to datetime
-graph_df['Date'] = pd.to_datetime(graph_df['Date'], format='mixed', dayfirst=True, errors='coerce')
+if graph_df.empty or 'Date' not in graph_df.columns:
+    st.info("No ELO data available for the selected filters.")
+else:
+    # Convert Date to datetime
+    graph_df['Date'] = pd.to_datetime(graph_df['Date'], format='mixed', dayfirst=True, errors='coerce')
 
-# Create a complete timeline for all format/team combinations
-min_date = graph_df['Date'].min()
-max_date = graph_df['Date'].max()
+    required_graph_columns = {'Match_Format', 'Team', 'Team_Elo_Start', 'Team_Elo_End'}
+    if not required_graph_columns.issubset(graph_df.columns):
+        st.info("ELO progression data is incomplete for the selected filters.")
+    else:
+        # Create a complete timeline for all format/team combinations
+        min_date = graph_df['Date'].min()
+        max_date = graph_df['Date'].max()
 
-# Get all months in the date range
-all_months = pd.date_range(
-    start=pd.Timestamp(min_date).replace(day=1),
-    end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1),
-    freq='ME'
-)
+        if pd.isna(min_date) or pd.isna(max_date):
+            st.info("No valid dates available to plot ELO progression.")
+        else:
+            all_months = pd.date_range(
+                start=pd.Timestamp(min_date).replace(day=1),
+                end=pd.Timestamp(max_date) + pd.offsets.MonthEnd(1),
+                freq='M'
+            )
 
-# Create all possible format/team/month combinations
-format_teams = graph_df[['Match_Format', 'Team']].drop_duplicates()
-timeline_data = []
+            format_teams = graph_df[['Match_Format', 'Team']].drop_duplicates()
+            timeline_data = []
 
-for _, row in format_teams.iterrows():
-    format_name = row['Match_Format']
-    team_name = row['Team']
-    
-    # Get this team's match data
-    team_matches = graph_df[
-        (graph_df['Match_Format'] == format_name) & 
-        (graph_df['Team'] == team_name)
-    ].sort_values('Date')
-    
-    if not team_matches.empty:
-        last_rating = None
-        for month in all_months:
-            # Find matches in this month
-            month_matches = team_matches[
-                (team_matches['Date'].dt.year == month.year) & 
-                (team_matches['Date'].dt.month == month.month)
-            ]
-            
-            if not month_matches.empty:
-                # Use the last rating from this month
-                rating = month_matches.iloc[-1]['Team_Elo_End']
-                last_rating = rating
-            elif last_rating is not None:
-                # Use the last known rating
-                rating = last_rating
+            for _, row in format_teams.iterrows():
+                format_name = row['Match_Format']
+                team_name = row['Team']
+
+                team_matches = graph_df[
+                    (graph_df['Match_Format'] == format_name) &
+                    (graph_df['Team'] == team_name)
+                ].sort_values('Date')
+
+                if team_matches.empty:
+                    continue
+
+                last_rating = None
+                for month in all_months:
+                    month_matches = team_matches[
+                        (team_matches['Date'].dt.year == month.year) &
+                        (team_matches['Date'].dt.month == month.month)
+                    ]
+
+                    if not month_matches.empty:
+                        rating = month_matches.iloc[-1]['Team_Elo_End']
+                        last_rating = rating
+                    elif last_rating is not None:
+                        rating = last_rating
+                    else:
+                        first_match = team_matches.iloc[0]
+                        rating = first_match['Team_Elo_Start']
+                        last_rating = rating
+
+                    timeline_data.append({
+                        'Date': month,
+                        'Match_Format': format_name,
+                        'Team': team_name,
+                        'Rating': rating
+                    })
+
+            timeline_df = pd.DataFrame(timeline_data)
+
+            if timeline_df.empty:
+                st.info("No ELO ratings to plot for the selected filters.")
             else:
-                # Use the first rating we'll see
-                first_match = team_matches.iloc[0]
-                rating = first_match['Team_Elo_Start']
-                last_rating = rating
-            
-            timeline_data.append({
-                'Date': month,
-                'Match_Format': format_name,
-                'Team': team_name,
-                'Rating': rating
-            })
+                fig = go.Figure()
+                format_teams = timeline_df.groupby(['Match_Format', 'Team']).size()
+                num_traces = len(format_teams)
 
-# Convert to DataFrame
-timeline_df = pd.DataFrame(timeline_data)
+                for name, group in timeline_df.groupby(['Match_Format', 'Team']):
+                    format_name, team_name = name
+                    color = team_colors.get(team_name, None)
+                    fig.add_trace(go.Scatter(
+                        x=group['Date'],
+                        y=group['Rating'],
+                        name=f"{team_name} ({format_name})",
+                        mode='lines+markers',
+                        line=dict(
+                            shape='spline',
+                            smoothing=0.3,
+                            color=color
+                        ),
+                        marker=dict(size=8),
+                        hovertemplate=
+                        f"{team_name} ({format_name})<br>" +
+                        "Date: %{x|%b %Y}<br>" +
+                        "ELO: %{y:.2f}<br>" +
+                        "<extra></extra>"
+                    ))
 
-# Create the plot
-fig = go.Figure()
+                legend_rows = max(1, round(num_traces / 3))
 
-# Get unique format-team combinations from timeline_df
-format_teams = timeline_df.groupby(['Match_Format', 'Team']).size()
-num_traces = len(format_teams)
+                fig.update_layout(
+                    xaxis_title="Date (Year-Month)",
+                    yaxis_title="ELO Rating",
+                    hovermode='closest',
+                    height=600 + (legend_rows * 30),
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=-(0.1 + (legend_rows-1)*0.1),
+                        xanchor="center",
+                        x=0.5,
+                        traceorder="normal",
+                        font=dict(size=10),
+                        itemwidth=40,
+                        itemsizing="constant"
+                    )
+                )
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', tickformat="%b %Y")
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
+                fig.update_layout(margin=dict(b=50 + (legend_rows * 20)))
 
-for name, group in timeline_df.groupby(['Match_Format', 'Team']):
-    format_name, team_name = name
-    color = team_colors.get(team_name, None)
-    fig.add_trace(go.Scatter(
-        x=group['Date'],
-        y=group['Rating'],
-        name=f"{team_name} ({format_name})",
-        mode='lines+markers',
-        line=dict(
-            shape='spline',
-            smoothing=0.3,
-            color=color
-        ),
-        marker=dict(size=8),
-        hovertemplate=
-        f"{team_name} ({format_name})<br>" +
-        "Date: %{x|%b %Y}<br>" +
-        "ELO: %{y:.2f}<br>" +
-        "<extra></extra>"
-    ))
-
-legend_rows = max(1, round(num_traces / 3))
-
-fig.update_layout(
-    xaxis_title="Date (Year-Month)",
-    yaxis_title="ELO Rating",
-    hovermode='closest',
-    height=600 + (legend_rows * 30),
-    showlegend=True,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=-(0.1 + (legend_rows-1)*0.1),
-        xanchor="center",
-        x=0.5,
-        traceorder="normal",
-        font=dict(size=10),
-        itemwidth=40,
-        itemsizing="constant"
-    )
-)
-fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', tickformat="%b %Y")
-fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
-fig.update_layout(margin=dict(b=50 + (legend_rows * 20)))
-
-st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
 
 # ELO Rating Distribution
 st.markdown("""
@@ -796,26 +968,33 @@ st.markdown("""
 if 'elo_df' in st.session_state:
     # Use the already filtered dataframe
     dist_df = filtered_elo_df.copy()
+    if dist_df.empty or not {'Team', 'Team_Elo_End'}.issubset(dist_df.columns):
+        st.info("No ELO distribution data for the selected filters.")
+    else:
+        fig = go.Figure()
+        for team in sorted(dist_df['Team'].dropna().unique()):
+            team_ratings = dist_df[dist_df['Team'] == team]['Team_Elo_End']
+            if team_ratings.empty:
+                continue
+            color = team_colors.get(team, None)
+            fig.add_trace(go.Box(
+                y=team_ratings,
+                name=team,
+                boxpoints='outliers',
+                jitter=0.3,
+                pointpos=-1.8,
+                marker_color=color
+            ))
 
-    fig = go.Figure()
-    for team in sorted(dist_df['Team'].unique()):
-        team_ratings = dist_df[dist_df['Team'] == team]['Team_Elo_End']
-        color = team_colors.get(team, None)
-        fig.add_trace(go.Box(
-            y=team_ratings,
-            name=team,
-            boxpoints='outliers',
-            jitter=0.3,
-            pointpos=-1.8,
-            marker_color=color
-        ))
-
-    fig.update_layout(
-        yaxis_title="ELO Rating",
-        height=500,
-        showlegend=False
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        if not fig.data:
+            st.info("No ELO distribution data for the selected filters.")
+        else:
+            fig.update_layout(
+                yaxis_title="ELO Rating",
+                height=500,
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 
 
@@ -852,7 +1031,11 @@ if 'elo_df' in st.session_state:
             st.stop()
         
         # Convert dates to datetime for period calculations
-        elo_df['Month_End'] = pd.to_datetime(elo_df['Date']).dt.to_period('ME').dt.to_timestamp(how='end')
+        elo_df['Month_End'] = (
+            pd.to_datetime(elo_df['Date'])
+            .dt.to_period('M')
+            .dt.to_timestamp(how='end')
+        )
         
         # Get min and max dates
         min_date = elo_df['Date'].min()
@@ -862,7 +1045,7 @@ if 'elo_df' in st.session_state:
         date_range = pd.date_range(
             start=pd.to_datetime(min_date).replace(day=1),
             end=pd.to_datetime(max_date),
-            freq='ME'
+            freq='M'
         )
         
         # Initialize results dictionary

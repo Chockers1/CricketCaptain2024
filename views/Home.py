@@ -11,6 +11,26 @@ from match import process_match_data
 from game import process_game_stats
 from bat import process_bat_stats
 from bowl import process_bowl_stats
+from performance_utils import perf_manager
+
+try:
+    from fast_processing import fast_process_bowl_stats, fast_process_bat_stats
+    FAST_PROCESSING_AVAILABLE = True
+except ImportError:
+    fast_process_bowl_stats = fast_process_bat_stats = None
+    FAST_PROCESSING_AVAILABLE = False
+
+# Keep session-level flag aligned with fast-processing availability for logging instrumentation
+if 'use_fast_processing' not in st.session_state:
+    st.session_state['use_fast_processing'] = FAST_PROCESSING_AVAILABLE
+elif st.session_state['use_fast_processing'] and not FAST_PROCESSING_AVAILABLE:
+    st.session_state['use_fast_processing'] = False
+
+if 'fast_processing_error' not in st.session_state:
+    st.session_state['fast_processing_error'] = None
+
+if not FAST_PROCESSING_AVAILABLE:
+    st.session_state['fast_processing_error'] = None
 
 # --- CONFIGURATION (NEW) ---
 # Calibrated based on user feedback (1664 files took ~112s).
@@ -169,6 +189,8 @@ def load_data(uploaded_files=None, uploaded_zip=None):
     - uploaded_zip: a single UploadedFile that's a .zip containing .txt files
     """
 
+    perf_manager.maybe_cleanup()
+
     def _safe_extract_all(zip_path: str, extract_to: str):
         """Extract zip contents safely to avoid path traversal (zip slip)."""
         with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -283,22 +305,26 @@ def load_data(uploaded_files=None, uploaded_zip=None):
                 raise ValueError("game.py failed to produce data.")
 
             # PERFORMANCE OPTION: Use fast processing if available
-            use_fast_processing = st.session_state.get('use_fast_processing', False)
-            
+            use_fast_processing = bool(
+                st.session_state.get('use_fast_processing', False)
+                and fast_process_bowl_stats
+                and fast_process_bat_stats
+            )
+
             if use_fast_processing:
                 try:
-                    from fast_processing import fast_process_bowl_stats, fast_process_bat_stats
-                    
                     status_text.text("🚀 Fast processing bowling statistics..."); progress_bar.progress(0.75)
                     bowl_df = fast_process_bowl_stats(temp_dir, game_df, match_df)
-                    
+
                     status_text.text("⚡ Fast processing batting statistics..."); progress_bar.progress(0.9)
                     bat_df = fast_process_bat_stats(temp_dir, game_df, match_df)
-                    
-                except ImportError:
-                    st.warning("Fast processing not available - using standard processing")
+                    st.session_state['fast_processing_error'] = None
+
+                except Exception as fast_err:
+                    st.warning(f"Fast processing failed; falling back to standard pipeline ({fast_err}).")
                     use_fast_processing = False
-            
+                    st.session_state['fast_processing_error'] = str(fast_err)
+
             if not use_fast_processing:
                 status_text.text("🎯 Processing bowling statistics..."); progress_bar.progress(0.75)
                 bowl_df = process_bowl_stats(temp_dir, game_df, match_df)
@@ -313,10 +339,10 @@ def load_data(uploaded_files=None, uploaded_zip=None):
             duplicates_result = process_duplicates(bat_df)
 
             # Keep state keys identical so other tabs work seamlessly
-            st.session_state['match_df'] = match_df
-            st.session_state['game_df'] = game_df
-            st.session_state['bowl_df'] = bowl_df
-            st.session_state['bat_df'] = bat_df
+            perf_manager.register_dataframe('match_df', match_df, reason='load_data_match')
+            perf_manager.register_dataframe('game_df', game_df, reason='load_data_game')
+            perf_manager.register_dataframe('bowl_df', bowl_df, reason='load_data_bowl')
+            perf_manager.register_dataframe('bat_df', bat_df, reason='load_data_bat')
             st.session_state['data_loaded'] = True
             
             # PERFORMANCE OPTIMIZATION: Optimize data types for memory efficiency
@@ -325,6 +351,9 @@ def load_data(uploaded_files=None, uploaded_zip=None):
                 optimize_dataframes_on_load()
             except ImportError:
                 pass  # Optimization not available
+
+            # Restore session flag to reflect availability for later reruns
+            st.session_state['use_fast_processing'] = FAST_PROCESSING_AVAILABLE
 
             progress_bar.progress(1.0)
             end_time = time.time()
@@ -362,8 +391,8 @@ st.markdown("""
 
 st.markdown("""
     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 15px; border-radius: 12px; text-align: center; margin: 20px 0; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
-        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.25</span><br>
-    <span style="color: white; font-size: 16px;">Player Similarity Engine — Discover Hidden Talent and Perfect Replacements with dual-mode searches, rich  visualisations, and scouting-ready comparisons across batting + bowling.</span>
+        <span style="color: white; font-weight: bold; font-size: 18px;">⚡ NEW UPDATE v1.26</span><br>
+    <span style="color: white; font-size: 16px;">Fast Mode enabled by Polars – 3,000 scorecards now ingest in ~20 seconds (down from 3 minutes 30 seconds) and every tab stays lightning quick.</span>
     </div>
 """, unsafe_allow_html=True)
 
@@ -404,23 +433,24 @@ st.markdown("### 📁 Upload Your Scorecard Files")
 uploaded_files_txt = None
 uploaded_zip_file = None
 
-# Performance Options
-st.markdown("### ⚡ Processing Options")
+# Processing mode status
+st.markdown("### ⚡ Processing Mode")
 
-col_perf1, col_perf2 = st.columns(2)
-with col_perf1:
-    use_fast_processing = st.checkbox(
-        "🚀 Enable Fast Processing (2-5x faster upload)", 
-        value=st.session_state.get('use_fast_processing', False),
-        help="Uses optimized algorithms with parallel processing for much faster scorecard analysis"
-    )
-    st.session_state['use_fast_processing'] = use_fast_processing
+using_fast_processing = st.session_state.get('use_fast_processing', False)
+recent_fast_error = st.session_state.get('fast_processing_error') if FAST_PROCESSING_AVAILABLE else None
 
-with col_perf2:
-    if use_fast_processing:
-        st.success("⚡ Fast processing enabled - expect 2-5x speed improvement!")
-    else:
-        st.info("🐌 Using standard processing - enable fast processing for speed boost")
+if FAST_PROCESSING_AVAILABLE and using_fast_processing and not recent_fast_error:
+    st.success("⚡ Fast processing is enabled by default for all uploads.")
+elif FAST_PROCESSING_AVAILABLE and using_fast_processing:
+    st.warning("⚠️ Fast processing will retry automatically after the last failure; the standard pipeline handled the previous run.")
+elif FAST_PROCESSING_AVAILABLE and not using_fast_processing:
+    st.warning("⚠️ Fast processing is temporarily unavailable for this session; the standard pipeline will run automatically.")
+else:
+    st.info("🐌 Fast processing module not found—using the standard pipeline instead.")
+
+if recent_fast_error:
+    truncated_error = (recent_fast_error[:200] + "…") if len(recent_fast_error) > 200 else recent_fast_error
+    st.caption(f"Last fast-processing error: {truncated_error}")
 
 st.markdown("---")
 
@@ -448,21 +478,22 @@ with col_txt:
     )
     if uploaded_files_txt:
         # Adjust time estimate based on processing mode
-        time_multiplier = 0.3 if use_fast_processing else 1.0  # Fast processing is ~3x faster
+        time_multiplier = 0.3 if using_fast_processing else 1.0  # Fast processing is ~3x faster
         estimated_time = len(uploaded_files_txt) * PROCESSING_TIME_PER_FILE * time_multiplier
-        
+
         if estimated_time < 60:
             time_estimate_str = f"~{max(1, round(estimated_time))} seconds"
         else:
             minutes = int(estimated_time // 60)
             seconds = int(estimated_time % 60)
             time_estimate_str = f"~{minutes}m {seconds}s" if minutes > 0 else f"~{seconds}s"
-        
-        processing_mode = "⚡ Fast" if use_fast_processing else "🐌 Standard"
+
+        processing_mode = "⚡ Fast" if using_fast_processing else "🐌 Standard"
         st.markdown(
             f"""
             <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;">
                 <strong>📊 Files Selected:</strong> {len(uploaded_files_txt)} scorecard files ready for processing<br>
+                <strong>⚙️ Mode:</strong> {processing_mode}<br>
                 <strong>⏱️ Estimated Time:</strong> {time_estimate_str}
             </div>
             """,
@@ -498,7 +529,8 @@ with col_zip:
             st.error("The uploaded ZIP looks invalid. Please try re-zipping your files.")
 
         if total > 0:
-            estimated_time = total * PROCESSING_TIME_PER_FILE
+            time_multiplier = 0.3 if using_fast_processing else 1.0
+            estimated_time = total * PROCESSING_TIME_PER_FILE * time_multiplier
             if estimated_time < 60:
                 time_estimate_str = f"~{max(1, round(estimated_time))} seconds"
             else:
@@ -509,6 +541,7 @@ with col_zip:
                 f"""
                 <div style=\"background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 15px; border-radius: 10px; margin: 15px 0;\"> 
                     <strong>🗜️ Files Detected in ZIP:</strong> {total} .txt files<br>
+                    <strong>⚙️ Mode:</strong> {"⚡ Fast" if using_fast_processing else "🐌 Standard"}<br>
                     <strong>⏱️ Estimated Time:</strong> {time_estimate_str}
                 </div>
                 """,

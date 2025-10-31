@@ -5,6 +5,16 @@ import traceback
 import numpy as np
 from pathlib import Path
 
+try:
+    from performance_utils import perf_manager
+except Exception:  # pragma: no cover - optional dependency when running standalone
+    perf_manager = None
+
+PLAYER_LINE_PATTERN = re.compile(
+    r"^(?P<Name>.+?)(?:\s+(?P<How_Out>(lbw|c|b|not out|run out|st|retired).+?))?\s+"
+    r"(?P<Runs>\d+)\s+(?P<Balls>\d+)\s+(?P<Fours>\d+|-)\s+(?P<Sixes>\d+|-)$"
+)
+
 def process_bat_stats(directory_path, game_df, match_df):
     """
     Process batting statistics from text files and merge with game data.
@@ -26,11 +36,6 @@ def process_bat_stats(directory_path, game_df, match_df):
         print(f"Match DataFrame shape: {match_df.shape}")
         print(f"Match DataFrame columns: {match_df.columns}")
 
-        # Pre-compile regex pattern for better performance
-        player_pattern = re.compile(
-            r"^(?P<Name>.+?)(?:\s+(?P<How_Out>(lbw|c|b|not out|run out|st|retired).+?))?\s+(?P<Runs>\d+)\s+(?P<Balls>\d+)\s+(?P<Fours>\d+|-)\s+(?P<Sixes>\d+|-)$"
-        )
-        
         # Use pathlib for faster file operations
         directory = Path(directory_path)
         txt_files = list(directory.glob("*.txt"))
@@ -93,7 +98,7 @@ def process_bat_stats(directory_path, game_df, match_df):
                                 continue
 
                             # Use pre-compiled regex to extract player stats
-                            player_match = player_pattern.search(player_line)
+                            player_match = PLAYER_LINE_PATTERN.search(player_line)
                             
                             if player_match:
                                 # Extract and clean player data from regex match
@@ -166,79 +171,7 @@ def process_bat_stats(directory_path, game_df, match_df):
 
         bat_df = merged_df
 
-        # Extract year from date for easier year-based filtering
-        bat_df['Year'] = bat_df['Date'].str[-4:]  # Extract last 4 characters (year)
-        bat_df['Year'] = bat_df['Year'].astype(int)  # Convert to integer
-        bat_df['Year'] = bat_df['Year'].apply(lambda x: f"{x:d}")  # Format without commas
-        
-        # Vectorized calculations for derived columns
-        bat_df['Batted'] = (bat_df['How Out'] != 'Did not bat').astype(int)
-        bat_df['Out'] = ((bat_df['How Out'] != 'Did not bat') & (bat_df['How Out'] != 'not out')).astype(int)
-        bat_df['Not Out'] = (bat_df['How Out'] == 'not out').astype(int)
-        bat_df['DNB'] = (bat_df['How Out'] == 'Did not bat').astype(int)
-        
-        # Vectorized milestone calculations
-        bat_df['50s'] = ((bat_df['Runs'] >= 50) & (bat_df['Runs'] < 100)).astype(int)
-        bat_df['100s'] = ((bat_df['Runs'] >= 100) & (bat_df['Runs'] < 200)).astype(int)
-        bat_df['200s'] = (bat_df['Runs'] >= 200).astype(int)
-        bat_df['<25&Out'] = ((bat_df['Runs'] <= 25) & (bat_df['Out'] == 1)).astype(int)
-
-        # Vectorized dismissal type calculations
-        bat_df['Caught'] = bat_df['How Out'].str.startswith('c ').astype(int)
-        bat_df['Bowled'] = bat_df['How Out'].str.startswith('b ').astype(int)
-        bat_df['LBW'] = bat_df['How Out'].str.startswith('lbw ').astype(int)
-        bat_df['Run Out'] = bat_df['How Out'].str.startswith('run').astype(int)
-        bat_df['Stumped'] = bat_df['How Out'].str.startswith('st').astype(int)
-
-        # Calculate boundary runs (4s and 6s)
-        bat_df['Boundary Runs'] = (bat_df['4s'] * 4) + (bat_df['6s'] * 6)
-
-        # Vectorized strike rate calculation
-        bat_df['Strike Rate'] = np.where(bat_df['Balls'] > 0, 
-                                        (bat_df['Runs'] / bat_df['Balls'] * 100).round(2), 0)
-
-        # Function to calculate total team balls based on format and innings state
-        def calculate_team_balls(row):
-            # If team is all out, use actual balls faced (sum of batsmen's balls)
-            if row['Wickets'] == 10:
-                return bat_df[
-                    (bat_df['File Name'] == row['File Name']) & 
-                    (bat_df['Innings'] == row['Innings'])
-                ]['Balls'].sum()
-            else:
-                # For incomplete innings, use format-specific ball counts
-                format_val = row['Match_Format']
-                if format_val in ['The Hundred', '100 Ball Trophy']:
-                    return 100  # 100-ball format
-                elif format_val == 'T20':
-                    return 120  # 20 overs = 120 balls
-                elif format_val == 'One Day':
-                    return 300  # 50 overs = 300 balls
-                else:  # Test Match or First Class
-                    # Handle decimal overs (e.g., 90.3 overs = 90*6 + 3 = 543 balls)
-                    overs_val = row['Overs']
-                    if pd.isna(overs_val):
-                        return 0
-                    try:
-                        # Split overs into whole and partial
-                        whole_overs = int(float(overs_val))
-                        partial_balls = int((float(overs_val) % 1) * 10)
-                        return (whole_overs * 6) + partial_balls
-                    except (ValueError, TypeError):
-                        # Fallback: calculate from actual balls faced
-                        return bat_df[
-                            (bat_df['File Name'] == row['File Name']) & 
-                            (bat_df['Innings'] == row['Innings'])
-                        ]['Balls'].sum()
-
-        # Apply team balls calculation to each row
-        bat_df['Team Balls'] = bat_df.apply(calculate_team_balls, axis=1)
-
-        # Handle division by zero in strike rate calculation (already handled above)
-
-        # Transform competition names to standardized format
         def transform_competition(row):
-            # Define mappings for Test trophy names based on participating teams
             test_trophies = {
                 ('Australia', 'England'): 'The Ashes',
                 ('England', 'Australia'): 'The Ashes',
@@ -263,61 +196,151 @@ def process_bat_stats(directory_path, game_df, match_df):
             }
 
             comp = row['Competition']
-            # Apply different transformations based on competition name patterns
+            if not isinstance(comp, str):
+                return comp
+
             if 'Test Match' in comp:
-                # Use specific trophy names for Test matches between certain teams
                 team_pair = (row['Home Team'], row['Away Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
                 return 'Test Match'
-            elif comp.startswith('World Cup 20'):
+            if comp.startswith('World Cup 20'):
                 return 'T20 World Cup'
-            elif comp.startswith('World Cup'):
+            if comp.startswith('World Cup'):
                 return 'ODI World Cup'
-            elif comp.startswith('Champions Cup'):
+            if comp.startswith('Champions Cup'):
                 return 'Champions Cup'
-            elif comp.startswith('Asia Trophy ODI'):
+            if comp.startswith('Asia Trophy ODI'):
                 return 'ODI Asia Cup'
-            elif comp.startswith('Asia Trophy 20'):
+            if comp.startswith('Asia Trophy 20'):
                 return 'T20 Asia Cup'
-            elif 'One Day International' in comp:
+            if 'One Day International' in comp:
                 return 'ODI'
-            elif '20 Over International' in comp:
+            if '20 Over International' in comp:
                 return 'T20I'
-            elif 'Australian League' in comp:
+            if 'Australian League' in comp:
                 return 'Sheffield Shield'
-            elif 'English FC League - D2' in comp:
+            if 'English FC League - D2' in comp:
                 return 'County Championship Division 2'
-            elif 'English FC League - D1' in comp:
-                return 'County Championship Division 1'    
-            elif 'Challenge Trophy' in comp:
-                return 'Royal London Cup'         
-            elif comp.startswith('FC League'):
+            if 'English FC League - D1' in comp:
+                return 'County Championship Division 1'
+            if 'Challenge Trophy' in comp:
+                return 'Royal London Cup'
+            if comp.startswith('FC League'):
                 return 'FC League'
-            elif comp.startswith('Super Cup'):
+            if comp.startswith('Super Cup'):
                 return 'Super Cup'
-            elif comp.startswith('20 Over Trophy'):
+            if comp.startswith('20 Over Trophy'):
                 return '20 Over Trophy'
-            elif comp.startswith('One Day Cup'):
+            if comp.startswith('One Day Cup'):
                 return 'One Day Cup'
+            return comp
+
+        if not bat_df.empty:
+            for numeric_col in ['Runs', 'Balls', '4s', '6s', 'Wickets', 'Overs', 'Bowled_Balls']:
+                if numeric_col in bat_df.columns:
+                    bat_df[numeric_col] = pd.to_numeric(bat_df[numeric_col], errors='coerce')
+
+            balls_by_innings = (
+                bat_df.groupby(['File Name', 'Innings'])['Balls'].sum().to_dict()
+                if {'File Name', 'Innings', 'Balls'}.issubset(bat_df.columns)
+                else {}
+            )
+
+            format_ball_map = {
+                'The Hundred': 100,
+                '100 Ball Trophy': 100,
+                'T20': 120,
+                'One Day': 300,
+            }
+
+            def overs_to_balls(series: pd.Series) -> np.ndarray:
+                overs = pd.to_numeric(series, errors='coerce').fillna(0).astype(float)
+                whole = np.floor(overs).astype(int)
+                partial = np.round((overs - whole) * 10).astype(int)
+                return (whole * 6 + partial).astype(int)
+
+            def enrich_batting_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
+                chunk = chunk.copy()
+
+                date_series = chunk.get('Date', '').fillna('').astype(str)
+                chunk['Year'] = pd.to_numeric(date_series.str[-4:], errors='coerce').fillna(0).astype(int).astype(str)
+
+                how_out = chunk['How Out'].fillna('')
+                chunk['Batted'] = (how_out != 'Did not bat').astype(int)
+                chunk['Out'] = ((how_out != 'Did not bat') & (how_out != 'not out')).astype(int)
+                chunk['Not Out'] = (how_out == 'not out').astype(int)
+                chunk['DNB'] = (how_out == 'Did not bat').astype(int)
+
+                runs = pd.to_numeric(chunk['Runs'], errors='coerce').fillna(0)
+                balls = pd.to_numeric(chunk['Balls'], errors='coerce').fillna(0)
+                fours = pd.to_numeric(chunk.get('4s'), errors='coerce').fillna(0)
+                sixes = pd.to_numeric(chunk.get('6s'), errors='coerce').fillna(0)
+                wickets = pd.to_numeric(chunk.get('Wickets'), errors='coerce').fillna(0)
+
+                chunk['50s'] = ((runs >= 50) & (runs < 100)).astype(int)
+                chunk['100s'] = ((runs >= 100) & (runs < 200)).astype(int)
+                chunk['200s'] = (runs >= 200).astype(int)
+                chunk['<25&Out'] = ((runs <= 25) & (chunk['Out'] == 1)).astype(int)
+
+                lower_how_out = how_out.str.lower()
+                chunk['Caught'] = lower_how_out.str.startswith('c ').astype(int)
+                chunk['Bowled'] = lower_how_out.str.startswith('b ').astype(int)
+                chunk['LBW'] = lower_how_out.str.startswith('lbw ').astype(int)
+                chunk['Run Out'] = lower_how_out.str.startswith('run').astype(int)
+                chunk['Stumped'] = lower_how_out.str.startswith('st').astype(int)
+
+                chunk['Boundary Runs'] = (fours * 4 + sixes * 6).astype(int)
+
+                strike_rate = np.where(balls > 0, (runs / balls) * 100, 0)
+                chunk['Strike Rate'] = np.round(strike_rate, 2)
+
+                keys = list(zip(
+                    chunk['File Name'] if 'File Name' in chunk.columns else [''] * len(chunk),
+                    chunk['Innings'] if 'Innings' in chunk.columns else [0] * len(chunk),
+                ))
+                all_out_mask = wickets == 10
+                all_out_values = np.array([balls_by_innings.get(key, 0) for key in keys], dtype=float)
+
+                match_format_series = (
+                    chunk['Match_Format'] if 'Match_Format' in chunk.columns else pd.Series([''] * len(chunk))
+                )
+                format_values = match_format_series.map(format_ball_map).fillna(0).to_numpy(dtype=float)
+                overs_based = overs_to_balls(chunk['Overs']) if 'Overs' in chunk.columns else np.zeros(len(chunk))
+                bowled_balls_series = (
+                    chunk['Bowled_Balls'] if 'Bowled_Balls' in chunk.columns else pd.Series([0] * len(chunk))
+                )
+                bowled_balls = pd.to_numeric(bowled_balls_series, errors='coerce').fillna(0).to_numpy(dtype=float)
+
+                team_balls = np.where(
+                    all_out_mask,
+                    all_out_values,
+                    np.where(
+                        format_values > 0,
+                        format_values,
+                        np.where(bowled_balls > 0, bowled_balls, overs_based)
+                    ),
+                )
+                chunk['Team Balls'] = np.nan_to_num(team_balls, nan=0).astype(int)
+
+                try:
+                    chunk['comp'] = chunk.apply(transform_competition, axis=1)
+                except Exception:
+                    chunk['comp'] = chunk.get('Competition')
+
+                chunk['comp'] = chunk['comp'].fillna(chunk.get('Competition'))
+                return chunk
+
+            if perf_manager:
+                chunk_size = getattr(perf_manager, 'chunk_size', 10_000)
+                enriched_chunks = perf_manager.process_in_chunks(bat_df, enrich_batting_chunk, chunk_size)
+                bat_df = pd.concat(enriched_chunks, ignore_index=True)
             else:
-                # Default: use original competition name
-                return comp
+                bat_df = enrich_batting_chunk(bat_df)
 
-        # Apply competition name transformation
-        try:
-            bat_df['comp'] = bat_df.apply(transform_competition, axis=1)
-        except Exception as e:
-            # Log error and fall back to original competition name
-            print(f"Error creating comp column: {e}")
-            bat_df['comp'] = bat_df['Competition']
-
-        # Verify comp column exists before returning
         if 'comp' not in bat_df.columns:
-            print("Warning: comp column not created, using Competition instead")
-            bat_df['comp'] = bat_df['Competition']
+            bat_df['comp'] = bat_df.get('Competition')
 
-        # Return the fully processed batting statistics DataFrame
         return bat_df
         
     except Exception as e:

@@ -1,6 +1,14 @@
-import pandas as pd
-import re
 import os
+import re
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+
+try:
+    from performance_utils import perf_manager
+except Exception:  # pragma: no cover - optional dependency during standalone runs
+    perf_manager = None
 
 def process_match_data(directory_path):
     """
@@ -12,9 +20,26 @@ def process_match_data(directory_path):
     Returns:
         DataFrame containing match metadata (teams, results, dates, etc.)
     """
-    # Initialize an empty list to hold DataFrames for each file
-    # Each file will become a row in the final DataFrame
+    def _log_dataframe_summary(label: str, df: Optional[pd.DataFrame]) -> None:
+        prefix = "[MATCH]"
+        if df is None:
+            print(f"{prefix} {label}: DataFrame is None")
+            return
+        rows, cols = df.shape
+        try:
+            memory_bytes = int(df.memory_usage(deep=True).sum())
+        except Exception:
+            memory_bytes = -1
+        columns_preview = ", ".join(str(col) for col in list(df.columns)[:10])
+        memory_part = f" memory_bytes={memory_bytes}" if memory_bytes >= 0 else ""
+        columns_part = f" columns=[{columns_preview}]" if columns_preview else ""
+        print(f"{prefix} {label}: rows={rows} cols={cols}{memory_part}{columns_part}")
+
+    print(f"[MATCH] Starting match data processing for directory: {directory_path}")
+
+    # Initialize an empty list to hold per-file DataFrames
     dataframes = []
+    processed_files = 0
 
     # Loop through all files in the specified directory
     for filename in os.listdir(directory_path):
@@ -29,6 +54,8 @@ def process_match_data(directory_path):
             # Extract match header from line 2 (format: "TeamA v TeamB")
             match_header = file_content.splitlines()[1].strip()
             home_team, away_team = match_header.split(' v ')
+
+            processed_files += 1
 
             # Extract competition and date from line 3
             # Format: "Competition Name - Date"
@@ -160,13 +187,16 @@ def process_match_data(directory_path):
             # Append the match data to our list of DataFrames
             dataframes.append(pd.DataFrame([match_data]))
 
+    print(f"[MATCH] Processed match headers for {processed_files} files")
+
     # Combine all individual file DataFrames into one master DataFrame
     if dataframes:
         final_df = pd.concat(dataframes, ignore_index=True)
-        
+
+        _log_dataframe_summary("parsed_raw", final_df)
+
         # Define a function to standardize competition names
         def transform_competition(row):
-            # Define mappings for Test trophy names based on participating teams
             test_trophies = {
                 ('Australia', 'England'): 'The Ashes',
                 ('England', 'Australia'): 'The Ashes',
@@ -191,60 +221,90 @@ def process_match_data(directory_path):
             }
 
             comp = row['Competition']
-            # Apply different transformations based on competition name patterns
+            if not isinstance(comp, str):
+                return comp
+
             if 'Test Match' in comp:
                 team_pair = (row['Home_Team'], row['Away_Team'])
                 if team_pair in test_trophies:
                     return test_trophies[team_pair]
                 return 'Test Match'
-            elif comp.startswith('World Cup 20'):
+            if comp.startswith('World Cup 20'):
                 return 'T20 World Cup'
-            elif comp.startswith('World Cup'):
+            if comp.startswith('World Cup'):
                 return 'ODI World Cup'
-            elif comp.startswith('Champions Cup'):
+            if comp.startswith('Champions Cup'):
                 return 'Champions Cup'
-            elif comp.startswith('Asia Trophy 20'):
+            if comp.startswith('Asia Trophy 20'):
                 return 'T20 Asia Cup'
-            elif comp.startswith('Asia Trophy'):
+            if comp.startswith('Asia Trophy'):
                 return 'ODI Asia Trophy'
-            elif comp.startswith('Asia Trophy ODI'):
+            if comp.startswith('Asia Trophy ODI'):
                 return 'ODI Asia Cup'
-            elif comp.startswith('FC League'):
+            if comp.startswith('FC League'):
                 return 'FC League'
-            elif comp.startswith('Super Cup'):
+            if comp.startswith('Super Cup'):
                 return 'Super Cup'
-            elif comp.startswith('20 Over Trophy'):
+            if comp.startswith('20 Over Trophy'):
                 return '20 Over Trophy'
-            elif comp.startswith('One Day Cup'):
+            if comp.startswith('One Day Cup'):
                 return 'One Day Cup'
-            elif 'One Day International' in comp:
+            if 'One Day International' in comp:
                 return 'ODI'
-            elif '20 Over International' in comp:
+            if '20 Over International' in comp:
                 return 'T20I'
-            else:
-                return comp
+            return comp
 
-        # Apply competition name transformation
-        try:
-            final_df['comp'] = final_df.apply(transform_competition, axis=1)
-        except Exception as e:
-            # Log error and fall back to original competition name
-            print(f"Error creating comp column: {e}")
-            final_df['comp'] = final_df['Competition']
+        def enrich_match_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
+            chunk = chunk.copy()
 
-        # Verify comp column exists before proceeding
+            def _safe_numeric(series_name: str) -> pd.Series:
+                if series_name in chunk.columns:
+                    series = chunk[series_name]
+                else:
+                    series = pd.Series(0, index=chunk.index, dtype=float)
+                return pd.to_numeric(series, errors='coerce').fillna(0)
+
+            overs = _safe_numeric('Overs')
+            runs = _safe_numeric('Total_Runs')
+            wickets = _safe_numeric('Wickets')
+            balls = _safe_numeric('Bowled_Balls')
+
+            run_rate = np.where(overs > 0, runs / overs, 0)
+            chunk['Run_Rate'] = np.nan_to_num(run_rate, nan=0.0).round(2)
+
+            bpw = np.where(wickets > 0, balls / wickets, 0)
+            chunk['Balls_Per_Wicket'] = np.nan_to_num(bpw, nan=0.0).round(2)
+
+            try:
+                chunk['comp'] = chunk.apply(transform_competition, axis=1)
+            except Exception:
+                chunk['comp'] = chunk.get('Competition')
+
+            chunk['comp'] = chunk['comp'].fillna(chunk.get('Competition'))
+            return chunk
+
+        if perf_manager:
+            chunk_size = getattr(perf_manager, 'chunk_size', 10_000)
+            print(f"[MATCH] Enriching match data in chunks (chunk_size={chunk_size})")
+            enriched_parts = perf_manager.process_in_chunks(final_df, enrich_match_chunk, chunk_size)
+            final_df = pd.concat(enriched_parts, ignore_index=True)
+        else:
+            print("[MATCH] Enriching match data without chunk manager")
+            final_df = enrich_match_chunk(final_df)
+
         if 'comp' not in final_df.columns:
-            print("Warning: comp column not created, using Competition instead")
-            final_df['comp'] = final_df['Competition']
+            final_df['comp'] = final_df.get('Competition')
 
-        # Save the DataFrame to a CSV file for use by other scripts
+        _log_dataframe_summary("final_enriched", final_df)
+
         csv_path = os.path.join(directory_path, "match_data.csv")
         final_df.to_csv(csv_path, index=False)
-        print(f"Match data saved to {csv_path}")
+        print(f"[MATCH] Match data saved to {csv_path}")
         
         return final_df  # Return the processed DataFrame
     else:
-        print("No match data found.")
+        print("[MATCH] No match data found.")
         return pd.DataFrame()  # Return an empty DataFrame if no data found
 
 # Code that runs when this script is executed directly (not imported)

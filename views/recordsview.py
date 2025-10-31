@@ -8,7 +8,8 @@ import gc
 import sys
 import time
 from datetime import datetime
-from pandas.api.types import CategoricalDtype
+from typing import Optional
+from pandas.api.types import CategoricalDtype, is_scalar
 
 try:
     import polars as pl
@@ -20,24 +21,12 @@ try:
 except ImportError:  # pragma: no cover - support direct execution
     from views.logging_utils import FastViewLogger
 
+try:
+    from performance_utils import memory_efficient_cache, get_tracked_dataframe
+except ImportError:  # pragma: no cover - support package-relative imports
+    from ..performance_utils import memory_efficient_cache, get_tracked_dataframe  # type: ignore
+
 logger = FastViewLogger(st, "Records")
-
-# Simple placeholder cache functions (without Redis)
-def cache_dataframe(key, df, expiry=None):
-    """Simple in-memory cache for dataframes"""
-    if 'cache_data' not in st.session_state:
-        st.session_state.cache_data = {}
-    st.session_state.cache_data[key] = df
-
-def get_cached_dataframe(key):
-    """Retrieve a cached DataFrame from session state"""
-    if 'cache_data' not in st.session_state:
-        st.session_state.cache_data = {}
-    return st.session_state.cache_data.get(key, None)
-
-def generate_cache_key(*args):
-    """Generate a simple cache key"""
-    return '_'.join(str(arg) for arg in args)
 
 
 def _to_polars_frame(df: pd.DataFrame):
@@ -122,17 +111,6 @@ BOWL_DROP_COMMON = [
 
 # Section 2: Helper Functions and Page Setup
 ###############################################################################
-def get_data_hash():
-    """Generate a hash of the current data state"""
-    hash_components = []
-    for df_name in ['bat_df', 'bowl_df', 'match_df', 'game_df']:
-        df = st.session_state.get(df_name)
-        if df is not None and not df.empty:
-            hash_components.append(str(df.shape))
-            hash_components.append(str(df.index.values[-1] if not df.empty else ''))
-    return hash(''.join(hash_components))
-
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def parse_date(date_str):
     """Helper function to parse dates in multiple formats"""
     if pd.isna(date_str):
@@ -161,87 +139,89 @@ def parse_date(date_str):
         # If all parsing attempts fail, return NaT (Not a Time)
         return pd.NaT
 
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
-def process_dataframes():
-    """Process all dataframes with improved memory management"""
-    # Get current data hash
-    current_hash = get_data_hash()
-    
-    # Clear cache if data hash changed
-    if 'last_data_hash' not in st.session_state or st.session_state.last_data_hash != current_hash:
-        st.cache_data.clear()
-        st.session_state.last_data_hash = current_hash
-
-    def safe_parse_dates(df):
-        if df is None:
-            return None
-        
-        try:
-            # Make a copy to avoid modifying original
-            df = df.copy()
-            
-            # Convert to smaller dtypes where possible
-            for col in df.select_dtypes(include=['int64']).columns:
-                df[col] = pd.to_numeric(df[col], downcast='integer')
-            for col in df.select_dtypes(include=['float64']).columns:
-                df[col] = pd.to_numeric(df[col], downcast='float')
-            
-            # Parse dates
-            if 'Date' in df.columns:
-                df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-                df = df.dropna(subset=['Date'])
-            
-            # Free memory
-            gc.collect()
-            
-            return df
-        except Exception as e:
-            st.error(f"Error processing dataframe: {str(e)}")
-            return None
+def _safe_parse_dates(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Coerce date columns and downcast numerics without mutating the source frame."""
+    if df is None or df.empty:
+        return None
 
     try:
-        # Process each dataframe
-        bat_df = safe_parse_dates(st.session_state.get('bat_df'))
-        gc.collect()
-        bowl_df = safe_parse_dates(st.session_state.get('bowl_df'))
-        gc.collect()
-        match_df = safe_parse_dates(st.session_state.get('match_df'))
-        gc.collect()
-        game_df = safe_parse_dates(st.session_state.get('game_df'))
-        gc.collect()
+        working = df.copy()
 
+        int_cols = working.select_dtypes(include=['int64']).columns
+        if len(int_cols):
+            working[int_cols] = working[int_cols].apply(pd.to_numeric, downcast='integer')
+
+        float_cols = working.select_dtypes(include=['float64']).columns
+        if len(float_cols):
+            working[float_cols] = working[float_cols].apply(pd.to_numeric, downcast='float')
+
+        if 'Date' in working.columns:
+            working['Date'] = pd.to_datetime(working['Date'], errors='coerce')
+            working = working.dropna(subset=['Date'])
+
+        gc.collect()
+        return working
+    except Exception as exc:  # pragma: no cover - defensive guard
+        st.error(f"Error processing dataframe: {exc}")
+        return None
+
+
+@memory_efficient_cache(ttl=600, data_types=['batting', 'bowling', 'match', 'game'])
+def process_dataframes():
+    """Process all session DataFrames with improved memory management."""
+    try:
+        bat_df = _safe_parse_dates(get_tracked_dataframe('bat_df'))
+        bowl_df = _safe_parse_dates(get_tracked_dataframe('bowl_df'))
+        match_df = _safe_parse_dates(get_tracked_dataframe('match_df'))
+        game_df = _safe_parse_dates(get_tracked_dataframe('game_df'))
+        gc.collect()
         return bat_df, bowl_df, match_df, game_df
-    except Exception as e:
-        st.error(f"Error in process_dataframes: {str(e)}")
+    except Exception as exc:  # pragma: no cover - defensive guard
+        st.error(f"Error in process_dataframes: {exc}")
         return None, None, None, None
 
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
+
+@memory_efficient_cache(ttl=600, data_types=['batting', 'bowling', 'match', 'game'])
 def filter_by_format(df, format_choice):
     """Filter dataframe by format with caching"""
     if df is None or df.empty:
         return df
-        
-    # Make a copy of the dataframe
-    filtered_df = df.copy()
-    
-    # Only filter if format_choice doesn't include 'All' and isn't empty
-    if 'All' not in format_choice and format_choice:
-        filtered_df = filtered_df[filtered_df['Match_Format'].isin(format_choice)]
-    
-    return filtered_df
+    if 'All' in format_choice or not format_choice:
+        return df
+    return df[df['Match_Format'].isin(format_choice)]
 
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
+@memory_efficient_cache(ttl=600, data_types=['batting', 'bowling', 'match', 'game'])
 def get_formats():
-    """Get unique formats from all dataframes with caching"""
-    all_formats = set(['All'])
-    
+    """Return sorted list of format names with 'All' pinned to the top."""
+    collected: set[str] = {'All'}
+
     for df_name in ['game_df', 'bat_df', 'bowl_df', 'match_df']:
-        if df_name in st.session_state and st.session_state[df_name] is not None:
-            df = st.session_state[df_name]
-            if not df.empty and 'Match_Format' in df.columns:
-                all_formats.update(df['Match_Format'].unique())
-    
-    return sorted(list(all_formats))
+        df = get_tracked_dataframe(df_name)
+        if df.empty or 'Match_Format' not in df.columns:
+            continue
+        raw_values = df['Match_Format'].dropna().unique().tolist()
+        if not raw_values:
+            continue
+        stringified = []
+        for value in raw_values:
+            if not is_scalar(value):
+                logger.log(
+                    "Non-scalar format option skipped",
+                    source=df_name,
+                    value_type=type(value).__name__,
+                )
+                continue
+            stringified.append(str(value))
+        collected.update(stringified)
+
+    tail = sorted(value for value in collected if value != 'All')
+    options = ['All', *tail]
+    logger.log(
+        "Format options prepared",
+        total=len(options),
+        sample=options[:5],
+    )
+    return options
 
 def init_page():
     """Initialize page styling with beautiful modern design"""
@@ -385,7 +365,26 @@ def initialize_data():
         bat_df, bowl_df, match_df, game_df = process_dataframes()
         
         # Get formats and filter choice
-        formats = get_formats()
+        raw_formats = get_formats() or []
+        formats: list[str] = []
+        seen = set()
+        for option in raw_formats:
+            normalized = option if isinstance(option, str) else str(option)
+            if normalized not in seen:
+                seen.add(normalized)
+                formats.append(normalized)
+
+        if 'All' in formats:
+            formats = ['All'] + [option for option in formats if option != 'All']
+        else:
+            formats.insert(0, 'All')
+
+        logger.log(
+            "Format widget options",
+            count=len(formats),
+            sample=formats[:5],
+        )
+
         format_choice = st.multiselect('Format:', formats, default=['All'])
         
         if not format_choice:
@@ -403,7 +402,6 @@ def initialize_data():
         st.error(f"Error initializing data: {str(e)}")
         return None, None, None, None
 
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minute cache
 def process_data_chunk(func, df, *args, **kwargs):
     """Process data in smaller chunks to manage memory"""
     if df is None or df.empty:
@@ -437,26 +435,6 @@ def format_date_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
         formatted_df[col] = pd.to_datetime(formatted_df[col], errors='coerce')
     formatted_df[col] = formatted_df[col].dt.strftime('%d/%m/%Y')
     return formatted_df
-
-def safe_parse_dates(df: pd.DataFrame) -> pd.DataFrame | None:
-    """
-    Downcast numeric types and coerce 'Date' column to datetime.
-    Returns a fresh copy or None on failure.
-    """
-    if df is None:
-        return None
-    try:
-        df = df.copy()
-        # downcast all integers/floats in one pass
-        df = df.convert_dtypes()  
-        # coerce Date
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df = df.dropna(subset=['Date'])
-        return df
-    except Exception as e:
-        st.error(f"safe_parse_dates error: {e}")
-        return None
 
 # Section 3: Batting Records Functions
 ###############################################################################
@@ -497,62 +475,106 @@ def process_highest_scores(filtered_bat_df: pd.DataFrame) -> pd.DataFrame:
     return format_date_column(df, 'Date')
 
 def process_consecutive_scores(filtered_bat_df, threshold):
-    """Process consecutive scores above threshold"""
+    """Return longest streaks of scores above threshold per player/format using vectorised operations."""
+    columns = ['Name', 'Match_Format', 'Consecutive Matches', 'Start Date', 'End Date']
     if filtered_bat_df is None or filtered_bat_df.empty:
-        return pd.DataFrame()
-    
-    # Sort by name, format and date
-    df = filtered_bat_df.sort_values(['Name', 'Match_Format', 'Date'])
-    
-    # Initialize variables for tracking streaks
-    current_streaks = {}  # Will use (name, format) as key
-    best_streaks = {}
-    streak_dates = {}
-    
-    for _, row in df.iterrows():
-        name = row['Name']
-        match_format = row['Match_Format']
-        key = (name, match_format)  # Composite key
-        runs = row['Runs']
-        date = row['Date']
-        
-        if key not in current_streaks:
-            current_streaks[key] = 0
-            best_streaks[key] = 0
-            streak_dates[key] = {'start': None, 'end': None, 'current_start': None}
-        
-        if runs >= threshold:
-            if current_streaks[key] == 0:
-                streak_dates[key]['current_start'] = date
-            
-            current_streaks[key] += 1
-            
-            if current_streaks[key] > best_streaks[key]:
-                best_streaks[key] = current_streaks[key]
-                streak_dates[key]['start'] = streak_dates[key]['current_start']
-                streak_dates[key]['end'] = date
+        return pd.DataFrame(columns=columns)
+
+    df = (
+        filtered_bat_df
+        .loc[:, ['Name', 'Match_Format', 'Date', 'Runs']]
+        .dropna(subset=['Name', 'Match_Format', 'Date'])
+        .sort_values(['Name', 'Match_Format', 'Date'])
+    )
+
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+
+    # Categoricals can break rolling aggregates; coerce relevant columns early.
+    categorical_cols = df.select_dtypes(include=['category']).columns.tolist()
+    for col in categorical_cols:
+        if col == 'Date':
+            df[col] = pd.to_datetime(df[col].astype(str), errors='coerce')
         else:
-            current_streaks[key] = 0
-            streak_dates[key]['current_start'] = None
-    
-    # Create DataFrame from streak data
-    streak_records = []
-    for (name, match_format) in best_streaks:
-        if best_streaks[(name, match_format)] >= 2:  # Only include streaks of 2 or more matches
-            streak_info = {
-                'Name': name,
-                'Match_Format': match_format,
-                'Consecutive Matches': best_streaks[(name, match_format)],
-                'Start Date': streak_dates[(name, match_format)]['start'].strftime('%d/%m/%Y'),
-                'End Date': streak_dates[(name, match_format)]['end'].strftime('%d/%m/%Y')
-            }
-            streak_records.append(streak_info)
-    
-    # If no streaks found, return empty DataFrame with correct columns
-    if not streak_records:
-        return pd.DataFrame(columns=['Name', 'Match_Format', 'Consecutive Matches', 'Start Date', 'End Date'])
-    
-    return pd.DataFrame(streak_records).sort_values('Consecutive Matches', ascending=False)
+            df[col] = df[col].astype('string')
+
+    for col in ['Name', 'Match_Format']:
+        if col in df.columns:
+            df[col] = df[col].astype('string')
+
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+
+    df['hit_flag'] = (df['Runs'] >= threshold).astype(int)
+    if not df['hit_flag'].any():
+        return pd.DataFrame(columns=columns)
+
+    group_keys = ['Name', 'Match_Format']
+    grouped = df.groupby(group_keys, sort=False)
+    df['segment'] = grouped['hit_flag'].transform(lambda s: s.eq(0).cumsum())
+    df['streak_length'] = (
+        df.groupby(group_keys + ['segment'])['hit_flag']
+        .cumsum()
+        * df['hit_flag']
+    )
+
+    streaks = (
+        df[df['hit_flag'] == 1]
+        .groupby(group_keys + ['segment'], as_index=False)
+        .agg(
+            streak_length=('streak_length', 'max'),
+            start_date=('Date', 'min'),
+            end_date=('Date', 'max'),
+        )
+    )
+
+    streaks = streaks[streaks['streak_length'] >= 2]
+    if streaks.empty:
+        return pd.DataFrame(columns=columns)
+
+    streaks = streaks.sort_values(['streak_length', 'end_date'], ascending=[False, False])
+    best_streaks = streaks.drop_duplicates(subset=group_keys, keep='first')
+    best_streaks = best_streaks.sort_values('streak_length', ascending=False)
+
+    best_streaks['Start Date'] = best_streaks['start_date'].dt.strftime('%d/%m/%Y')
+    best_streaks['End Date'] = best_streaks['end_date'].dt.strftime('%d/%m/%Y')
+
+    result = best_streaks.rename(columns={'streak_length': 'Consecutive Matches'})[
+        ['Name', 'Match_Format', 'Consecutive Matches', 'Start Date', 'End Date']
+    ]
+    return result.reset_index(drop=True)
+
+
+def _ensure_run_rate(
+    df: pd.DataFrame,
+    *,
+    runs_col: str = 'Total_Runs',
+    overs_col: str = 'Overs',
+    result_col: str = 'Run_Rate',
+) -> pd.DataFrame:
+    """Guarantee a run-rate column exists by computing it when missing.
+
+    Handles overs recorded in cricket notation (e.g. 47.3 = 47 overs, 3 balls).
+    """
+
+    if df is None or df.empty or result_col in df.columns:
+        return df
+    if runs_col not in df.columns or overs_col not in df.columns:
+        return df
+
+    overs_values = pd.to_numeric(df[overs_col], errors='coerce').to_numpy()
+    runs_values = pd.to_numeric(df[runs_col], errors='coerce').to_numpy()
+
+    safe_overs = np.nan_to_num(overs_values, nan=0.0)
+    whole_overs = np.floor(safe_overs)
+    partial_balls = safe_overs - whole_overs
+    overs_float = whole_overs + (partial_balls * 10) / 6
+
+    run_rate = np.zeros_like(overs_float, dtype=float)
+    valid = overs_float > 0
+    run_rate[valid] = np.nan_to_num(runs_values[valid], nan=0.0) / overs_float[valid]
+
+    df[result_col] = np.nan_to_num(run_rate, nan=0.0).round(2)
+    return df
 
 def process_not_out_99s(filtered_bat_df: pd.DataFrame) -> pd.DataFrame:
     """Return 99 not out entries."""
@@ -843,10 +865,12 @@ def process_team_scores(filtered_game_df, score_type='highest'):
     """Process team scores data"""
     if filtered_game_df is None or filtered_game_df.empty:
         return pd.DataFrame()
-    
-    df = filtered_game_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets',
-                          'Overs', 'Run_Rate', 'Competition', 'Match_Format',
-                          'Date']].copy()
+
+    working_df = _ensure_run_rate(filtered_game_df.copy())
+
+    df = working_df[['Bat_Team', 'Bowl_Team', 'Total_Runs', 'Wickets',
+                     'Overs', 'Run_Rate', 'Competition', 'Match_Format',
+                     'Date']].copy()
     
     if score_type == 'lowest':
         df = df[df['Wickets'] == 10]
@@ -1719,6 +1743,8 @@ def get_highest_chases(processed_game_df, filtered_match_df):
             on=['File Name', 'Date'],
             how='left'
         )
+
+        merged_df = _ensure_run_rate(merged_df)
         
         # Determine the correct column name for 'Competition'
         competition_col = 'Competition_x' if 'Competition_x' in merged_df.columns else 'Competition_y'
@@ -1739,10 +1765,19 @@ def get_highest_chases(processed_game_df, filtered_match_df):
         chase_df = successful_chases.sort_values('Total_Runs', ascending=False)
 
         # Select and rename columns
-        chase_df = chase_df[['Bat_Team', 'Bowl_Team', 'Innings', 'Total_Runs', 'Wickets', 'Overs', 
-                            'Run_Rate', competition_col, 'Match_Format_x', 'Date', 'Margin_y']]
-        chase_df.columns = ['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Wickets', 'Overs',
-                           'Run Rate', 'Competition', 'Format', 'Date', 'Margin']
+        keep_columns = ['Bat_Team', 'Bowl_Team', 'Innings', 'Total_Runs', 'Wickets', 'Overs',
+                         'Run_Rate', competition_col, 'Match_Format_x', 'Date', 'Margin_y']
+        chase_df = chase_df[[col for col in keep_columns if col in chase_df.columns]].copy()
+        rename_map = {
+            'Bat_Team': 'Bat Team',
+            'Bowl_Team': 'Bowl Team',
+            'Total_Runs': 'Runs',
+            'Run_Rate': 'Run Rate',
+            competition_col: 'Competition',
+            'Match_Format_x': 'Format',
+            'Margin_y': 'Margin',
+        }
+        chase_df = chase_df.rename(columns=rename_map)
 
         # Format date
         chase_df['Date'] = chase_df['Date'].dt.strftime('%d/%m/%Y')
@@ -1820,6 +1855,8 @@ with tabs[3]:
                     on=['File Name', 'Date'], 
                     how='left'
                 )
+
+                merged_df = _ensure_run_rate(merged_df)
                 
                 # Select desired columns
                 low_wins_df = merged_df[['Bat_Team', 'Bowl_Team', 'Innings', 'Total_Runs', 
@@ -1838,13 +1875,24 @@ with tabs[3]:
                 
                 # Format date and rename columns
                 low_wins_df['Date'] = low_wins_df['Date'].dt.strftime('%d/%m/%Y')
-                low_wins_df.columns = ['Bat Team', 'Bowl Team', 'Innings', 'Runs', 
-                                     'Overs', 'Wickets', 'Run Rate', 'Competition', 
-                                     'Format', 'Player of the Match', 'Date',
-                                     'Result', 'Margin']
-                
-                # Remove Result column and sort by runs ascending
-                low_wins_df = low_wins_df.drop('Result', axis=1)
+                rename_map = {
+                    'Bat_Team': 'Bat Team',
+                    'Bowl_Team': 'Bowl Team',
+                    'Total_Runs': 'Runs',
+                    'Run_Rate': 'Run Rate',
+                    'Competition_x': 'Competition',
+                    'Match_Format_x': 'Format',
+                    'Player_of_the_Match_x': 'Player of the Match',
+                    'Margin_y': 'Margin',
+                }
+                low_wins_df = low_wins_df.rename(columns=rename_map)
+
+                if 'Result' in low_wins_df.columns:
+                    low_wins_df = low_wins_df.drop('Result', axis=1)
+
+                keep_order = ['Bat Team', 'Bowl Team', 'Innings', 'Runs', 'Overs', 'Wickets',
+                              'Run Rate', 'Competition', 'Format', 'Player of the Match', 'Date', 'Margin']
+                low_wins_df = low_wins_df[[col for col in keep_order if col in low_wins_df.columns]]
                 
                 return low_wins_df.sort_values('Runs', ascending=True)
 
@@ -1919,6 +1967,8 @@ with tabs[3]:
                     how='left'
                 )
 
+                merged_df = _ensure_run_rate(merged_df)
+
                 # Calculate deficit properly for both innings
                 merged_df['Diff'] = np.where(
                     merged_df['Innings'] == 1,
@@ -1962,7 +2012,8 @@ with tabs[3]:
                 
                 merged_df = merged_df.rename(columns=column_renames)
                 columns_to_show = [column_renames.get(col, col) for col in columns_to_show]
-                return merged_df[columns_to_show].copy()
+                existing_cols = [col for col in columns_to_show if col in merged_df.columns]
+                return merged_df[existing_cols].copy()
 
             # First Innings Deficit Wins
             st.markdown("""
@@ -2019,6 +2070,8 @@ with tabs[3]:
                 how='left'
             )
 
+            merged_df = _ensure_run_rate(merged_df)
+
             # Calculate lead properly for both innings
             merged_df['Lead'] = np.where(
                 merged_df['Innings'] == 1,
@@ -2063,7 +2116,8 @@ with tabs[3]:
             
             merged_df = merged_df.rename(columns=column_renames)
             columns_to_show = [column_renames.get(col, col) for col in columns_to_show]
-            return merged_df[columns_to_show].copy()
+            existing_cols = [col for col in columns_to_show if col in merged_df.columns]
+            return merged_df[existing_cols].copy()
 
         try:
             # First Innings Lead Losses
@@ -2225,7 +2279,7 @@ with tabs[4]:
             series_info_df['Away_Team_norm'] = (
                 series_info_df['Away_Team'].astype(str).str.strip().str.lower()
             )
-            series_info_df['Match_Format_norm'] = (
+            series_info_df['match_format_norm'] = (
                 series_info_df['Match_Format'].astype(str).str.strip().str.lower()
             )
 
@@ -2234,7 +2288,7 @@ with tabs[4]:
             series_end_dates = series_info_df['End_Date'].dt.date
             series_home_norm = series_info_df['Home_Team_norm']
             series_away_norm = series_info_df['Away_Team_norm']
-            series_format_norm = series_info_df['Match_Format_norm']
+            series_format_norm = series_info_df['match_format_norm']
 
             series_display_df = series_info_df.copy()
             series_display_df = format_date_column(series_display_df, 'Start_Date')
@@ -2274,75 +2328,134 @@ with tabs[4]:
         series_batting['Date_dt'] = pd.to_datetime(
             series_batting['Date'], errors='coerce', dayfirst=True
         )
-        
+
         # Remove unwanted columns
         series_batting = series_batting.drop(['Bat_Team_x', 'Bowl_Team_x'], axis=1, errors='ignore')
-        
+
         def _normalize_team(value):
             if value is None or pd.isna(value):
                 return None
             return str(value).strip().lower()
 
-        # Add Series column by matching date ranges
-        def find_series(row):
-            try:
-                match_date = row.get('Date_dt')
-                if pd.isna(match_date):
-                    match_date = pd.to_datetime(row.get('Date'), errors='coerce', dayfirst=True)
-                if pd.isna(match_date):
-                    return None
-                match_date = match_date.date()
-                # Check if necessary columns exist in series_info_df
-                if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    match_format = _normalize_team(row.get('Match_Format'))
-                    team_candidates = {
-                        _normalize_team(row.get('Bat_Team_y')),
-                        _normalize_team(row.get('Bowl_Team_y')),
-                        _normalize_team(row.get('Bat_Team')),
-                        _normalize_team(row.get('Bowl_Team')),
-                        _normalize_team(row.get('Home Team')),
-                        _normalize_team(row.get('Away Team')),
-                    }
-                    team_candidates = {team for team in team_candidates if team}
-                    if not team_candidates:
-                        return None
-                    # Filter rows where match_date is within range and teams match
-                    mask = (
-                        series_info_df['Start_Date'].notna() &
-                        series_info_df['End_Date'].notna() &
-                        (series_start_dates <= match_date) & 
-                        (series_end_dates >= match_date) & 
-                        (series_home_norm.isin(team_candidates) | series_away_norm.isin(team_candidates))
+        team_column_candidates = [
+            'Bat_Team_y', 'Bat_Team', 'Bat Team',
+            'Bowl_Team_y', 'Bowl_Team', 'Bowl Team',
+            'Home Team', 'Away Team'
+        ]
+        team_columns_present = [col for col in team_column_candidates if col in series_batting.columns]
+
+        if 'Match_Format' not in series_batting.columns or not team_columns_present:
+            logger.log(
+                "series_batting missing required columns",
+                has_match_format='Match_Format' in series_batting.columns,
+                team_columns=team_columns_present,
+            )
+            series_batting['Series'] = np.nan
+        else:
+            series_batting['match_format_norm'] = (
+                series_batting['Match_Format'].astype(str).str.strip().str.lower()
+            )
+            series_batting['row_id'] = np.arange(len(series_batting))
+
+            team_long = (
+                series_batting[['row_id'] + team_columns_present]
+                .melt(id_vars='row_id', value_vars=team_columns_present, value_name='team_raw')
+                .dropna(subset=['team_raw'])
+            )
+            if not team_long.empty:
+                team_long['team_norm'] = [
+                    _normalize_team(value) for value in team_long['team_raw']
+                ]
+                team_long = team_long[team_long['team_norm'].notna()]
+
+                meta_cols = ['row_id', 'Date_dt', 'match_format_norm']
+                team_long = team_long.merge(series_batting[meta_cols], on='row_id', how='left')
+
+                series_expanded = pd.concat([
+                    series_info_df[['Series', 'Start_Date', 'End_Date', 'match_format_norm']]
+                    .assign(team_norm=series_info_df['Home_Team_norm']),
+                    series_info_df[['Series', 'Start_Date', 'End_Date', 'match_format_norm']]
+                    .assign(team_norm=series_info_df['Away_Team_norm']),
+                ], ignore_index=True)
+                series_expanded = series_expanded.dropna(subset=['team_norm'])
+
+                candidate_matches = team_long.merge(
+                    series_expanded,
+                    on=['team_norm', 'match_format_norm'],
+                    how='left',
+                )
+                candidate_matches = candidate_matches[
+                    candidate_matches['Series'].notna()
+                ]
+                candidate_matches = candidate_matches[
+                    candidate_matches['Date_dt'].notna()
+                ]
+                if not candidate_matches.empty:
+                    for date_col in ('Date_dt', 'Start_Date', 'End_Date'):
+                        if date_col in candidate_matches.columns:
+                            candidate_matches[date_col] = pd.to_datetime(
+                                candidate_matches[date_col], errors='coerce'
+                            )
+                    candidate_matches = candidate_matches.dropna(
+                        subset=['Date_dt', 'Start_Date', 'End_Date']
                     )
-                    if match_format:
-                        mask &= series_format_norm == match_format
-                    matches = series_info_df[mask]
-                    
-                    if not matches.empty:
-                        return matches['Series'].iloc[0]
-                return None
-            except Exception as e:
-                # Log error but don't crash
-                #st.write(f"Error in find_series: {e}")
-                return None
-        
-        # Add Series column
-        series_batting['Series'] = series_batting.apply(find_series, axis=1)
+                    candidate_matches = candidate_matches[
+                        (candidate_matches['Date_dt'] >= candidate_matches['Start_Date']) &
+                        (candidate_matches['Date_dt'] <= candidate_matches['End_Date'])
+                    ]
+                    candidate_matches = candidate_matches.sort_values(
+                        ['row_id', 'Start_Date', 'Series']
+                    )
+                    row_to_series = (
+                        candidate_matches
+                        .drop_duplicates('row_id')[['row_id', 'Series']]
+                    )
+                    series_batting = series_batting.merge(
+                        row_to_series,
+                        on='row_id',
+                        how='left',
+                    )
+                else:
+                    series_batting['Series'] = np.nan
+            else:
+                series_batting['Series'] = np.nan
+
         matched_count = int(series_batting['Series'].notna().sum())
         logger.log("series_batting matches", matched=matched_count, total=len(series_batting))
-        
+
         # Filter out rows with no series match
         series_batting = series_batting[series_batting['Series'].notna()]
-        series_batting = series_batting.drop(columns=['Date_dt'], errors='ignore')
+        series_batting = series_batting.drop(columns=['Date_dt', 'match_format_norm', 'row_id'], errors='ignore')
         
         if series_batting.empty:
             logger.log("series_batting empty_after_filter")
             st.info("No batting data matches available series.")
         else:
             logger.log_dataframe("series_batting matched", series_batting)
+            bat_team_src = next((col for col in ['Bat_Team_y', 'Bat_Team', 'Bat Team'] if col in series_batting.columns), None)
+            bowl_team_src = next((col for col in ['Bowl_Team_y', 'Bowl_Team', 'Bowl Team'] if col in series_batting.columns), None)
+            country_src = next((col for col in ['Home Team', 'Country'] if col in series_batting.columns), None)
+            if bat_team_src:
+                series_batting['Bat Team'] = series_batting[bat_team_src]
+            else:
+                series_batting['Bat Team'] = np.nan
+            if bowl_team_src:
+                series_batting['Bowl Team'] = series_batting[bowl_team_src]
+            else:
+                series_batting['Bowl Team'] = np.nan
+            if country_src:
+                series_batting['Country'] = series_batting[country_src]
+            else:
+                series_batting['Country'] = np.nan
+            logger.log(
+                "series_batting group sources",
+                bat_team_source=bat_team_src,
+                bowl_team_source=bowl_team_src,
+                country_source=country_src,
+            )
             # Create series batting statistics
             series_stats = series_batting.groupby(
-                ['Series', 'Name', 'Bat_Team_y', 'Bowl_Team_y', 'Home Team'],
+                ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'],
                 observed=True
             ).agg({
                 'File Name': 'nunique',
@@ -2358,9 +2471,12 @@ with tabs[4]:
             }).reset_index()
             
             # Rename columns for display
-            series_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
-                                  'Matches', 'Batted', 'Out', 'Not Out', 'Runs', 
-                                  'Balls', '4s', '6s', '50s', '100s']
+            series_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country',
+                                    'Matches', 'Batted', 'Out', 'Not Out', 'Runs',
+                                    'Balls', '4s', '6s', '50s', '100s']
+
+            if 'Runs' in series_stats.columns:
+                series_stats = series_stats.sort_values('Runs', ascending=False)
             
             # Display series batting statistics
             if not series_stats.empty:
@@ -2390,47 +2506,141 @@ with tabs[4]:
         
         # Create a copy of bowling dataframe
         series_bowling = filtered_bowl_df.copy()
-        
-        # Add Series column by matching date ranges
-        def find_bowling_series(row):
-            try:
-                match_date = pd.to_datetime(row['Date'], errors='coerce', dayfirst=True)
-                if pd.isna(match_date):
-                    return None
-                match_date = match_date.date()
-                # Check if necessary columns exist in series_info_df
-                if all(col in series_info_df.columns for col in ['Start_Date', 'End_Date', 'Home_Team', 'Away_Team', 'Series']):
-                    # Filter rows where match_date is within range and teams match
-                    mask = (
-                        series_info_df['Start_Date'].notna() &
-                        series_info_df['End_Date'].notna() &
-                        (series_start_dates <= match_date) & 
-                        (series_end_dates >= match_date) & 
-                        ((series_info_df['Home_Team'] == row['Bat_Team']) | 
-                        (series_info_df['Home_Team'] == row['Bowl_Team']) |
-                        (series_info_df['Away_Team'] == row['Bat_Team']) |
-                        (series_info_df['Away_Team'] == row['Bowl_Team']))
+        logger.log_dataframe("series_bowling initial", series_bowling)
+        logger.log(
+            "series_bowling team columns",
+            bat_columns=[c for c in series_bowling.columns if 'Bat_Team' in c or 'Bat Team' in c],
+            bowl_columns=[c for c in series_bowling.columns if 'Bowl_Team' in c or 'Bowl Team' in c],
+        )
+
+        series_bowling['Date_dt'] = pd.to_datetime(
+            series_bowling['Date'], errors='coerce', dayfirst=True
+        )
+
+        numeric_cols = ['Bowler_Overs', 'Bowler_Wkts', 'Bowler_Runs']
+        for col in numeric_cols:
+            if col in series_bowling.columns:
+                series_bowling[col] = pd.to_numeric(series_bowling[col], errors='coerce').fillna(0)
+
+        def _normalize_team_bowling(value):
+            if value is None or pd.isna(value):
+                return None
+            return str(value).strip().lower()
+
+        team_column_candidates = [
+            'Bat_Team', 'Bat Team',
+            'Bowl_Team', 'Bowl Team',
+            'Home_Team', 'Home Team',
+            'Away_Team', 'Away Team'
+        ]
+        team_columns_present = [col for col in team_column_candidates if col in series_bowling.columns]
+
+        if 'Match_Format' not in series_bowling.columns or not team_columns_present:
+            logger.log(
+                "series_bowling missing required columns",
+                has_match_format='Match_Format' in series_bowling.columns,
+                team_columns=team_columns_present,
+            )
+            series_bowling['Series'] = np.nan
+        else:
+            series_bowling['match_format_norm'] = (
+                series_bowling['Match_Format'].astype(str).str.strip().str.lower()
+            )
+            series_bowling['row_id'] = np.arange(len(series_bowling))
+
+            team_long = (
+                series_bowling[['row_id'] + team_columns_present]
+                .melt(id_vars='row_id', value_vars=team_columns_present, value_name='team_raw')
+                .dropna(subset=['team_raw'])
+            )
+            if not team_long.empty:
+                team_long['team_norm'] = [
+                    _normalize_team_bowling(value) for value in team_long['team_raw']
+                ]
+                team_long = team_long[team_long['team_norm'].notna()]
+
+                meta_cols = ['row_id', 'Date_dt', 'match_format_norm']
+                team_long = team_long.merge(series_bowling[meta_cols], on='row_id', how='left')
+
+                series_expanded = pd.concat([
+                    series_info_df[['Series', 'Start_Date', 'End_Date', 'match_format_norm']]
+                    .assign(team_norm=series_info_df['Home_Team_norm']),
+                    series_info_df[['Series', 'Start_Date', 'End_Date', 'match_format_norm']]
+                    .assign(team_norm=series_info_df['Away_Team_norm']),
+                ], ignore_index=True)
+                series_expanded = series_expanded.dropna(subset=['team_norm'])
+
+                candidate_matches = team_long.merge(
+                    series_expanded,
+                    on=['team_norm', 'match_format_norm'],
+                    how='left',
+                )
+                candidate_matches = candidate_matches[
+                    candidate_matches['Series'].notna()
+                ]
+                candidate_matches = candidate_matches[
+                    candidate_matches['Date_dt'].notna()
+                ]
+                if not candidate_matches.empty:
+                    for date_col in ('Date_dt', 'Start_Date', 'End_Date'):
+                        if date_col in candidate_matches.columns:
+                            candidate_matches[date_col] = pd.to_datetime(
+                                candidate_matches[date_col], errors='coerce'
+                            )
+                    candidate_matches = candidate_matches.dropna(
+                        subset=['Date_dt', 'Start_Date', 'End_Date']
                     )
-                    matches = series_info_df[mask]
-                    
-                    if not matches.empty:
-                        return matches['Series'].iloc[0]
-                return None
-            except Exception as e:
-                return None
-        
-        # Add Series column
-        series_bowling['Series'] = series_bowling.apply(find_bowling_series, axis=1)
-        
+                    candidate_matches = candidate_matches[
+                        (candidate_matches['Date_dt'] >= candidate_matches['Start_Date']) &
+                        (candidate_matches['Date_dt'] <= candidate_matches['End_Date'])
+                    ]
+                    candidate_matches = candidate_matches.sort_values(
+                        ['row_id', 'Start_Date', 'Series']
+                    )
+                    row_to_series = (
+                        candidate_matches
+                        .drop_duplicates('row_id')[['row_id', 'Series']]
+                    )
+                    series_bowling = series_bowling.merge(
+                        row_to_series,
+                        on='row_id',
+                        how='left',
+                    )
+                else:
+                    series_bowling['Series'] = np.nan
+            else:
+                series_bowling['Series'] = np.nan
+
+        matched_bowl = int(series_bowling['Series'].notna().sum())
+        logger.log("series_bowling matches", matched=matched_bowl, total=len(series_bowling))
+
         # Filter out rows with no series match
         series_bowling = series_bowling[series_bowling['Series'].notna()]
+        series_bowling = series_bowling.drop(columns=['Date_dt', 'match_format_norm', 'row_id'], errors='ignore')
         
         if series_bowling.empty:
             st.info("No bowling data matches available series. ")
         else:
+            bat_team_src = next((col for col in ['Bat_Team', 'Bat Team'] if col in series_bowling.columns), None)
+            bowl_team_src = next((col for col in ['Bowl_Team', 'Bowl Team'] if col in series_bowling.columns), None)
+            country_src = next((col for col in ['Home_Team', 'Home Team', 'Country'] if col in series_bowling.columns), None)
+
+            if bat_team_src:
+                series_bowling['Bat Team'] = series_bowling[bat_team_src]
+            else:
+                series_bowling['Bat Team'] = np.nan
+            if bowl_team_src:
+                series_bowling['Bowl Team'] = series_bowling[bowl_team_src]
+            else:
+                series_bowling['Bowl Team'] = np.nan
+            if country_src:
+                series_bowling['Country'] = series_bowling[country_src]
+            else:
+                series_bowling['Country'] = np.nan
+
             # Create series bowling statistics
             series_bowl_stats = series_bowling.groupby(
-                ['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'],
+                ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'],
                 observed=True
             ).agg({
                 'File Name': 'nunique',
@@ -2442,32 +2652,37 @@ with tabs[4]:
             # Calculate 5-wicket and 10-wicket hauls from individual match data
             five_wicket_hauls = (
                 series_bowling[series_bowling['Bowler_Wkts'] >= 5]
-                .groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], observed=True)
+                .groupby(['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'], observed=True)
                 .size()
                 .reset_index(name='5w_hauls')
             )
             ten_wicket_hauls = (
                 series_bowling[series_bowling['Bowler_Wkts'] >= 10]
-                .groupby(['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], observed=True)
+                .groupby(['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'], observed=True)
                 .size()
                 .reset_index(name='10w_hauls')
             )
             
             # Merge the hauls data
-            series_bowl_stats = series_bowl_stats.merge(five_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
-            series_bowl_stats = series_bowl_stats.merge(ten_wicket_hauls, on=['Series', 'Name', 'Bat_Team', 'Bowl_Team', 'Home_Team'], how='left')
+            series_bowl_stats = series_bowl_stats.merge(five_wicket_hauls, on=['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'], how='left')
+            series_bowl_stats = series_bowl_stats.merge(ten_wicket_hauls, on=['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country'], how='left')
             
             # Fill NaN values with 0
             series_bowl_stats['5w_hauls'] = series_bowl_stats['5w_hauls'].fillna(0).astype(int)
             series_bowl_stats['10w_hauls'] = series_bowl_stats['10w_hauls'].fillna(0).astype(int)
             
             # Calculate bowling averages and economy rates
-            series_bowl_stats['Bowling_Average'] = series_bowl_stats.apply(
-                lambda row: round(row['Bowler_Runs'] / row['Bowler_Wkts'], 2) if row['Bowler_Wkts'] > 0 else 0, axis=1
-            )
-            series_bowl_stats['Economy_Rate'] = series_bowl_stats.apply(
-                lambda row: round(row['Bowler_Runs'] / row['Bowler_Overs'], 2) if row['Bowler_Overs'] > 0 else 0, axis=1
-            )
+            with np.errstate(divide='ignore', invalid='ignore'):
+                series_bowl_stats['Bowling_Average'] = np.where(
+                    series_bowl_stats['Bowler_Wkts'] > 0,
+                    (series_bowl_stats['Bowler_Runs'] / series_bowl_stats['Bowler_Wkts']).round(2),
+                    0
+                )
+                series_bowl_stats['Economy_Rate'] = np.where(
+                    series_bowl_stats['Bowler_Overs'] > 0,
+                    (series_bowl_stats['Bowler_Runs'] / series_bowl_stats['Bowler_Overs']).round(2),
+                    0
+                )
             
             # Rename columns for display 
             series_bowl_stats.columns = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country', 
@@ -2479,6 +2694,7 @@ with tabs[4]:
             
             # Display series bowling statistics
             if not series_bowl_stats.empty: 
+                logger.log_dataframe("series_bowling stats", series_bowl_stats)
                 st.dataframe(series_bowl_stats, use_container_width=True, hide_index=True)
             else:
                 st.info("No series bowling statistics available.")

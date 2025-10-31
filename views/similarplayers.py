@@ -13,6 +13,270 @@ import time
 import subprocess
 import seaborn as sns
 import matplotlib.pyplot as plt
+from pandas.api.types import CategoricalDtype
+
+try:
+    import polars as pl
+except Exception:  # pragma: no cover - optional dependency
+    pl = None
+
+try:
+    from .logging_utils import FastViewLogger
+except ImportError:  # pragma: no cover - support direct execution
+    from views.logging_utils import FastViewLogger
+
+try:
+    from performance_utils import memory_efficient_cache
+except ImportError:  # pragma: no cover - support package-relative imports
+    from ..performance_utils import memory_efficient_cache  # type: ignore
+
+
+logger = FastViewLogger(st, "SimilarPlayers")
+
+logger.log("Entering Similar Players view", fast_mode=logger.enabled)
+
+
+def _sanitize_for_polars(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    sanitized = df.copy()
+    for column in sanitized.columns:
+        series = sanitized[column]
+        try:
+            if isinstance(series.dtype, CategoricalDtype) or str(series.dtype).startswith("period"):
+                sanitized[column] = series.astype(str)
+                continue
+        except Exception:
+            sanitized[column] = series.astype(str)
+            continue
+        if series.dtype == object:
+            try:
+                sanitized[column] = series.astype(str)
+            except Exception:
+                sanitized[column] = series.apply(str)
+    return sanitized
+
+
+def _to_polars_frame(df: pd.DataFrame):
+    if pl is None or df is None or df.empty:
+        return None
+    try:
+        return pl.from_pandas(_sanitize_for_polars(df))
+    except Exception:
+        return None
+
+
+def _build_career_aggregates_pandas(filtered_df: pd.DataFrame):
+    working_df = filtered_df.copy()
+
+    file_stats = working_df.groupby('File Name').agg({
+        'Runs': 'sum',
+        'Team Balls': 'sum',
+        'Wickets': 'sum'
+    }).reset_index()
+    file_stats['Match_Avg'] = (file_stats['Runs'] / file_stats['Wickets'].replace(0, np.nan)).fillna(0)
+    file_stats['Match_SR'] = ((file_stats['Runs'] / file_stats['Team Balls'].replace(0, np.nan)) * 100).fillna(0)
+    avg_match_avg = file_stats['Match_Avg'].mean()
+    avg_match_sr = file_stats['Match_SR'].mean()
+
+    working_df['50s'] = ((working_df['Runs'] >= 50) & (working_df['Runs'] < 100)).astype(int)
+    working_df['100s'] = (working_df['Runs'] >= 100).astype(int)
+    working_df['150s'] = ((working_df['Runs'] >= 150) & (working_df['Runs'] < 200)).astype(int)
+    working_df['200s'] = (working_df['Runs'] >= 200).astype(int)
+
+    bat_career_df = working_df.groupby('Name').agg({
+        'File Name': 'nunique',
+        'Batted': 'sum',
+        'Out': 'sum',
+        'Not Out': 'sum',
+        'Balls': 'sum',
+        'Runs': ['sum', 'max'],
+        '4s': 'sum',
+        '6s': 'sum',
+        '50s': 'sum',
+        '100s': 'sum',
+        '150s': 'sum',
+        '200s': 'sum',
+        '<25&Out': 'sum',
+        'Caught': 'sum',
+        'Bowled': 'sum',
+        'LBW': 'sum',
+        'Run Out': 'sum',
+        'Stumped': 'sum',
+        'Total_Runs': 'sum',
+        'Overs': 'sum',
+        'Wickets': 'sum',
+        'Team Balls': 'sum'
+    }).reset_index()
+
+    bat_career_df.columns = [
+        'Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls',
+        'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s',
+        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped',
+        'Team Runs', 'Overs', 'Wickets', 'Team Balls'
+    ]
+
+    pom_counts = working_df[working_df['Player_of_the_Match'] == working_df['Name']]
+    pom_counts = pom_counts.groupby('Name')['File Name'].nunique().reset_index(name='POM')
+
+    return bat_career_df, avg_match_avg, avg_match_sr, pom_counts
+
+
+def _build_career_aggregates_polars(filtered_df: pd.DataFrame):
+    polars_df = _to_polars_frame(filtered_df)
+    if polars_df is None:
+        return None
+
+    polars_df = polars_df.with_columns([
+        (pl.col('Runs').ge(50) & pl.col('Runs').lt(100)).cast(pl.Int64).alias('50s'),
+        (pl.col('Runs').ge(100)).cast(pl.Int64).alias('100s'),
+        (pl.col('Runs').ge(150) & pl.col('Runs').lt(200)).cast(pl.Int64).alias('150s'),
+        (pl.col('Runs').ge(200)).cast(pl.Int64).alias('200s'),
+    ])
+
+    file_stats = (
+        polars_df.group_by('File Name')
+        .agg([
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+            pl.col('Wickets').sum().alias('Wickets'),
+        ])
+        .with_columns([
+            pl.when(pl.col('Wickets') == 0)
+            .then(0)
+            .otherwise(pl.col('Runs') / pl.col('Wickets'))
+            .alias('Match_Avg'),
+            pl.when(pl.col('Team Balls') == 0)
+            .then(0)
+            .otherwise((pl.col('Runs') / pl.col('Team Balls')) * 100)
+            .alias('Match_SR'),
+        ])
+    )
+
+    avg_stats = file_stats.select([
+        pl.col('Match_Avg').mean().alias('Match_Avg'),
+        pl.col('Match_SR').mean().alias('Match_SR'),
+    ]).to_dicts()
+    avg_match_avg = avg_stats[0].get('Match_Avg', 0) if avg_stats else 0
+    avg_match_sr = avg_stats[0].get('Match_SR', 0) if avg_stats else 0
+
+    career = (
+        polars_df.group_by('Name')
+        .agg([
+            pl.col('File Name').n_unique().alias('Matches'),
+            pl.col('Batted').sum().alias('Inns'),
+            pl.col('Out').sum().alias('Out'),
+            pl.col('Not Out').sum().alias('Not Out'),
+            pl.col('Balls').sum().alias('Balls'),
+            pl.col('Runs').sum().alias('Runs'),
+            pl.col('Runs').max().alias('HS'),
+            pl.col('4s').sum().alias('4s'),
+            pl.col('6s').sum().alias('6s'),
+            pl.col('50s').sum().alias('50s'),
+            pl.col('100s').sum().alias('100s'),
+            pl.col('150s').sum().alias('150s'),
+            pl.col('200s').sum().alias('200s'),
+            pl.col('<25&Out').sum().alias('<25&Out'),
+            pl.col('Caught').sum().alias('Caught'),
+            pl.col('Bowled').sum().alias('Bowled'),
+            pl.col('LBW').sum().alias('LBW'),
+            pl.col('Run Out').sum().alias('Run Out'),
+            pl.col('Stumped').sum().alias('Stumped'),
+            pl.col('Total_Runs').sum().alias('Team Runs'),
+            pl.col('Overs').sum().alias('Overs'),
+            pl.col('Wickets').sum().alias('Wickets'),
+            pl.col('Team Balls').sum().alias('Team Balls'),
+        ])
+    )
+
+    bat_career_df = career.to_pandas()
+
+    pom_counts = (
+        polars_df.filter(pl.col('Player_of_the_Match') == pl.col('Name'))
+        .group_by('Name')
+        .agg(pl.col('File Name').n_unique().alias('POM'))
+        .to_pandas()
+    )
+
+    return bat_career_df, avg_match_avg, avg_match_sr, pom_counts
+
+
+def _finalize_career_stats(
+    bat_career_df: pd.DataFrame,
+    avg_match_avg: float,
+    avg_match_sr: float,
+    pom_counts: pd.DataFrame,
+) -> pd.DataFrame:
+    if bat_career_df is None or bat_career_df.empty:
+        return pd.DataFrame(columns=[
+            'Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls',
+            'Runs', 'HS', 'Avg', 'BPO', 'SR', '4s', '6s', 'BPB',
+            'Boundary%', 'RPM', '<25&Out', '50s', '100s', '150s', '200s',
+            'Conversion Rate', '<25&OutPI', '50+PI', '100PI', '150PI', '200PI',
+            'Match+ Avg', 'Match+ SR', 'Team+ Avg', 'Team+ SR', 'Caught%', 'Bowled%', 'LBW%',
+            'Run Out%', 'Stumped%', 'Not Out%', 'POM', 'POM Per Match'
+        ])
+
+    result = bat_career_df.copy()
+
+    inns = result['Inns'].replace(0, np.nan)
+    outs = result['Out'].replace(0, np.nan)
+    balls = result['Balls'].replace(0, np.nan)
+    team_wickets = result['Wickets'].replace(0, np.nan)
+    team_balls = result['Team Balls'].replace(0, np.nan)
+
+    result['Avg'] = (result['Runs'] / outs).round(2).fillna(0)
+    result['SR'] = ((result['Runs'] / balls) * 100).round(2).fillna(0)
+    result['BPO'] = (result['Balls'] / outs).round(2).fillna(0)
+    result['Team Avg'] = (result['Team Runs'] / team_wickets).round(2).fillna(0)
+    result['Team SR'] = ((result['Team Runs'] / team_balls) * 100).round(2).fillna(0)
+    result['Team+ Avg'] = (result['Avg'] / result['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
+    result['Team+ SR'] = (result['SR'] / result['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
+
+    boundaries = (result['4s'] * 4) + (result['6s'] * 6)
+    result['BPB'] = (result['Balls'] / (result['4s'] + result['6s']).replace(0, np.nan)).round(2).fillna(0)
+    result['Boundary%'] = (boundaries / result['Runs'].replace(0, 1) * 100).round(2)
+    result['RPM'] = (result['Runs'] / result['Matches'].replace(0, 1)).round(2)
+
+    result['50+PI'] = (((result['50s'] + result['100s'] + result['150s'] + result['200s']) / inns) * 100).round(2).fillna(0)
+    result['100PI'] = (((result['100s'] + result['150s'] + result['200s']) / inns) * 100).round(2).fillna(0)
+    result['150PI'] = (((result['150s'] + result['200s']) / inns) * 100).round(2).fillna(0)
+    result['200PI'] = ((result['200s'] / inns) * 100).round(2).fillna(0)
+    result['<25&OutPI'] = ((result['<25&Out'] / inns) * 100).round(2).fillna(0)
+    result['Conversion Rate'] = ((result['100s'] / (result['50s'] + result['100s']).replace(0, 1)) * 100).round(2)
+
+    result['Caught%'] = ((result['Caught'] / inns) * 100).round(2).fillna(0)
+    result['Bowled%'] = ((result['Bowled'] / inns) * 100).round(2).fillna(0)
+    result['LBW%'] = ((result['LBW'] / inns) * 100).round(2).fillna(0)
+    result['Run Out%'] = ((result['Run Out'] / inns) * 100).round(2).fillna(0)
+    result['Stumped%'] = ((result['Stumped'] / inns) * 100).round(2).fillna(0)
+    result['Not Out%'] = ((result['Not Out'] / inns) * 100).round(2).fillna(0)
+
+    if pom_counts is not None and not pom_counts.empty:
+        result = result.merge(pom_counts, on='Name', how='left')
+    else:
+        result['POM'] = 0
+    result['POM'] = result['POM'].fillna(0).astype(int)
+    result['POM Per Match'] = (result['POM'] / result['Matches'].replace(0, 1) * 100).round(2)
+
+    avg_match_avg = avg_match_avg if avg_match_avg else 0
+    avg_match_sr = avg_match_sr if avg_match_sr else 0
+    match_avg_den = avg_match_avg if avg_match_avg != 0 else np.nan
+    match_sr_den = avg_match_sr if avg_match_sr != 0 else np.nan
+
+    result['Match+ Avg'] = (result['Avg'] / match_avg_den * 100).round(2).fillna(0)
+    result['Match+ SR'] = (result['SR'] / match_sr_den * 100).round(2).fillna(0)
+
+    result = result[[
+        'Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls',
+        'Runs', 'HS', 'Avg', 'BPO', 'SR', '4s', '6s', 'BPB',
+        'Boundary%', 'RPM', '<25&Out', '50s', '100s', '150s', '200s',
+        'Conversion Rate', '<25&OutPI', '50+PI', '100PI', '150PI', '200PI',
+        'Match+ Avg', 'Match+ SR', 'Team+ Avg', 'Team+ SR', 'Caught%', 'Bowled%', 'LBW%',
+        'Run Out%', 'Stumped%', 'Not Out%', 'POM', 'POM Per Match'
+    ]]
+
+    return result.sort_values(by='Runs', ascending=False)
 
 # Modern UI Styling with Cricket Theme
 st.markdown("""
@@ -90,157 +354,63 @@ tbody tr:nth-child(odd) {
 </style>
 """, unsafe_allow_html=True)
 
-# Add the new cached function for career stats at the top
-@st.cache_data
+@memory_efficient_cache(ttl=1800, data_types=['batting'])
 def compute_career_stats(filtered_df):
-    # First, calculate file-level statistics
-    file_stats = filtered_df.groupby('File Name').agg({
-        'Runs': 'sum',
-        'Team Balls': 'sum',
-        'Wickets': 'sum',
-        'Total_Runs': 'sum'
-    }).reset_index()
+    if filtered_df is None or filtered_df.empty:
+        logger.log("compute_career_stats received empty input")
+        return pd.DataFrame()
 
-    # Calculate match-level metrics
-    file_stats['Match_Avg'] = file_stats['Runs'] / file_stats['Wickets'].replace(0, np.inf)
-    file_stats['Match_SR'] = (file_stats['Runs'] / file_stats['Team Balls'].replace(0, np.inf)) * 100
+    logger.log_dataframe("compute_career_stats input", filtered_df)
 
-    # Calculate average match metrics
-    avg_match_stats = {
-        'Match_Avg': file_stats['Match_Avg'].mean(),
-        'Match_SR': file_stats['Match_SR'].mean()
-    }
+    aggregates = None
+    backend = "polars"
+    if pl is not None:
+        try:
+            with logger.time_block("build career aggregates", backend="polars"):
+                aggregates = _build_career_aggregates_polars(filtered_df)
+        except Exception as exc:
+            logger.log("Polars aggregates failed", error=str(exc))
+            aggregates = None
 
-    # Calculate milestone innings based on run ranges
-    filtered_df['50s'] = ((filtered_df['Runs'] >= 50) & (filtered_df['Runs'] < 100)).astype(int)
-    filtered_df['100s'] = ((filtered_df['Runs'] >= 100))
-    filtered_df['150s'] = ((filtered_df['Runs'] >= 150) & (filtered_df['Runs'] < 200)).astype(int)
-    filtered_df['200s'] = (filtered_df['Runs'] >= 200).astype(int)
+    if aggregates is None:
+        backend = "pandas"
+        with logger.time_block("build career aggregates", backend="pandas"):
+            aggregates = _build_career_aggregates_pandas(filtered_df)
 
-    # Create the bat_career_df by grouping by 'Name' and summing the required statistics
-    bat_career_df = filtered_df.groupby('Name').agg({
-        'File Name': 'nunique',
-        'Batted': 'sum',
-        'Out': 'sum',
-        'Not Out': 'sum',    
-        'Balls': 'sum',
-        'Runs': ['sum', 'max'],
-        '4s': 'sum',
-        '6s': 'sum',
-        '50s': 'sum',  # Now sums innings where 50 <= runs < 100
-        '100s': 'sum', # Now sums innings where 100 <= runs < 150
-        '150s': 'sum', # Now sums innings where 150 <= runs < 200
-        '200s': 'sum', # Now sums innings where runs >= 200
-        '<25&Out': 'sum',
-        'Caught': 'sum',
-        'Bowled': 'sum',
-        'LBW': 'sum',
-        'Run Out': 'sum',
-        'Stumped': 'sum',
-        'Total_Runs': 'sum',
-        'Overs': 'sum',
-        'Wickets': 'sum',
-        'Team Balls': 'sum'
-    }).reset_index()
-
-    # Add filename-level aggregations
-    filename_stats = filtered_df.groupby('File Name').agg({
-        'Runs': 'sum',
-        'Out': 'sum', 
-        'Balls': 'sum'
-    }).reset_index()
-
-    # Calculate match-level averages
-    filename_stats['Match_Avg'] = (filename_stats['Runs'] / filename_stats['Out']).fillna(0)
-    filename_stats['Match_SR'] = (filename_stats['Runs'] / filename_stats['Balls'] * 100).fillna(0)
-
-    # Calculate average match metrics across all files
-    avg_match_avg = filename_stats['Match_Avg'].mean()
-    avg_match_sr = filename_stats['Match_SR'].mean()
-
-    # Add filename sums to bat_career_df
-    bat_career_df['Filename_Runs'] = filename_stats['Runs'].sum()
-    bat_career_df['Filename_Out'] = filename_stats['Out'].sum()
-    bat_career_df['Filename_Balls'] = filename_stats['Balls'].sum()
-
-    # Flatten multi-level columns
-    bat_career_df.columns = [
-        'Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-        'Runs', 'HS', '4s', '6s', '50s', '100s', '150s', '200s', 
-        '<25&Out', 'Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 
-        'Team Runs', 'Overs', 'Wickets', 'Team Balls', 'Match_Runs', 
-        'Match_Out', 'Match_Balls'
-    ]
-
-    # Calculate average runs per out, strike rate, and balls per out
-    bat_career_df['Avg'] = (bat_career_df['Runs'] / bat_career_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-    bat_career_df['SR'] = ((bat_career_df['Runs'] / bat_career_df['Balls'].replace(0, np.nan)) * 100).round(2).fillna(0)
-    bat_career_df['BPO'] = (bat_career_df['Balls'] / bat_career_df['Out'].replace(0, np.nan)).round(2).fillna(0)
-
-    # Calculate new columns for team statistics
-    bat_career_df['Team Avg'] = (bat_career_df['Team Runs'] / bat_career_df['Wickets'].replace(0, np.nan)).round(2).fillna(0)
-    bat_career_df['Team SR'] = (bat_career_df['Team Runs'] / bat_career_df['Team Balls'].replace(0, np.nan) * 100).round(2).fillna(0)
-
-    # Calculate P+ Avg and P+ SR
-    bat_career_df['Team+ Avg'] = (bat_career_df['Avg'] / bat_career_df['Team Avg'].replace(0, np.nan) * 100).round(2).fillna(0)
-    bat_career_df['Team+ SR'] = (bat_career_df['SR'] / bat_career_df['Team SR'].replace(0, np.nan) * 100).round(2).fillna(0)
-
-    # Calculate match comparison metrics
-    bat_career_df['Match+ Avg'] = (bat_career_df['Avg'] / (avg_match_avg if avg_match_avg != 0 else np.nan) * 100).round(2).fillna(0)
-    bat_career_df['Match+ SR'] = (bat_career_df['SR'] / (avg_match_sr if avg_match_sr != 0 else np.nan) * 100).round(2).fillna(0)
-
-    # Calculate BPB (Balls Per Boundary)
-    boundaries = bat_career_df['4s'] + bat_career_df['6s']
-    bat_career_df['BPB'] = (bat_career_df['Balls'] / boundaries.replace(0, np.nan)).round(2).fillna(0)
-    bat_career_df['Boundary%'] = (((bat_career_df['4s'] * 4) + (bat_career_df['6s'] * 6))   / (bat_career_df['Runs'].replace(0, 1))* 100 ).round(2)
-    bat_career_df['RPM'] = (bat_career_df['Runs'] / bat_career_df['Matches'].replace(0, 1)).round(2)
-
-    # Calculate new statistics
-    inns = bat_career_df['Inns'].replace(0, np.nan)
-    bat_career_df['50+PI'] = (((bat_career_df['50s'] + bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / inns) * 100).round(2).fillna(0)
-    bat_career_df['100PI'] = (((bat_career_df['100s'] + bat_career_df['150s'] + bat_career_df['200s']) / inns) * 100).round(2).fillna(0)
-    bat_career_df['150PI'] = (((bat_career_df['150s'] + bat_career_df['200s']) / inns) * 100).round(2).fillna(0)
-    bat_career_df['200PI'] = ((bat_career_df['200s'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['<25&OutPI'] = ((bat_career_df['<25&Out'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['Conversion Rate'] = ((bat_career_df['100s'] / (bat_career_df['50s'] + bat_career_df['100s']).replace(0, 1)) * 100).round(2)
-
-    # Calculate dismissal percentages
-    bat_career_df['Caught%'] = ((bat_career_df['Caught'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['Bowled%'] = ((bat_career_df['Bowled'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['LBW%'] = ((bat_career_df['LBW'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['Run Out%'] = ((bat_career_df['Run Out'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['Stumped%'] = ((bat_career_df['Stumped'] / inns) * 100).round(2).fillna(0)
-    bat_career_df['Not Out%'] = ((bat_career_df['Not Out'] / inns) * 100).round(2).fillna(0)
-
-    # Count Player of the Match awards
-    pom_counts = filtered_df[filtered_df['Player_of_the_Match'] == filtered_df['Name']].groupby('Name')['File Name'].nunique().reset_index(name='POM')
-    bat_career_df = bat_career_df.merge(pom_counts, on='Name', how='left')
-    bat_career_df['POM'] = bat_career_df['POM'].fillna(0).astype(int)
-    bat_career_df['POM Per Match'] = (bat_career_df['POM'] / bat_career_df['Matches'].replace(0, 1)*100).round(2)
-
-    # Reorder columns and drop Team Avg and Team SR
-    bat_career_df = bat_career_df[['Name', 'Matches', 'Inns', 'Out', 'Not Out', 'Balls', 
-                                   'Runs', 'HS', 'Avg', 'BPO', 'SR', '4s', '6s', 'BPB',
-                                   'Boundary%', 'RPM', '<25&Out', '50s', '100s', '150s', '200s',
-                                   'Conversion Rate', '<25&OutPI', '50+PI', '100PI', '150PI', '200PI',
-                                   'Match+ Avg', 'Match+ SR', 'Team+ Avg', 'Team+ SR', 'Caught%', 'Bowled%', 'LBW%', 
-                                   'Run Out%', 'Stumped%', 'Not Out%', 'POM', 'POM Per Match']]
-    # Sort the DataFrame by 'Runs' in descending order
-    bat_career_df = bat_career_df.sort_values(by='Runs', ascending=False)
-    return bat_career_df
+    bat_career_df, avg_match_avg, avg_match_sr, pom_counts = aggregates
+    logger.log_dataframe("career aggregates raw", bat_career_df)
+    logger.log(
+        "Career averages computed",
+        backend=backend,
+        avg_match_avg=avg_match_avg,
+        avg_match_sr=avg_match_sr,
+    )
+    finalized = _finalize_career_stats(bat_career_df, avg_match_avg, avg_match_sr, pom_counts)
+    logger.log_dataframe("career stats finalized", finalized)
+    return finalized
 
 def get_filtered_options(df, column, current_filters):
     """Get available options for a filter based on current selections"""
     temp_df = df.copy()
+
+    if column not in temp_df.columns:
+        logger.log("Filter column missing", column=column)
+        return ['All']
     
     for filter_col, filter_values in current_filters.items():
         if filter_col != column and filter_values and 'All' not in filter_values:
             temp_df = temp_df[temp_df[filter_col].isin(filter_values)]
     
     available_options = ['All'] + sorted(temp_df[column].dropna().unique().tolist())
+    logger.log(
+        "Filter options prepared",
+        column=column,
+        option_count=max(len(available_options) - 1, 0),
+    )
     return available_options
 
 def display_similar_players_view():
+    logger.log("Rendering Similar Players view", fast_mode=logger.enabled)
     # Display main header
     st.markdown("""
         <div class="main-header">
@@ -288,11 +458,26 @@ def display_similar_players_view():
     with main_tabs[0]:  # Batting Similarity Tab
         # Check if batting data exists
         if 'bat_df' not in st.session_state or st.session_state['bat_df'].empty:
+            logger.log("Batting dataframe unavailable", has_bat_df='bat_df' in st.session_state)
             st.error("❌ Please upload batting data first from the Home page.")
             return
 
-        # OPTIMIZATION: Use reference instead of copy - saves memory
-        bat_df = st.session_state['bat_df']  # No .copy() needed for read operations
+        bat_df = st.session_state['bat_df']
+        assignments = {}
+        if 'Bat_Team_y' not in bat_df.columns and 'Bat_Team' in bat_df.columns:
+            assignments['Bat_Team_y'] = bat_df['Bat_Team']
+        if 'Bowl_Team_y' not in bat_df.columns and 'Bowl_Team' in bat_df.columns:
+            assignments['Bowl_Team_y'] = bat_df['Bowl_Team']
+        if assignments:
+            bat_df = bat_df.assign(**assignments)
+        else:
+            bat_df = bat_df.copy()
+        missing_required_cols = [col for col in ['Bat_Team_y', 'Bowl_Team_y'] if col not in bat_df.columns]
+        if missing_required_cols:
+            st.error(f"❌ Required team columns are missing: {', '.join(missing_required_cols)}")
+            return
+
+        logger.log_dataframe("Batting dataset loaded", bat_df)
         
         # Convert Year to int to avoid comparison issues
         bat_df['Year'] = pd.to_numeric(bat_df['Year'], errors='coerce').fillna(0).astype(int)
@@ -385,6 +570,16 @@ def display_similar_players_view():
                 st.session_state.similar_filter_state['year'] = year_range
     
         st.markdown('</div>', unsafe_allow_html=True)
+
+        logger.log(
+            "Batting filters applied",
+            match_formats=match_format_choice or ['All'],
+            bat_teams=bat_team_choice or ['All'],
+            bowl_teams=bowl_team_choice or ['All'],
+            positions=position_choice or ['All'],
+            year_start=year_range[0],
+            year_end=year_range[1],
+        )
     
         # Apply filters
         filtered_df = bat_df.copy()
@@ -403,8 +598,11 @@ def display_similar_players_view():
             filtered_df = filtered_df[filtered_df['Position'].isin(position_choice)]
         
         filtered_df = filtered_df[filtered_df['Year'].between(year_range[0], year_range[1])]
+
+        logger.log_dataframe("Batting filtered dataset", filtered_df)
     
         if filtered_df.empty:
+            logger.log("Batting filters yielded no results")
             st.warning("No data matches the current filter criteria.")
             return
     
@@ -417,8 +615,11 @@ def display_similar_players_view():
             career_stats = compute_career_stats(filtered_df)
             
             if career_stats.empty:
+                logger.log("Career stats empty after computation")
                 st.warning("No career statistics available with current filters.")
                 return
+
+            logger.log("Career stats ready", rows=len(career_stats))
     
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -439,6 +640,7 @@ def display_similar_players_view():
             selected_player = st.selectbox("Choose a player to find similar players:", player_names)
             
             if selected_player:
+                logger.log("Reference player selected", player=selected_player)
                 # Get reference player stats
                 ref_stats = career_stats[career_stats['Name'] == selected_player].iloc[0]
                 
@@ -521,6 +723,15 @@ def display_similar_players_view():
                         min_matches = st.slider("Minimum Matches", 1, 100, 10, 1)
                     with col5:
                         pi100_tolerance = st.slider("100PI Tolerance (±)", 0.0, 20.0, 5.0, 0.1)
+
+                    logger.log(
+                        "Tolerance mode configured",
+                        avg_tolerance=avg_tolerance,
+                        sr_tolerance=sr_tolerance,
+                        bpo_tolerance=bpo_tolerance,
+                        pi100_tolerance=pi100_tolerance,
+                        minimum_matches=min_matches,
+                    )
                 
                 else:  # Distance Mode
                     col1, col2, col3 = st.columns(3)
@@ -544,6 +755,14 @@ def display_similar_players_view():
                         weights = {'Avg': 0.2, 'SR': 0.4, 'BPO': 0.2, '100PI': 0.2}
                     
                     st.info(f"**Weights:** Average: {weights['Avg']:.0%} | Strike Rate: {weights['SR']:.0%} | BPO: {weights['BPO']:.0%} | 100PI: {weights['100PI']:.0%}")
+
+                    logger.log(
+                        "Distance mode configured",
+                        min_matches=min_matches,
+                        top_n=top_n,
+                        weight_preset=weight_preset,
+                        weights=weights,
+                    )
     
                 # Find similar players based on selected mode
                 if similarity_mode == "Tolerance Mode":
@@ -613,6 +832,15 @@ def display_similar_players_view():
                     else:
                         similar_players = pd.DataFrame()
     
+                logger.log(
+                    "Similarity results computed",
+                    mode=similarity_mode.split()[0],
+                    candidates=0 if similar_players.empty else len(similar_players),
+                )
+
+                if not similar_players.empty:
+                    logger.log_dataframe("Similarity dataframe", similar_players)
+
                 # Display results
                 if similarity_mode == "Tolerance Mode":
                     st.markdown(f"### 🔍 Players Similar to {selected_player} (Tolerance Mode)")
@@ -1017,11 +1245,29 @@ def display_similar_players_view():
     with main_tabs[1]:  # Bowling Similarity Tab
         # Check if bowling data exists
         if 'bowl_df' not in st.session_state or st.session_state['bowl_df'].empty:
+            logger.log("Bowling dataframe unavailable", has_bowl_df='bowl_df' in st.session_state)
             st.error("❌ Please upload bowling data first from the Home page.")
             return
 
         bowl_df = st.session_state['bowl_df'].copy()
-        
+
+        # Align categorical filters so downstream comparisons do not fail
+        categorical_filter_columns = ['Match_Format', 'Bowl_Team', 'Bat_Team', 'Position']
+        for column in categorical_filter_columns:
+            if column in bowl_df.columns:
+                series = bowl_df[column]
+                # Use isinstance check to avoid deprecated pandas API
+                try:
+                    if isinstance(series.dtype, CategoricalDtype):
+                        bowl_df[column] = series.astype('string')
+                    elif series.dtype == object:
+                        bowl_df[column] = series.astype('string')
+                except Exception:
+                    # Fall back to string coercion if dtype introspection fails
+                    bowl_df[column] = series.astype('string')
+
+        logger.log_dataframe("Bowling dataset loaded", bowl_df)
+
         # Convert Date to Year for filtering
         if 'Date' in bowl_df.columns:
             try:
@@ -1134,6 +1380,16 @@ def display_similar_players_view():
 
         st.markdown('</div>', unsafe_allow_html=True)
 
+        logger.log(
+            "Bowling filters applied",
+            match_formats=bowl_match_format_choice or ['All'],
+            bowl_teams=bowl_bowl_team_choice or ['All'],
+            bat_teams=bowl_bat_team_choice or ['All'],
+            positions=bowl_position_choice or ['All'],
+            year_start=bowl_year_range[0],
+            year_end=bowl_year_range[1],
+        )
+
         # Apply bowling filters
         bowl_filtered_df = bowl_df.copy()
         
@@ -1151,8 +1407,11 @@ def display_similar_players_view():
         
         bowl_filtered_df = bowl_filtered_df[bowl_filtered_df['Year'].between(bowl_year_range[0], bowl_year_range[1])]
 
+        logger.log_dataframe("Bowling filtered dataset", bowl_filtered_df)
+
         # Check if we have data after filtering
         if bowl_filtered_df.empty:
+            logger.log("Bowling filters yielded no results")
             st.warning("No bowling statistics available with current filters.")
             return
 
@@ -1160,8 +1419,25 @@ def display_similar_players_view():
         def compute_bowl_career_stats_local(df):
             if df.empty:
                 return pd.DataFrame()
-            
+
             try:
+                # Ensure string dtype for columns used in equality/comparisons to avoid
+                # categorical comparison errors (different category sets)
+                df = df.copy()
+                for _col in ['Name', 'Player_of_the_Match', 'File Name']:
+                    if _col in df.columns:
+                        try:
+                            df[_col] = df[_col].astype('string')
+                        except Exception:
+                            df[_col] = df[_col].astype(str)
+
+                # Make sure numeric columns are numeric
+                for _num in ['Bowler_Balls', 'Bowler_Runs', 'Bowler_Wkts', 'Maidens']:
+                    if _num in df.columns:
+                        df[_num] = pd.to_numeric(df[_num], errors='coerce').fillna(0)
+
+            
+                
                 # Basic aggregations
                 bowl_career_stats = df.groupby('Name').agg({
                     'File Name': 'nunique',  # Matches
@@ -1210,8 +1486,11 @@ def display_similar_players_view():
         bowl_career_stats = compute_bowl_career_stats_local(bowl_filtered_df)
 
         if bowl_career_stats.empty:
+            logger.log("Bowling career stats empty after computation")
             st.warning("No bowling career statistics available with current filters.")
             return
+
+        logger.log("Bowling career stats ready", rows=len(bowl_career_stats))
 
         # Display bowling career statistics tab
         bowl_tabs = st.tabs(["Career"])
@@ -1240,6 +1519,7 @@ def display_similar_players_view():
                                         key='bowl_player_select')
 
             if bowl_selected_player:
+                logger.log("Reference bowler selected", player=bowl_selected_player)
                 bowl_ref_stats = bowl_career_stats[bowl_career_stats['Name'] == bowl_selected_player].iloc[0]
 
                 # Reference bowler display
@@ -1318,6 +1598,14 @@ def display_similar_players_view():
                         bowl_econ_tolerance = st.slider("Economy Rate Tolerance (±)", 0.0, 3.0, 0.5, 0.1, key='bowl_econ_tol')
                     with bowl_col4:
                         bowl_min_matches = st.slider("Minimum Matches", 1, 50, 5, 1, key='bowl_min_matches')
+
+                    logger.log(
+                        "Bowling tolerance mode configured",
+                        avg_tolerance=bowl_avg_tolerance,
+                        strike_rate_tolerance=bowl_sr_tolerance,
+                        economy_tolerance=bowl_econ_tolerance,
+                        minimum_matches=bowl_min_matches,
+                    )
                 
                 else:  # Distance Mode
                     bowl_col1, bowl_col2, bowl_col3 = st.columns(3)
@@ -1344,6 +1632,14 @@ def display_similar_players_view():
                         bowl_weights = {'Avg': 0.25, 'Strike Rate': 0.5, 'Economy Rate': 0.25}
                     
                     st.info(f"**Weights:** Average: {bowl_weights['Avg']:.0%} | Strike Rate: {bowl_weights['Strike Rate']:.0%} | Economy Rate: {bowl_weights['Economy Rate']:.0%}")
+
+                    logger.log(
+                        "Bowling distance mode configured",
+                        min_matches=bowl_min_matches,
+                        top_n=bowl_top_n,
+                        weight_preset=bowl_weight_preset,
+                        weights=bowl_weights,
+                    )
 
                 # Find similar bowlers based on selected mode
                 if bowling_similarity_mode == "Tolerance Mode":
@@ -1408,6 +1704,15 @@ def display_similar_players_view():
                         bowl_similar_players = bowl_similar_players.sort_values('Similarity_Score', ascending=False)
                     else:
                         bowl_similar_players = pd.DataFrame()
+
+                logger.log(
+                    "Bowling similarity results computed",
+                    mode=bowling_similarity_mode.split()[0],
+                    candidates=0 if bowl_similar_players.empty else len(bowl_similar_players),
+                )
+
+                if not bowl_similar_players.empty:
+                    logger.log_dataframe("Bowling similarity dataframe", bowl_similar_players)
 
                 # Display bowling results
                 if bowling_similarity_mode == "Tolerance Mode":
