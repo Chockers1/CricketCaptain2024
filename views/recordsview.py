@@ -2543,6 +2543,8 @@ with tabs[4]:
                                            'Away_Team', 'Match_Format', 'Series_Result'])
     series_batting_summary = pd.DataFrame()
     series_bowling_summary = pd.DataFrame()
+    player_series_summary_display = pd.DataFrame()
+    player_series_detail_display = pd.DataFrame()
     
     # Series Info Section
     if filtered_match_df is not None and not filtered_match_df.empty:
@@ -3239,20 +3241,6 @@ with tabs[4]:
                     ascending=[False, False, False]
                 ).reset_index(drop=True)
 
-                st.markdown("""
-                    <div style="text-align: center; margin: 30px 0;">
-                        <div style="background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%); 
-                                   padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-                            <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
-                                🙌 Player Series Records
-                            </h3>
-                            <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
-                                Series wins, losses, and draws for every player
-                            </p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
                 summary_display = summary.rename(columns={'Player_Team': 'Team'})
                 summary_order = [
                     'Name', 'Team', 'Series Played', 'Matches Played',
@@ -3261,16 +3249,6 @@ with tabs[4]:
                 summary_display = summary_display[[
                     col for col in summary_order if col in summary_display.columns
                 ]]
-                st.dataframe(
-                    summary_display,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Name": st.column_config.Column("Name", pinned=True),
-                        "Team": st.column_config.Column("Team"),
-                        "Win %": st.column_config.NumberColumn("Win %", format="%.1f%%")
-                    }
-                )
 
                 detail_columns = [
                     'Name', 'Player_Team', 'Series_Label', 'Series Outcome',
@@ -3285,10 +3263,40 @@ with tabs[4]:
                 })
                 detail_display = format_date_column(detail_display, 'Start_Date')
                 detail_display = format_date_column(detail_display, 'End_Date')
+                player_series_summary_display = summary_display
+                player_series_detail_display = detail_display
 
+        if not player_series_summary_display.empty:
+            st.divider()
+            st.markdown("""
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%); 
+                               padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                        <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                            🙌 Player Series Records
+                        </h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                            Series wins, losses, and draws for every player
+                        </p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            st.dataframe(
+                player_series_summary_display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Name": st.column_config.Column("Name", pinned=True),
+                    "Team": st.column_config.Column("Team"),
+                    "Win %": st.column_config.NumberColumn("Win %", format="%.1f%%")
+                }
+            )
+
+            if not player_series_detail_display.empty:
                 with st.expander("View player-by-series breakdown"):
                     st.dataframe(
-                        detail_display,
+                        player_series_detail_display,
                         use_container_width=True,
                         hide_index=True,
                         column_config={
