@@ -2541,6 +2541,8 @@ with tabs[4]:
     # Initialize empty series_info_df with proper columns to avoid KeyErrors
     series_info_df = pd.DataFrame(columns=['Series', 'Start_Date', 'End_Date', 'Home_Team', 
                                            'Away_Team', 'Match_Format', 'Series_Result'])
+    series_batting_summary = pd.DataFrame()
+    series_bowling_summary = pd.DataFrame()
     
     # Series Info Section
     if filtered_match_df is not None and not filtered_match_df.empty:
@@ -2579,6 +2581,30 @@ with tabs[4]:
             series_info_df['match_format_norm'] = (
                 series_info_df['Match_Format'].astype(str).str.strip().str.lower()
             )
+
+            def _series_side_results(row: pd.Series) -> pd.Series:
+                home_wins = row.get('Total_Home_Wins', 0) or 0
+                away_wins = row.get('Total_Away_Wins', 0) or 0
+                draws = row.get('Total_Draws', 0) or 0
+
+                if home_wins > away_wins:
+                    return pd.Series({'Home_Result': 'Won', 'Away_Result': 'Lost'})
+                if away_wins > home_wins:
+                    return pd.Series({'Home_Result': 'Lost', 'Away_Result': 'Won'})
+                if draws > 0:
+                    return pd.Series({'Home_Result': 'Drawn', 'Away_Result': 'Drawn'})
+                return pd.Series({'Home_Result': 'Tied', 'Away_Result': 'Tied'})
+
+            side_results = series_info_df.apply(_series_side_results, axis=1)
+            series_info_df = pd.concat([series_info_df, side_results], axis=1)
+            series_info_df['Series_Label'] = (
+                series_info_df['Home_Team'].astype('string').fillna('').str.strip()
+                + ' vs '
+                + series_info_df['Away_Team'].astype('string').fillna('').str.strip()
+                + ' ('
+                + series_info_df['Match_Format'].astype('string').fillna('').str.strip()
+                + ')'
+            ).str.replace(' ()', '', regex=False)
 
             # Precompute comparison arrays to avoid repeated conversions inside row lookups
             series_start_dates = series_info_df['Start_Date'].dt.date
@@ -2807,6 +2833,7 @@ with tabs[4]:
             
             # Display series batting statistics
             if not series_stats.empty:
+                series_batting_summary = series_stats.copy()
                 logger.log_dataframe("series_batting stats", series_stats)
                 series_stats_display = _prepare_display_df(series_stats)
                 st.dataframe(
@@ -3027,6 +3054,7 @@ with tabs[4]:
             
             # Display series bowling statistics
             if not series_bowl_stats.empty: 
+                series_bowling_summary = series_bowl_stats.copy()
                 logger.log_dataframe("series_bowling stats", series_bowl_stats)
                 balls_col = None
                 for candidate in ['Bowler_Balls', 'Balls']:
@@ -3079,6 +3107,195 @@ with tabs[4]:
                 st.info("No series bowling statistics available.")
     else:
         st.info("No bowling data available for series analysis or no series found")  
+
+    if not series_info_df.empty:
+        player_series_sources = []
+
+        if not series_batting_summary.empty:
+            bat_players = series_batting_summary[['Series', 'Name', 'Bat Team', 'Matches']].copy()
+            bat_players['Player_Team'] = bat_players['Bat Team'].astype('string').fillna('').str.strip()
+            bat_players = bat_players.drop(columns=['Bat Team'])
+            player_series_sources.append(bat_players)
+
+        if not series_bowling_summary.empty:
+            team_source = 'Bowl Team' if 'Bowl Team' in series_bowling_summary.columns else None
+            if team_source is None:
+                team_source = 'Bat Team' if 'Bat Team' in series_bowling_summary.columns else None
+            if team_source is not None:
+                bowl_players = series_bowling_summary[['Series', 'Name', team_source, 'Matches']].copy()
+                bowl_players['Player_Team'] = bowl_players[team_source].astype('string').fillna('').str.strip()
+                bowl_players = bowl_players.drop(columns=[team_source])
+                player_series_sources.append(bowl_players)
+
+        if player_series_sources:
+            combined_players = pd.concat(player_series_sources, ignore_index=True)
+            combined_players['Player_Team'] = combined_players['Player_Team'].astype('string').fillna('').str.strip()
+            combined_players['Matches'] = pd.to_numeric(combined_players['Matches'], errors='coerce').fillna(0)
+            combined_players = combined_players[combined_players['Player_Team'] != '']
+
+            def _first_non_empty(series: pd.Series) -> str:
+                for value in series:
+                    if value is None or (isinstance(value, float) and np.isnan(value)):
+                        continue
+                    text = str(value).strip()
+                    if text:
+                        return text
+                return ''
+
+            player_series = (
+                combined_players
+                .groupby(['Series', 'Name'], as_index=False)
+                .agg({
+                    'Player_Team': _first_non_empty,
+                    'Matches': 'max'
+                })
+            )
+
+            player_series = player_series[player_series['Player_Team'] != '']
+            if not player_series.empty:
+                join_columns = [
+                    'Series', 'Series_Label', 'Start_Date', 'End_Date', 'Series_Result',
+                    'Home_Team', 'Away_Team', 'Home_Team_norm', 'Away_Team_norm',
+                    'Home_Result', 'Away_Result'
+                ]
+                join_data = series_info_df[join_columns].copy()
+
+                def _normalize_identifier(value: str) -> str:
+                    if value is None or pd.isna(value):
+                        return ''
+                    return ''.join(ch for ch in str(value).lower().strip() if ch.isalnum())
+
+                player_series['Series'] = player_series['Series'].astype('Int64')
+                player_series = player_series.merge(join_data, on='Series', how='left')
+                player_series['Matches'] = (
+                    pd.to_numeric(player_series['Matches'], errors='coerce')
+                    .fillna(0)
+                    .round(0)
+                    .astype('Int64')
+                )
+                player_series['Team_Norm'] = player_series['Player_Team'].apply(_normalize_identifier)
+                player_series['Series Outcome'] = np.where(
+                    player_series['Team_Norm'] == player_series['Home_Team_norm'],
+                    player_series['Home_Result'],
+                    np.where(
+                        player_series['Team_Norm'] == player_series['Away_Team_norm'],
+                        player_series['Away_Result'],
+                        'Unknown'
+                    )
+                )
+                player_series['Series Outcome'] = player_series['Series Outcome'].fillna('Unknown')
+
+                summary_base = (
+                    player_series
+                    .groupby(['Name', 'Player_Team'], observed=True)
+                    .agg({
+                        'Series': 'nunique',
+                        'Matches': 'sum'
+                    })
+                    .rename(columns={
+                        'Series': 'Series Played',
+                        'Matches': 'Matches Played'
+                    })
+                    .reset_index()
+                )
+
+                result_counts = (
+                    player_series
+                    .groupby(['Name', 'Player_Team', 'Series Outcome'], observed=True)
+                    .size()
+                    .unstack(fill_value=0)
+                )
+                summary = summary_base.merge(
+                    result_counts,
+                    on=['Name', 'Player_Team'],
+                    how='left'
+                ).fillna(0)
+
+                for column in ['Won', 'Lost', 'Drawn', 'Tied']:
+                    if column not in summary.columns:
+                        summary[column] = 0
+
+                summary = summary.drop(columns=['Unknown'], errors='ignore')
+
+                int_columns = [
+                    'Series Played', 'Matches Played', 'Won', 'Lost', 'Drawn', 'Tied'
+                ]
+                for column in int_columns:
+                    summary[column] = (
+                        pd.to_numeric(summary[column], errors='coerce')
+                        .fillna(0)
+                        .round(0)
+                        .astype('Int64')
+                    )
+
+                summary['Win %'] = np.where(
+                    summary['Series Played'] > 0,
+                    (summary['Won'] / summary['Series Played']) * 100,
+                    0
+                ).round(1)
+
+                summary = summary.sort_values(
+                    ['Won', 'Win %', 'Series Played'],
+                    ascending=[False, False, False]
+                ).reset_index(drop=True)
+
+                st.markdown("""
+                    <div style="text-align: center; margin: 30px 0;">
+                        <div style="background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%); 
+                                   padding: 20px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
+                            <h3 style="margin: 0; font-size: 1.5em; font-weight: bold;">
+                                🙌 Player Series Records
+                            </h3>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em;">
+                                Series wins, losses, and draws for every player
+                            </p>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                summary_display = summary.rename(columns={'Player_Team': 'Team'})
+                summary_order = [
+                    'Name', 'Team', 'Series Played', 'Matches Played',
+                    'Won', 'Lost', 'Drawn', 'Tied', 'Win %'
+                ]
+                summary_display = summary_display[[
+                    col for col in summary_order if col in summary_display.columns
+                ]]
+                st.dataframe(
+                    summary_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Name": st.column_config.Column("Name", pinned=True),
+                        "Team": st.column_config.Column("Team"),
+                        "Win %": st.column_config.NumberColumn("Win %", format="%.1f%%")
+                    }
+                )
+
+                detail_columns = [
+                    'Name', 'Player_Team', 'Series_Label', 'Series Outcome',
+                    'Matches', 'Series_Result', 'Start_Date', 'End_Date'
+                ]
+                detail_display = player_series[detail_columns].copy()
+                detail_display = detail_display.rename(columns={
+                    'Player_Team': 'Team',
+                    'Series_Label': 'Series',
+                    'Series Outcome': 'Outcome',
+                    'Series_Result': 'Series Result'
+                })
+                detail_display = format_date_column(detail_display, 'Start_Date')
+                detail_display = format_date_column(detail_display, 'End_Date')
+
+                with st.expander("View player-by-series breakdown"):
+                    st.dataframe(
+                        detail_display,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Name": st.column_config.Column("Name", pinned=True),
+                            "Team": st.column_config.Column("Team")
+                        }
+                    )
 
 # Records Tab (auto-loaded)
 with tabs[5]:
@@ -4358,124 +4575,254 @@ with tabs[6]:
     """, unsafe_allow_html=True)
 
     if filtered_bat_df is not None and not filtered_bat_df.empty and filtered_match_df is not None and not filtered_match_df.empty:
-        # Get unique File Names from the filtered batting data
-        unique_files_df = filtered_bat_df[['File Name']].drop_duplicates()
-        
-        # Merge unique File Names with match_df to get unique match results
-        match_results_df = pd.merge(unique_files_df, filtered_match_df, on='File Name', how='left', suffixes=('', '_match_orig'))
-        
-        # Merge the original filtered_bat_df (with player names) onto the unique match results
-        wl_df = pd.merge(filtered_bat_df, match_results_df, on='File Name', how='left', suffixes=('_bat', '_match'))
+        team_column = _first_existing_column(
+            filtered_bat_df,
+            ['Bat_Team', 'Bat Team', 'Bat_Team_x', 'Bat_Team_y', 'Team']
+        )
 
-        if not wl_df.empty:
-            # Create a simplified win/loss analysis based on available columns
-            try:
-                # Get basic columns that should exist
-                required_cols = ['Name', 'File Name']
-                optional_cols = ['Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn', 'Tie', 'Innings_Win', 'Home_Lost', 'Away_Lost']
-                
-                # Check which columns actually exist
-                available_cols = [col for col in optional_cols if col in wl_df.columns]
-                all_cols = required_cols + available_cols
-                
-                if len(available_cols) > 0:
-                    # Create a base dataframe with available columns
-                    wl_base = wl_df[all_cols].drop_duplicates(subset=['Name', 'File Name'])
-                    
-                    # Create summary by player
-                    summary_data = []
-                    for player in wl_base['Name'].unique():
-                        player_data = wl_base[wl_base['Name'] == player]
-                        
-                        summary = {
-                            'Name': player,
-                            'Total Matches': len(player_data)
-                        }
-                        
-                        # Add statistics for available columns
-                        if 'Home_Win' in available_cols:
-                            summary['Home Wins'] = player_data['Home_Win'].sum()
-                        if 'Away_Won' in available_cols:
-                            summary['Away Wins'] = player_data['Away_Won'].sum() 
-                        if 'Home_Lost' in available_cols:
-                            summary['Home Losses'] = player_data['Home_Lost'].sum()
-                        if 'Away_Lost' in available_cols:
-                            summary['Away Losses'] = player_data['Away_Lost'].sum()
-                        if 'Home_Drawn' in available_cols:
-                            summary['Home Draws'] = player_data['Home_Drawn'].sum()
-                        if 'Away_Drawn' in available_cols:
-                            summary['Away Draws'] = player_data['Away_Drawn'].sum()
-                        if 'Tie' in available_cols:
-                            summary['Ties'] = player_data['Tie'].sum()
-                        if 'Innings_Win' in available_cols:
-                            summary['Innings Wins'] = player_data['Innings_Win'].sum()
-                        
-                        # Calculate totals
-                        total_wins = summary.get('Home Wins', 0) + summary.get('Away Wins', 0)
-                        total_losses = summary.get('Home Losses', 0) + summary.get('Away Losses', 0)
-                        total_draws = summary.get('Home Draws', 0) + summary.get('Away Draws', 0)
-                        
-                        summary['Total Wins'] = total_wins
-                        summary['Total Losses'] = total_losses  
-                        summary['Total Draws'] = total_draws
-                        
-                        # Calculate win percentage
-                        if summary['Total Matches'] > 0:
-                            summary['Win %'] = round((total_wins / summary['Total Matches']) * 100, 1)
-                        else:
-                            summary['Win %'] = 0
-                        
-                        summary_data.append(summary)
-                    
-                    # Create dataframe and display
-                    winloss_df = pd.DataFrame(summary_data)
-                    winloss_df = winloss_df.sort_values('Total Wins', ascending=False)
-                    
-                    st.dataframe(
-                        winloss_df,
-                        use_container_width=True,
-                        hide_index=True,
-                        height=600,
-                        column_config={
-                            "Name": st.column_config.Column("Name", pinned=True),
-                            "Win %": st.column_config.NumberColumn("Win %", format="%.1f%%"),
-                        }
-                    )
-                else:
-                    st.warning("No win/loss columns found in the match data.")
-                    
-                st.divider()  # Add separator
-            except KeyError as e:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #ef4444, #dc2626);
-                    padding: 1rem;
-                    border-radius: 10px;
-                    border-left: 4px solid #f87171;
-                    margin: 1rem 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                ">
-                    <p style="color: white; margin: 0; font-weight: 500;">
-                        ❌ Error creating win/loss summary: Missing column - {e}. Please ensure the match data includes win/loss/draw/tie information.
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            except Exception as e:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #ef4444, #dc2626);
-                    padding: 1rem;
-                    border-radius: 10px;
-                    border-left: 4px solid #f87171;
-                    margin: 1rem 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                ">
-                    <p style="color: white; margin: 0; font-weight: 500;">
-                        ❌ An unexpected error occurred while creating the win/loss summary: {e}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+        if team_column is None:
+            st.warning("Unable to determine player teams for win/loss analysis with the current data.")
         else:
-            st.warning("No match data available to merge with batting data")
+            format_column = _first_existing_column(
+                filtered_bat_df,
+                ['Match_Format', 'Match Format', 'Format']
+            )
+
+            base_columns = ['Name', 'File Name', team_column]
+            if format_column:
+                base_columns.append(format_column)
+
+            player_matches = filtered_bat_df[base_columns].copy()
+            player_matches['Name'] = player_matches['Name'].astype('string').str.strip()
+            player_matches['File Name'] = player_matches['File Name'].astype('string').str.strip()
+            player_matches['Player_Team'] = (
+                player_matches[team_column]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+            )
+            if format_column:
+                player_matches['Player_Format'] = (
+                    player_matches[format_column]
+                    .astype('string')
+                    .fillna('')
+                    .str.strip()
+                )
+
+            player_matches['_team_sort'] = player_matches['Player_Team'].eq('').astype(int)
+            sort_fields = ['Name', 'File Name', '_team_sort']
+            if format_column:
+                player_matches['_format_sort'] = player_matches['Player_Format'].eq('').astype(int)
+                sort_fields.append('_format_sort')
+
+            player_matches = player_matches.sort_values(sort_fields)
+            player_matches = player_matches.drop_duplicates(subset=['Name', 'File Name'], keep='first')
+            drop_cols = ['_team_sort']
+            if format_column:
+                drop_cols.append('_format_sort')
+            player_matches = player_matches.drop(columns=drop_cols)
+            player_matches = player_matches[player_matches['Player_Team'] != '']
+
+            if player_matches.empty:
+                st.warning("No player team information available for the selected filters.")
+            elif 'File Name' not in filtered_match_df.columns:
+                st.warning("Match data is missing file identifiers required for win/loss analysis.")
+            else:
+                match_results_df = filtered_match_df.copy()
+                match_results_df['File Name'] = match_results_df['File Name'].astype('string').str.strip()
+                match_results_df = match_results_df.drop_duplicates(subset=['File Name'], keep='last')
+
+                wl_df = player_matches.merge(
+                    match_results_df,
+                    on='File Name',
+                    how='left',
+                    suffixes=('', '_match')
+                )
+
+                if wl_df.empty:
+                    st.warning("No player matches align with match results for win/loss analysis.")
+                elif {'Home_Team', 'Away_Team'}.issubset(wl_df.columns) is False:
+                    st.warning("Match data is missing home/away team information; cannot build win/loss summary.")
+                else:
+                    result_columns = [
+                        'Home_Win', 'Away_Won', 'Home_Drawn', 'Away_Drawn',
+                        'Tie', 'Innings_Win', 'Home_Lost', 'Away_Lost'
+                    ]
+
+                    for column in result_columns:
+                        if column not in wl_df.columns:
+                            wl_df[column] = 0
+                        else:
+                            wl_df[column] = pd.to_numeric(wl_df[column], errors='coerce').fillna(0)
+
+                    def _normalize_label(series: pd.Series) -> pd.Series:
+                        normalized = series.astype('string').fillna('').str.strip().str.lower()
+                        return normalized.str.replace(r'[^a-z0-9]+', '', regex=True)
+
+                    wl_df['Player_Team_Norm'] = _normalize_label(wl_df['Player_Team'])
+                    wl_df['Home_Team_Norm'] = _normalize_label(wl_df['Home_Team'])
+                    wl_df['Away_Team_Norm'] = _normalize_label(wl_df['Away_Team'])
+
+                    wl_df['is_home'] = (
+                        wl_df['Player_Team_Norm'].ne('') &
+                        wl_df['Player_Team_Norm'].eq(wl_df['Home_Team_Norm'])
+                    )
+                    wl_df['is_away'] = (
+                        wl_df['Player_Team_Norm'].ne('') &
+                        wl_df['Player_Team_Norm'].eq(wl_df['Away_Team_Norm'])
+                    )
+
+                    wl_df = wl_df[wl_df['is_home'] | wl_df['is_away']]
+
+                    if wl_df.empty:
+                        st.warning("Unable to align player teams with match records for win/loss analysis.")
+                    else:
+                        wl_df['Home_Match_Flag'] = wl_df['is_home'].astype(int)
+                        wl_df['Away_Match_Flag'] = wl_df['is_away'].astype(int)
+                        wl_df['Total_Match_Flag'] = wl_df['Home_Match_Flag'] + wl_df['Away_Match_Flag']
+
+                        wl_df['Home_Win_Flag'] = np.where(wl_df['is_home'], wl_df['Home_Win'], 0)
+                        wl_df['Away_Win_Flag'] = np.where(wl_df['is_away'], wl_df['Away_Won'], 0)
+                        wl_df['Home_Loss_Flag'] = np.where(wl_df['is_home'], wl_df['Home_Lost'], 0)
+                        wl_df['Away_Loss_Flag'] = np.where(wl_df['is_away'], wl_df['Away_Lost'], 0)
+                        wl_df['Home_Draw_Flag'] = np.where(wl_df['is_home'], wl_df['Home_Drawn'], 0)
+                        wl_df['Away_Draw_Flag'] = np.where(wl_df['is_away'], wl_df['Away_Drawn'], 0)
+                        wl_df['Tie_Flag'] = np.where(
+                            (wl_df['is_home'] | wl_df['is_away']) & (wl_df['Tie'] > 0),
+                            1,
+                            0
+                        )
+                        wl_df['Innings_Win_Flag'] = np.where(
+                            (
+                                (wl_df['is_home'] & (wl_df['Home_Win'] > 0)) |
+                                (wl_df['is_away'] & (wl_df['Away_Won'] > 0))
+                            ) & (wl_df['Innings_Win'] > 0),
+                            1,
+                            0
+                        )
+
+                        wl_df = wl_df[wl_df['Total_Match_Flag'] > 0]
+
+                        if wl_df.empty:
+                            st.warning("No qualifying matches remain after aligning players with teams")
+                        else:
+                            def _primary_team(series: pd.Series) -> str:
+                                non_empty = (
+                                    series.astype('string')
+                                    .fillna('')
+                                    .str.strip()
+                                )
+                                non_empty = non_empty[non_empty != '']
+                                if non_empty.empty:
+                                    return ''
+                                mode = non_empty.mode()
+                                return mode.iloc[0] if not mode.empty else non_empty.iloc[0]
+
+                            team_mode = (
+                                player_matches[['Name', 'Player_Team']]
+                                .groupby('Name')['Player_Team']
+                                .agg(_primary_team)
+                                .reset_index(name='Primary Team')
+                            )
+
+                            aggregation_map = {
+                                'Total_Match_Flag': 'sum',
+                                'Home_Match_Flag': 'sum',
+                                'Away_Match_Flag': 'sum',
+                                'Home_Win_Flag': 'sum',
+                                'Away_Win_Flag': 'sum',
+                                'Home_Loss_Flag': 'sum',
+                                'Away_Loss_Flag': 'sum',
+                                'Home_Draw_Flag': 'sum',
+                                'Away_Draw_Flag': 'sum',
+                                'Tie_Flag': 'sum',
+                                'Innings_Win_Flag': 'sum'
+                            }
+
+                            winloss_summary = (
+                                wl_df
+                                .groupby('Name', as_index=False)
+                                .agg(aggregation_map)
+                                .rename(columns={
+                                    'Total_Match_Flag': 'Total Matches',
+                                    'Home_Match_Flag': 'Home Matches',
+                                    'Away_Match_Flag': 'Away Matches',
+                                    'Home_Win_Flag': 'Home Wins',
+                                    'Away_Win_Flag': 'Away Wins',
+                                    'Home_Loss_Flag': 'Home Losses',
+                                    'Away_Loss_Flag': 'Away Losses',
+                                    'Home_Draw_Flag': 'Home Draws',
+                                    'Away_Draw_Flag': 'Away Draws',
+                                    'Tie_Flag': 'Ties',
+                                    'Innings_Win_Flag': 'Innings Wins'
+                                })
+                            )
+
+                            winloss_summary = winloss_summary.merge(team_mode, on='Name', how='left')
+
+                            winloss_summary['Total Wins'] = (
+                                winloss_summary['Home Wins'] + winloss_summary['Away Wins']
+                            )
+                            winloss_summary['Total Losses'] = (
+                                winloss_summary['Home Losses'] + winloss_summary['Away Losses']
+                            )
+                            winloss_summary['Total Draws'] = (
+                                winloss_summary['Home Draws'] + winloss_summary['Away Draws']
+                            )
+                            winloss_summary['Win %'] = np.where(
+                                winloss_summary['Total Matches'] > 0,
+                                (winloss_summary['Total Wins'] / winloss_summary['Total Matches']) * 100,
+                                0
+                            )
+
+                            int_columns = [
+                                'Total Matches', 'Home Matches', 'Away Matches', 'Home Wins', 'Away Wins',
+                                'Home Losses', 'Away Losses', 'Home Draws', 'Away Draws', 'Ties',
+                                'Innings Wins', 'Total Wins', 'Total Losses', 'Total Draws'
+                            ]
+
+                            for col in int_columns:
+                                if col in winloss_summary.columns:
+                                    winloss_summary[col] = (
+                                        pd.to_numeric(winloss_summary[col], errors='coerce')
+                                        .fillna(0)
+                                        .round(0)
+                                        .astype('Int64')
+                                    )
+
+                            winloss_summary['Win %'] = winloss_summary['Win %'].round(1)
+
+                            display_order = ['Name']
+                            if 'Primary Team' in winloss_summary.columns:
+                                display_order.append('Primary Team')
+                            display_order.extend([
+                                'Home Matches', 'Home Wins', 'Home Losses', 'Home Draws',
+                                'Away Matches', 'Away Wins', 'Away Losses', 'Away Draws',
+                                'Total Matches', 'Total Wins', 'Total Losses', 'Total Draws', 'Ties',
+                                'Innings Wins', 'Win %'
+                            ])
+
+                            winloss_summary = winloss_summary[[
+                                col for col in display_order if col in winloss_summary.columns
+                            ]]
+
+                            winloss_summary = winloss_summary.sort_values(
+                                ['Total Wins', 'Win %', 'Total Matches'],
+                                ascending=[False, False, False]
+                            ).reset_index(drop=True)
+
+                            st.dataframe(
+                                winloss_summary,
+                                use_container_width=True,
+                                hide_index=True,
+                                height=600,
+                                column_config={
+                                    "Name": st.column_config.Column("Name", pinned=True),
+                                    "Win %": st.column_config.NumberColumn("Win %", format="%.1f%%"),
+                                    "Primary Team": st.column_config.Column("Primary Team")
+                                }
+                            )
+
+                            st.divider()
     else:
         st.warning("No batting or match data available for Win/Loss analysis.")
