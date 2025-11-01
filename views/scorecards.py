@@ -234,7 +234,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if sc_match_df is not None:
-    def get_filtered_matches(home=None, away=None, format=None, player=None, date=None):
+    def get_filtered_matches(
+        home=None,
+        away=None,
+        format=None,
+        player=None,
+        date=None,
+        player_of_match=None,
+    ):
         """Get filtered matches based on current selections"""
         filtered = sc_match_df.copy()
         
@@ -245,57 +252,120 @@ if sc_match_df is not None:
         if format and format != 'All':
             filtered = filtered[filtered['Match_Format'] == format]
         if player and player != 'All':
-            player_matches = sc_bat_df[sc_bat_df['Name'] == player]['File Name'].unique()
-            filtered = filtered[filtered['File Name'].isin(player_matches)]
+            player_matches: list[str] = []
+            if sc_bat_df is not None and 'Name' in sc_bat_df.columns:
+                player_matches.extend(
+                    sc_bat_df[sc_bat_df['Name'] == player]['File Name'].astype(str).tolist()
+                )
+            if sc_bowl_df is not None and 'Name' in sc_bowl_df.columns:
+                player_matches.extend(
+                    sc_bowl_df[sc_bowl_df['Name'] == player]['File Name'].astype(str).tolist()
+                )
+            if player_matches:
+                filtered = filtered[filtered['File Name'].isin(player_matches)]
+            else:
+                return filtered.iloc[0:0]
         if date and date != 'All':
             filtered = filtered[filtered['Date'].dt.strftime('%d/%m/%Y') == date]
+        if player_of_match and player_of_match != 'All' and 'Player_of_the_Match' in filtered.columns:
+            filtered = filtered[filtered['Player_of_the_Match'] == player_of_match]
         
         return filtered
 
     # Create filters in columns
     col1, col2 = st.columns(2)
-    col3, col4, col5 = st.columns(3)
+    col3, col4, col5, col6 = st.columns(4)
     
     # Get initially filtered matches
     filtered_matches = get_filtered_matches()
+
+    player_name = 'All'
+    match_date = 'All'
+    player_of_match = 'All'
     
     with col1:
         home_teams = ['All'] + sorted(filtered_matches['Home_Team'].unique().tolist())
         home_team = st.selectbox('Home Team:', home_teams, index=0)
     
     # Update filtered matches for away team options
-    filtered_matches = get_filtered_matches(home_team)
+    filtered_matches = get_filtered_matches(home=home_team)
     
     with col2:
         away_teams = ['All'] + sorted(filtered_matches['Away_Team'].unique().tolist())
         away_team = st.selectbox('Away Team:', away_teams, index=0)
     
     # Update filtered matches for format options
-    filtered_matches = get_filtered_matches(home_team, away_team)
+    filtered_matches = get_filtered_matches(home=home_team, away=away_team)
     
     with col3:
         formats = ['All'] + sorted(filtered_matches['Match_Format'].unique().tolist())
         match_format = st.selectbox('Format:', formats, index=0)
     
     # Update filtered matches for player options
-    filtered_matches = get_filtered_matches(home_team, away_team, match_format)
+    filtered_matches = get_filtered_matches(home=home_team, away=away_team, format=match_format)
     
     with col4:
-        if sc_bat_df is not None:
+        names = ['All']
+        if sc_bat_df is not None and not filtered_matches.empty:
             player_files = filtered_matches['File Name'].unique()
-            available_players = sc_bat_df[sc_bat_df['File Name'].isin(player_files)]['Name'].unique()
-            names = ['All'] + sorted(available_players.tolist())
-            player_name = st.selectbox('Player Name:', names, index=0)
+            available_players = (
+                sc_bat_df[sc_bat_df['File Name'].isin(player_files)]['Name']
+                .dropna()
+                .astype(str)
+                .str.strip()
+            )
+            available_players = available_players[available_players != ""]
+            names = ['All'] + sorted(available_players.unique().tolist())
+        player_name = st.selectbox('Player Name:', names, index=0)
     
-    # Final filter update for dates
-    filtered_matches = get_filtered_matches(home_team, away_team, match_format, player_name)
+    # Update filtered matches for date options
+    filtered_matches = get_filtered_matches(
+        home=home_team,
+        away=away_team,
+        format=match_format,
+        player=player_name,
+    )
     
     with col5:
-        dates = ['All'] + sorted(filtered_matches['Date'].dt.strftime('%d/%m/%Y').unique().tolist())
-        match_date = st.selectbox('Date:', dates)
+        dates = ['All']
+        if not filtered_matches.empty:
+            dates = ['All'] + sorted(
+                filtered_matches['Date'].dt.strftime('%d/%m/%Y').unique().tolist()
+            )
+        match_date = st.selectbox('Date:', dates, index=0)
+
+    # Update filtered matches for player of the match options
+    filtered_matches = get_filtered_matches(
+        home=home_team,
+        away=away_team,
+        format=match_format,
+        player=player_name,
+        date=match_date,
+    )
+
+    with col6:
+        pom_options = ['All']
+        if not filtered_matches.empty and 'Player_of_the_Match' in filtered_matches.columns:
+            pom_series = (
+                filtered_matches['Player_of_the_Match']
+                .dropna()
+                .astype(str)
+                .str.strip()
+            )
+            pom_series = pom_series[pom_series != ""]
+            if not pom_series.empty:
+                pom_options = ['All'] + sorted(pom_series.unique().tolist())
+        player_of_match = st.selectbox('Player of the Match:', pom_options, index=0)
     
     # Set the final selected matches
-    selected_match = get_filtered_matches(home_team, away_team, match_format, player_name, match_date)
+    selected_match = get_filtered_matches(
+        home=home_team,
+        away=away_team,
+        format=match_format,
+        player=player_name,
+        date=match_date,
+        player_of_match=player_of_match,
+    )
 
     def parse_date(date_str):
         """Helper function to parse dates in multiple formats"""

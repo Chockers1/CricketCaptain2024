@@ -8,7 +8,7 @@ import gc
 import sys
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Iterable
 from pandas.api.types import CategoricalDtype, is_scalar
 
 try:
@@ -189,6 +189,189 @@ def filter_by_format(df, format_choice):
     if 'All' in format_choice or not format_choice:
         return df
     return df[df['Match_Format'].isin(format_choice)]
+
+def _unique_sorted_strings(series: Optional[pd.Series]) -> list[str]:
+    """Return sorted unique string values while dropping empty/null placeholders."""
+    if series is None or series.empty:
+        return []
+    cleaned = series.dropna().astype(str).str.strip()
+    if cleaned.empty:
+        return []
+    cleaned = cleaned[cleaned != ""]
+    cleaned = cleaned[cleaned.str.lower() != 'nan']
+    unique_values = cleaned.unique().tolist()
+    return sorted(unique_values)
+
+def _filter_by_files(df: Optional[pd.DataFrame], files: set[str]) -> Optional[pd.DataFrame]:
+    """Limit dataframe rows to the provided file name set."""
+    if df is None or df.empty or 'File Name' not in df.columns:
+        return df
+    return df[df['File Name'].isin(files)]
+
+def _filter_by_team_columns(
+    df: Optional[pd.DataFrame],
+    candidate_columns: Iterable[str],
+    team: str,
+) -> Optional[pd.DataFrame]:
+    """Filter dataframe rows where any of the candidate team columns matches team."""
+    if df is None or df.empty or not team:
+        return df
+
+    mask = None
+    for column in candidate_columns:
+        if column not in df.columns:
+            continue
+        series = df[column]
+        # Normalize to string while preserving missing values
+        normalized = series.astype('string').fillna('').str.strip()
+        current = normalized.eq(team)
+        mask = current if mask is None else (mask | current)
+
+    if mask is None:
+        return df
+
+    filtered = df[mask]
+    if filtered.empty:
+        return filtered
+    return filtered.copy()
+
+def _first_existing_column(
+    df: Optional[pd.DataFrame],
+    candidates: Iterable[str],
+) -> Optional[str]:
+    """Return the first column name from candidates that exists in df."""
+    if df is None:
+        return None
+    for column in candidates:
+        if column in df.columns:
+            return column
+    return None
+
+def _apply_user_filters(
+    bat_df: Optional[pd.DataFrame],
+    bowl_df: Optional[pd.DataFrame],
+    match_df: Optional[pd.DataFrame],
+    game_df: Optional[pd.DataFrame],
+    *,
+    player: str,
+    team: str,
+    match_date: str,
+    player_of_match: str,
+) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Apply player/team/date/POM selections across the cached dataframes."""
+
+    filtered_bat = bat_df
+    filtered_bowl = bowl_df
+    filtered_match = match_df
+    filtered_game = game_df
+
+    player_active = bool(player) and player != 'All'
+    team_active = bool(team) and team != 'All'
+    date_active = bool(match_date) and match_date != 'All'
+    pom_active = bool(player_of_match) and player_of_match != 'All'
+
+    if player_active and filtered_bat is not None and 'Name' in filtered_bat.columns:
+        filtered_bat = filtered_bat[filtered_bat['Name'] == player]
+    if player_active and filtered_bowl is not None and 'Name' in filtered_bowl.columns:
+        filtered_bowl = filtered_bowl[filtered_bowl['Name'] == player]
+
+    if pom_active:
+        if filtered_match is not None and 'Player_of_the_Match' in filtered_match.columns:
+            filtered_match = filtered_match[filtered_match['Player_of_the_Match'] == player_of_match]
+        if filtered_bat is not None and 'Player_of_the_Match' in filtered_bat.columns:
+            filtered_bat = filtered_bat[filtered_bat['Player_of_the_Match'] == player_of_match]
+        if filtered_bowl is not None and 'Player_of_the_Match' in filtered_bowl.columns:
+            filtered_bowl = filtered_bowl[filtered_bowl['Player_of_the_Match'] == player_of_match]
+        if filtered_game is not None and 'Player_of_the_Match' in filtered_game.columns:
+            filtered_game = filtered_game[filtered_game['Player_of_the_Match'] == player_of_match]
+
+    if date_active:
+        if filtered_match is not None and 'Date' in filtered_match.columns:
+            match_dates = pd.to_datetime(filtered_match['Date'], errors='coerce')
+            filtered_match = filtered_match[match_dates.dt.strftime('%d/%m/%Y') == match_date]
+        if filtered_bat is not None and 'Date' in filtered_bat.columns:
+            bat_dates = pd.to_datetime(filtered_bat['Date'], errors='coerce')
+            filtered_bat = filtered_bat[bat_dates.dt.strftime('%d/%m/%Y') == match_date]
+        if filtered_bowl is not None and 'Date' in filtered_bowl.columns:
+            bowl_dates = pd.to_datetime(filtered_bowl['Date'], errors='coerce')
+            filtered_bowl = filtered_bowl[bowl_dates.dt.strftime('%d/%m/%Y') == match_date]
+        if filtered_game is not None and 'Date' in filtered_game.columns:
+            game_dates = pd.to_datetime(filtered_game['Date'], errors='coerce')
+            filtered_game = filtered_game[game_dates.dt.strftime('%d/%m/%Y') == match_date]
+
+    if team_active:
+        filtered_bat = _filter_by_team_columns(
+            filtered_bat,
+            ['Bat_Team_y', 'Bat_Team', 'Bat Team', 'Bat_Team_x', 'Team'],
+            team,
+        )
+        filtered_bowl = _filter_by_team_columns(
+            filtered_bowl,
+            ['Bowl_Team_y', 'Bowl_Team', 'Bowl Team', 'Bowl_Team_x'],
+            team,
+        )
+        filtered_match = _filter_by_team_columns(
+            filtered_match,
+            ['Home_Team', 'Away_Team', 'Home Team', 'Away Team'],
+            team,
+        )
+        filtered_game = _filter_by_team_columns(
+            filtered_game,
+            ['Bat_Team', 'Bowl_Team', 'Bat Team', 'Bowl Team'],
+            team,
+        )
+
+    def _intersect(existing: Optional[set[str]], new_values: set[str]) -> Optional[set[str]]:
+        if new_values is None:
+            return existing
+        if existing is None:
+            return new_values
+        return existing & new_values
+
+    eligible_files: Optional[set[str]] = None
+
+    if player_active:
+        player_files: set[str] = set()
+        if filtered_bat is not None and 'File Name' in filtered_bat.columns:
+            player_files.update(filtered_bat['File Name'])
+        if filtered_bowl is not None and 'File Name' in filtered_bowl.columns:
+            player_files.update(filtered_bowl['File Name'])
+        eligible_files = _intersect(eligible_files, player_files)
+
+    if (pom_active or date_active) and filtered_match is not None and 'File Name' in filtered_match.columns:
+        match_files = set(filtered_match['File Name'])
+        eligible_files = _intersect(eligible_files, match_files)
+
+    if team_active:
+        team_files: set[str] = set()
+        for subset in (filtered_bat, filtered_bowl, filtered_match, filtered_game):
+            if subset is not None and not subset.empty and 'File Name' in subset.columns:
+                team_files.update(subset['File Name'].dropna())
+        eligible_files = _intersect(eligible_files, team_files)
+
+    if eligible_files is not None:
+        filtered_bat = _filter_by_files(filtered_bat, eligible_files)
+        filtered_bowl = _filter_by_files(filtered_bowl, eligible_files)
+        filtered_match = _filter_by_files(filtered_match, eligible_files)
+        filtered_game = _filter_by_files(filtered_game, eligible_files)
+
+    return filtered_bat, filtered_bowl, filtered_match, filtered_game
+
+def _prepare_display_df(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Return a defensive copy with a clean RangeIndex for safe UI rendering."""
+    if df is None or df.empty:
+        return df
+    return df.reset_index(drop=True).copy()
+
+def _table_key(prefix: str, columns: Optional[pd.Index], rows: Optional[int] = None) -> str:
+    """Create a Streamlit widget key that shifts when layout or row count changes."""
+    if columns is None:
+        return f"{prefix}__{rows}" if rows is not None else prefix
+    sanitized = [str(col).strip().replace(' ', '_') or 'column' for col in columns]
+    joined = "__".join(sanitized)
+    if rows is not None:
+        return f"{prefix}__{rows}__{joined}" if joined else f"{prefix}__{rows}"
+    return f"{prefix}__{joined}" if joined else prefix
 
 @memory_efficient_cache(ttl=600, data_types=['batting', 'bowling', 'match', 'game'])
 def get_formats():
@@ -420,11 +603,81 @@ def initialize_data():
         if not format_choice:
             format_choice = ['All']
         
-        # Apply filters
+        # Apply primary format filter
         filtered_bat_df = filter_by_format(bat_df, format_choice)
         filtered_bowl_df = filter_by_format(bowl_df, format_choice)
         filtered_match_df = filter_by_format(match_df, format_choice)
         filtered_game_df = filter_by_format(game_df, format_choice)
+
+        player_candidates: set[str] = set()
+        if filtered_bat_df is not None and 'Name' in filtered_bat_df.columns:
+            player_candidates.update(_unique_sorted_strings(filtered_bat_df['Name']))
+        if filtered_bowl_df is not None and 'Name' in filtered_bowl_df.columns:
+            player_candidates.update(_unique_sorted_strings(filtered_bowl_df['Name']))
+        player_options = ['All']
+        if player_candidates:
+            player_options.extend(sorted(player_candidates))
+
+        date_options = ['All']
+        if filtered_match_df is not None and 'Date' in filtered_match_df.columns:
+            match_dates = pd.to_datetime(filtered_match_df['Date'], errors='coerce')
+            formatted_dates = match_dates.dropna().dt.strftime('%d/%m/%Y')
+            if not formatted_dates.empty:
+                unique_dates = sorted(formatted_dates.unique().tolist(), reverse=True)
+                date_options.extend(unique_dates)
+
+        pom_candidates = []
+        if filtered_match_df is not None and 'Player_of_the_Match' in filtered_match_df.columns:
+            pom_candidates = _unique_sorted_strings(filtered_match_df['Player_of_the_Match'])
+        pom_options = ['All', *pom_candidates]
+
+        team_candidates: set[str] = set()
+
+        def _collect_team_values(frame: Optional[pd.DataFrame], columns: Iterable[str]) -> None:
+            if frame is None or frame.empty:
+                return
+            for column in columns:
+                if column in frame.columns:
+                    team_candidates.update(_unique_sorted_strings(frame[column]))
+
+        _collect_team_values(filtered_bat_df, ['Bat_Team_y', 'Bat_Team', 'Bat Team', 'Bat_Team_x', 'Team'])
+        _collect_team_values(filtered_bowl_df, ['Bowl_Team_y', 'Bowl_Team', 'Bowl Team', 'Bowl_Team_x'])
+        _collect_team_values(filtered_match_df, ['Home_Team', 'Away_Team', 'Home Team', 'Away Team'])
+        _collect_team_values(filtered_game_df, ['Bat_Team', 'Bowl_Team', 'Bat Team', 'Bowl Team'])
+
+        team_options = ['All']
+        if team_candidates:
+            team_options.extend(sorted(team_candidates))
+
+        filter_col_player, filter_col_team, filter_col_date, filter_col_pom = st.columns(4)
+        selected_player = filter_col_player.selectbox(
+            'Player Name', player_options, index=0, key='records_player_filter'
+        )
+        selected_team = filter_col_team.selectbox(
+            'Team', team_options, index=0, key='records_team_filter'
+        )
+        selected_date = filter_col_date.selectbox(
+            'Match Date', date_options, index=0, key='records_date_filter'
+        )
+        selected_pom = filter_col_pom.selectbox(
+            'Player of the Match', pom_options, index=0, key='records_pom_filter'
+        )
+
+        (
+            filtered_bat_df,
+            filtered_bowl_df,
+            filtered_match_df,
+            filtered_game_df,
+        ) = _apply_user_filters(
+            filtered_bat_df,
+            filtered_bowl_df,
+            filtered_match_df,
+            filtered_game_df,
+            player=selected_player,
+            team=selected_team,
+            match_date=selected_date,
+            player_of_match=selected_pom,
+        )
         
         return filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df
         
@@ -919,7 +1172,7 @@ init_page()
 filtered_bat_df, filtered_bowl_df, filtered_match_df, filtered_game_df = initialize_data()
 
 # Create tabs
-tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records", "Series Records", "Batting Analysis Records", "Win/Loss Records"]
+tab_names = ["Batting Records", "Bowling Records", "Match Records", "Game Records", "Series Records", "Best Records", "Win/Loss Records"]
 tabs = st.tabs(tab_names)
 
 # Batting Records Tab
@@ -1030,8 +1283,14 @@ with tabs[0]:
             </div>
         """, unsafe_allow_html=True)
         hundreds_both_df = process_hundreds_both_innings(filtered_bat_df)
-        if not hundreds_both_df.empty:
-            st.dataframe(hundreds_both_df, use_container_width=True, hide_index=True)
+        hundreds_both_df = _prepare_display_df(hundreds_both_df)
+        if hundreds_both_df is not None and not hundreds_both_df.empty:
+            st.dataframe(
+                hundreds_both_df,
+                use_container_width=True,
+                hide_index=True,
+                key=_table_key("hundreds_both_df", hundreds_both_df.columns, len(hundreds_both_df)),
+            )
 
         # Position Records
         st.markdown("""
@@ -1048,8 +1307,15 @@ with tabs[0]:
             </div>
         """, unsafe_allow_html=True)
         position_scores_df = process_position_scores(filtered_bat_df)
-        if not position_scores_df.empty:
-            st.dataframe(position_scores_df, use_container_width=True, hide_index=True, height=430)
+        position_scores_df = _prepare_display_df(position_scores_df)
+        if position_scores_df is not None and not position_scores_df.empty:
+            st.dataframe(
+                position_scores_df,
+                use_container_width=True,
+                hide_index=True,
+                height=430,
+                key=_table_key("position_scores_df", position_scores_df.columns, len(position_scores_df)),
+            )
 
         # Centuries Analysis Plot
         st.markdown("""
@@ -1440,6 +1706,7 @@ with tabs[1]:
         best_match_bowling_df = process_match_bowling(filtered_bowl_df)
         if not best_match_bowling_df.empty:
             st.dataframe(best_match_bowling_df, use_container_width=True, hide_index=True)
+
     else:
         st.info("No bowling records available.")
 
@@ -2507,11 +2774,47 @@ with tabs[4]:
 
             if 'Runs' in series_stats.columns:
                 series_stats = series_stats.sort_values('Runs', ascending=False)
+
+            if not series_stats.empty:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    series_stats['Average'] = np.where(
+                        series_stats['Out'] > 0,
+                        (series_stats['Runs'] / series_stats['Out']).round(2),
+                        np.nan,
+                    )
+                    series_stats['Strike Rate'] = np.where(
+                        series_stats['Balls'] > 0,
+                        ((series_stats['Runs'] / series_stats['Balls']) * 100).round(2),
+                        np.nan,
+                    )
+                    series_stats['Balls per Out'] = np.where(
+                        series_stats['Out'] > 0,
+                        (series_stats['Balls'] / series_stats['Out']).round(2),
+                        np.nan,
+                    )
+
+                preferred_order = [
+                    'Series', 'Name', 'Bat Team', 'Bowl Team', 'Country',
+                    'Matches', 'Batted', 'Out', 'Not Out', 'Runs', 'Balls',
+                    'Average', 'Strike Rate', 'Balls per Out', '4s', '6s', '50s', '100s'
+                ]
+                existing_cols = [col for col in preferred_order if col in series_stats.columns]
+                trailing_cols = [
+                    col for col in series_stats.columns
+                    if col not in existing_cols
+                ]
+                series_stats = series_stats[existing_cols + trailing_cols]
             
             # Display series batting statistics
             if not series_stats.empty:
                 logger.log_dataframe("series_batting stats", series_stats)
-                st.dataframe(series_stats, use_container_width=True, hide_index=True)
+                series_stats_display = _prepare_display_df(series_stats)
+                st.dataframe(
+                    series_stats_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="series_batting_stats",
+                )
             else:
                 logger.log("series_stats empty")
                 st.info("No series batting statistics available.")
@@ -2725,51 +3028,76 @@ with tabs[4]:
             # Display series bowling statistics
             if not series_bowl_stats.empty: 
                 logger.log_dataframe("series_bowling stats", series_bowl_stats)
-                st.dataframe(series_bowl_stats, use_container_width=True, hide_index=True)
+                balls_col = None
+                for candidate in ['Bowler_Balls', 'Balls']:
+                    if candidate in series_bowling.columns:
+                        balls_col = candidate
+                        break
+
+                series_bowl_stats['Strike Rate'] = np.nan
+
+                if balls_col is not None:
+                    player_series_index = ['Series', 'Name', 'Bat Team', 'Bowl Team', 'Country']
+                    aggregated_balls = (
+                        series_bowling
+                        .groupby(player_series_index, observed=True)[balls_col]
+                        .sum()
+                        .rename('Balls Delivered')
+                    )
+                    series_bowl_stats = series_bowl_stats.merge(
+                        aggregated_balls,
+                        on=player_series_index,
+                        how='left',
+                    )
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        series_bowl_stats['Strike Rate'] = np.where(
+                            series_bowl_stats['Wickets'] > 0,
+                            (series_bowl_stats['Balls Delivered'] / series_bowl_stats['Wickets']).round(2),
+                            np.nan,
+                        )
+
+                preferred_order = [
+                    'Series', 'Name', 'Bat Team', 'Bowl Team', 'Country',
+                    'Matches', 'Overs', 'Balls Delivered', 'Wickets', 'Runs',
+                    'Average', 'Economy', 'Strike Rate', '5w', '10w'
+                ]
+                existing_cols = [col for col in preferred_order if col in series_bowl_stats.columns]
+                trailing_cols = [
+                    col for col in series_bowl_stats.columns
+                    if col not in existing_cols
+                ]
+                series_bowl_stats = series_bowl_stats[existing_cols + trailing_cols]
+
+                series_bowl_stats_display = _prepare_display_df(series_bowl_stats)
+                st.dataframe(
+                    series_bowl_stats_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="series_bowling_stats",
+                )
             else:
                 st.info("No series bowling statistics available.")
     else:
         st.info("No bowling data available for series analysis or no series found")  
 
-# Records Tab with lazy loading - only loads when clicked
+# Records Tab (auto-loaded)
 with tabs[5]:
-    # Check if Records tab content should be loaded
-    if 'records_tab_loaded' not in st.session_state:
-        st.session_state.records_tab_loaded = False
-    
-    # Show a button to load records data
-    if not st.session_state.records_tab_loaded:
+    best_tabs = st.tabs(["Batting Bests", "Bowling Bests"])
+
+    with best_tabs[0]:
         st.markdown("""
-        <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                    padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                    box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                    border: 1px solid rgba(255, 255, 255, 0.2);">
-            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Records Analysis</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if st.button("🚀 Load Records Data", key="load_records_btn", type="primary"):
-            st.session_state.records_tab_loaded = True
-            st.rerun()
-        else:
-            st.info("📈 Click the button above to load detailed records analysis. This tab contains complex calculations and may take a moment to load.")
-    else:
-        # Load the actual records content
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                    padding: 1rem; margin: 1rem 0; border-radius: 15px; 
-                    box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
-                    border: 1px solid rgba(255, 255, 255, 0.2);">
-            <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Single Innings Bests</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏅 Single Innings Bests</h3>
+            </div>
+            """, unsafe_allow_html=True)
+
         if filtered_bat_df is not None and not filtered_bat_df.empty:
-            # Create columns for layout
             col1, col2 = st.columns(2)
 
             with col1:
-                # --- Top 10 Highest Scores ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2778,22 +3106,41 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Highest Scores</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Select relevant columns and sort by Runs
-                best_inns_df = filtered_bat_df[['Name', 'Runs', 'Balls', 'Bowl_Team_y', 'Year']].copy()
-                best_inns_df = best_inns_df.sort_values(by='Runs', ascending=False).head(10)
-                # Add Rank column
-                best_inns_df.insert(0, 'Rank', range(1, 1 + len(best_inns_df)))
-                # Rename columns
-                best_inns_df = best_inns_df.rename(columns={'Bowl_Team_y': 'Opponent'})
-                # Reorder columns
-                best_inns_df = best_inns_df[['Rank', 'Name', 'Runs', 'Balls', 'Opponent', 'Year']]
-                
-                # Display the dataframe
-                st.dataframe(best_inns_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
+
+                opponent_column = _first_existing_column(
+                    filtered_bat_df,
+                    ['Bowl_Team_y', 'Bowl_Team', 'Bowl Team', 'Opponent']
+                )
+                base_columns = [col for col in ['Name', 'Runs', 'Balls', 'Year'] if col in filtered_bat_df.columns]
+                columns_to_use = base_columns.copy()
+                if opponent_column:
+                    columns_to_use.append(opponent_column)
+                required_columns = {'Runs'}
+                if not required_columns.issubset(filtered_bat_df.columns) or not columns_to_use:
+                    best_inns_df = pd.DataFrame()
+                else:
+                    best_inns_df = filtered_bat_df[columns_to_use].copy()
+                    best_inns_df = best_inns_df.sort_values(by='Runs', ascending=False).head(10)
+                    best_inns_df.insert(0, 'Rank', range(1, 1 + len(best_inns_df)))
+                    if opponent_column:
+                        best_inns_df = best_inns_df.rename(columns={opponent_column: 'Opponent'})
+                    else:
+                        best_inns_df['Opponent'] = '-'
+                    if 'Year' not in best_inns_df.columns:
+                        best_inns_df['Year'] = np.nan
+                    best_inns_df = best_inns_df[['Rank', 'Name', 'Runs', 'Balls', 'Opponent', 'Year']]
+
+                if not best_inns_df.empty:
+                    st.dataframe(
+                        best_inns_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                    )
+                else:
+                    st.info("No innings data available for highest scores with the current filters.")
 
             with col2:
-                # --- Top 10 Best Strike Rate (Innings, min 50 runs) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2802,25 +3149,42 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best SR (Inns, Min 50 Runs)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Filter for innings with at least 50 runs
-                inns_min_50 = filtered_bat_df[filtered_bat_df['Runs'] >= 50].copy()
-                # Calculate SR, handle division by zero
-                inns_min_50['SR'] = ((inns_min_50['Runs'] / inns_min_50['Balls'].replace(0, np.nan)) * 100).round(2)
-                # Select relevant columns and sort by SR
-                best_inns_sr_df = inns_min_50[['Name', 'Runs', 'Balls', 'SR', 'Bowl_Team_y', 'Year']].copy()
-                best_inns_sr_df = best_inns_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
-                # Add Rank column
-                best_inns_sr_df.insert(0, 'Rank', range(1, 1 + len(best_inns_sr_df)))
-                # Rename columns
-                best_inns_sr_df = best_inns_sr_df.rename(columns={'Bowl_Team_y': 'Opponent'})
-                # Reorder columns
-                best_inns_sr_df = best_inns_sr_df[['Rank', 'Name', 'SR', 'Runs', 'Balls', 'Opponent', 'Year']]
-                
-                # Display the dataframe
-                st.dataframe(best_inns_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-            # --- Seasonal Bests ---
+                inns_min_50 = filtered_bat_df[filtered_bat_df['Runs'] >= 50].copy()
+                inns_min_50['SR'] = ((inns_min_50['Runs'] / inns_min_50['Balls'].replace(0, np.nan)) * 100).round(2)
+                opponent_column_sr = _first_existing_column(
+                    inns_min_50,
+                    ['Bowl_Team_y', 'Bowl_Team', 'Bowl Team', 'Opponent']
+                )
+                base_sr_columns = [col for col in ['Name', 'Runs', 'Balls', 'SR', 'Year'] if col in inns_min_50.columns]
+                columns_to_use_sr = base_sr_columns.copy()
+                if opponent_column_sr:
+                    columns_to_use_sr.append(opponent_column_sr)
+                required_sr_columns = {'SR'}
+                if not required_sr_columns.issubset(inns_min_50.columns) or not columns_to_use_sr:
+                    best_inns_sr_df = pd.DataFrame()
+                else:
+                    best_inns_sr_df = inns_min_50[columns_to_use_sr].copy()
+                    best_inns_sr_df = best_inns_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
+                    best_inns_sr_df.insert(0, 'Rank', range(1, 1 + len(best_inns_sr_df)))
+                    if opponent_column_sr:
+                        best_inns_sr_df = best_inns_sr_df.rename(columns={opponent_column_sr: 'Opponent'})
+                    else:
+                        best_inns_sr_df['Opponent'] = '-'
+                    if 'Year' not in best_inns_sr_df.columns:
+                        best_inns_sr_df['Year'] = np.nan
+                    best_inns_sr_df = best_inns_sr_df[['Rank', 'Name', 'SR', 'Runs', 'Balls', 'Opponent', 'Year']]
+
+                if not best_inns_sr_df.empty:
+                    st.dataframe(
+                        best_inns_sr_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                    )
+                else:
+                    st.info("No innings meet the strike-rate criteria under the current filters.")
+
             st.divider()
             st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -2833,7 +3197,6 @@ with tabs[5]:
             col3, col4 = st.columns(2)
 
             with col3:
-                # --- Top 10 Most Runs in a Season by Format ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2842,23 +3205,17 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name, Year, Match_Format and sum Runs
+
                 season_runs_df = filtered_bat_df.groupby(['Name', 'Year', 'Match_Format']).agg(
                     Runs=('Runs', 'sum')
                 ).reset_index()
-                # Sort by Runs descending and get top 10
                 best_season_runs_df = season_runs_df.sort_values(by='Runs', ascending=False).head(10)
-                # Add Rank column
                 best_season_runs_df.insert(0, 'Rank', range(1, 1 + len(best_season_runs_df)))
-                # Reorder columns
                 best_season_runs_df = best_season_runs_df[['Rank', 'Name', 'Year', 'Match_Format', 'Runs']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col4:
-                # --- Top 10 Best Average Per Season by Format ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2867,30 +3224,22 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Average (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name, Year, Match_Format and sum Runs/Out
+
                 season_avg_df = filtered_bat_df.groupby(['Name', 'Year', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Out=('Out', 'sum')
                 ).reset_index()
-                # Calculate Average, handle division by zero
                 season_avg_df['Average'] = (season_avg_df['Runs'] / season_avg_df['Out'].replace(0, np.nan)).round(2)
-                # Sort by Average descending (NaNs will be pushed to the bottom) and get top 10
                 best_season_avg_df = season_avg_df.sort_values(by='Average', ascending=False, na_position='last').head(10)
-                # Add Rank column
                 best_season_avg_df.insert(0, 'Rank', range(1, 1 + len(best_season_avg_df)))
-                # Reorder columns
                 best_season_avg_df = best_season_avg_df[['Rank', 'Name', 'Year', 'Match_Format', 'Average', 'Runs', 'Out']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
-            
-            # Create new row for additional seasonal metrics
+
             st.divider()
             col5, col6 = st.columns(2)
 
             with col5:
-                # --- Top 10 Most POM Per Season by Format ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2899,23 +3248,19 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most POM (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Filter for POM awards first
-                pom_df_seasonal = filtered_bat_df[filtered_bat_df['Player_of_the_Match'] == filtered_bat_df['Name']]
-                # Group by Name, Year, Match_Format and count unique matches
+
+                pom_df_seasonal = filtered_bat_df[
+                    filtered_bat_df['Player_of_the_Match'].astype(str)
+                    == filtered_bat_df['Name'].astype(str)
+                ]
                 season_pom_df = pom_df_seasonal.groupby(['Name', 'Year', 'Match_Format'])['File Name'].nunique().reset_index(name='POM')
-                # Sort by POM descending and get top 10
                 best_season_pom_df = season_pom_df.sort_values(by='POM', ascending=False).head(10)
-                # Add Rank column
                 best_season_pom_df.insert(0, 'Rank', range(1, 1 + len(best_season_pom_df)))
-                # Reorder columns
                 best_season_pom_df = best_season_pom_df[['Rank', 'Name', 'Year', 'Match_Format', 'POM']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col6:
-                # --- Top 10 Highest Boundary % Per Season by Format ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2924,53 +3269,38 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Boundary % (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name, Year, Match_Format and aggregate Runs, 4s, 6s
+
                 season_boundary_df = filtered_bat_df.groupby(['Name', 'Year', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Fours=('4s', 'sum'),
                     Sixes=('6s', 'sum')
                 ).reset_index()
-                # Calculate Boundary Runs and Boundary Percentage
                 season_boundary_df['Boundary Runs'] = (season_boundary_df['Fours'] * 4) + (season_boundary_df['Sixes'] * 6)
                 season_boundary_df['Boundary %'] = ((season_boundary_df['Boundary Runs'] / season_boundary_df['Runs'].replace(0, np.nan)) * 100).round(2)
-                # Sort by Boundary % descending and get top 10
                 best_season_boundary_pct_df = season_boundary_df.sort_values(by='Boundary %', ascending=False, na_position='last').head(10)
-                # Add Rank column
                 best_season_boundary_pct_df.insert(0, 'Rank', range(1, 1 + len(best_season_boundary_pct_df)))
-                # Reorder columns
                 best_season_boundary_pct_df = best_season_boundary_pct_df[['Rank', 'Name', 'Year', 'Match_Format', 'Boundary %', 'Boundary Runs', 'Runs']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-            # Calculate Seasonal Match Averages and SR for Match+ metrics
             st.divider()
             col7, col8 = st.columns(2)
 
-            # Calculate seasonal match metrics for Match+ calculations
             file_stats_seasonal = filtered_bat_df.groupby(['File Name', 'Year', 'Match_Format']).agg({
                 'Total_Runs': 'first',
                 'Team Balls': 'first',
                 'Wickets': 'first'
             }).reset_index()
-            
-            # Calculate match-level metrics per year and format
             file_stats_seasonal['Match_Avg'] = file_stats_seasonal['Total_Runs'] / file_stats_seasonal['Wickets'].replace(0, np.nan)
             file_stats_seasonal['Match_SR'] = (file_stats_seasonal['Total_Runs'] / file_stats_seasonal['Team Balls'].replace(0, np.nan)) * 100
-            
-            # Calculate the average of these match metrics per season and format
             seasonal_match_metrics = file_stats_seasonal.groupby(['Year', 'Match_Format']).agg(
                 Avg_Match_Avg=('Match_Avg', 'mean'),
                 Avg_Match_SR=('Match_SR', 'mean')
             ).reset_index()
-            
-            # Round the calculated seasonal averages
             seasonal_match_metrics['Avg_Match_Avg'] = seasonal_match_metrics['Avg_Match_Avg'].round(2)
             seasonal_match_metrics['Avg_Match_SR'] = seasonal_match_metrics['Avg_Match_SR'].round(2)
 
             with col7:
-                # --- Top 10 Best Match+ Avg Per Season ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -2979,36 +3309,21 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Top 10 Best Match+ Avg (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group player stats by Name, Year, and Match_Format
+
                 player_seasonal_stats = filtered_bat_df.groupby(['Name', 'Year', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Out=('Out', 'sum')
                 ).reset_index()
-                
-                # Calculate player's seasonal average
                 player_seasonal_stats['Player_Avg'] = (player_seasonal_stats['Runs'] / player_seasonal_stats['Out'].replace(0, np.nan)).round(2)
-                
-                # Merge with seasonal match metrics on Year and Match_Format
                 merged_stats = pd.merge(player_seasonal_stats, seasonal_match_metrics, on=['Year', 'Match_Format'], how='left')
-                
-                # Calculate Match+ Avg
                 merged_stats['Match+ Avg'] = ((merged_stats['Player_Avg'] / merged_stats['Avg_Match_Avg'].replace(0, np.nan)) * 100).round(2)
-                
-                # Sort by Match+ Avg descending and get top 10
                 best_season_match_plus_avg_df = merged_stats.sort_values(by='Match+ Avg', ascending=False, na_position='last').head(10)
-                
-                # Add Rank column
                 best_season_match_plus_avg_df.insert(0, 'Rank', range(1, 1 + len(best_season_match_plus_avg_df)))
-                
-                # Reorder columns
                 best_season_match_plus_avg_df = best_season_match_plus_avg_df[['Rank', 'Name', 'Year', 'Match_Format', 'Match+ Avg', 'Player_Avg', 'Avg_Match_Avg']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col8:
-                # --- Top 10 Best Match+ SR Per Season ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3017,35 +3332,20 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Match+ SR (Season)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group player stats by Name, Year, and Match_Format
+
                 player_seasonal_stats_sr = filtered_bat_df.groupby(['Name', 'Year', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Balls=('Balls', 'sum')
                 ).reset_index()
-                
-                # Calculate player's seasonal SR
                 player_seasonal_stats_sr['Player_SR'] = ((player_seasonal_stats_sr['Runs'] / player_seasonal_stats_sr['Balls'].replace(0, np.nan)) * 100).round(2)
-                
-                # Merge with seasonal match metrics on Year and Match_Format
                 merged_stats_sr = pd.merge(player_seasonal_stats_sr, seasonal_match_metrics, on=['Year', 'Match_Format'], how='left')
-                
-                # Calculate Match+ SR
                 merged_stats_sr['Match+ SR'] = ((merged_stats_sr['Player_SR'] / merged_stats_sr['Avg_Match_SR'].replace(0, np.nan)) * 100).round(2)
-                
-                # Sort by Match+ SR descending and get top 10
                 best_season_match_plus_sr_df = merged_stats_sr.sort_values(by='Match+ SR', ascending=False, na_position='last').head(10)
-                
-                # Add Rank column
                 best_season_match_plus_sr_df.insert(0, 'Rank', range(1, 1 + len(best_season_match_plus_sr_df)))
-                
-                # Reorder columns
                 best_season_match_plus_sr_df = best_season_match_plus_sr_df[['Rank', 'Name', 'Year', 'Match_Format', 'Match+ SR', 'Player_SR', 'Avg_Match_SR']]
-                
-                # Display the dataframe
+
                 st.dataframe(best_season_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-            # --- Career Bests ---
             st.divider()
             st.markdown("""
             <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
@@ -3058,7 +3358,6 @@ with tabs[5]:
             col9, col10 = st.columns(2)
 
             with col9:
-                # --- Top 10 Most Runs (Career by Format) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3067,21 +3366,17 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most Runs</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format for career total (no Year grouping)
+
                 career_runs_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg({
-                    'Runs': 'sum'  # Sum of all runs for each player in each format across all years
+                    'Runs': 'sum'
                 }).reset_index()
-                
-                # Sort by Runs descending and get top 10
                 best_career_runs_df = career_runs_df.sort_values(by='Runs', ascending=False).head(10)
                 best_career_runs_df.insert(0, 'Rank', range(1, 1 + len(best_career_runs_df)))
                 best_career_runs_df = best_career_runs_df[['Rank', 'Name', 'Match_Format', 'Runs']]
-                
+
                 st.dataframe(best_career_runs_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col10:
-                # --- Top 10 Best Average (Career by Format, min 10 inns) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3090,32 +3385,25 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Average (Min 10 Inns)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for true career totals
+
                 career_avg_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg({
                     'Runs': 'sum',
                     'Out': 'sum',
-                    'Batted': 'sum'  # Count innings
+                    'Batted': 'sum'
                 }).reset_index()
-                
-                # Apply min innings filter AFTER aggregation
                 career_avg_df = career_avg_df[career_avg_df['Batted'] >= 10]
-                # Calculate Average, handle division by zero
                 career_avg_df['Average'] = (career_avg_df['Runs'] / career_avg_df['Out'].replace(0, np.nan)).round(2)
-                # Sort and get top 10
                 best_career_avg_df = career_avg_df.sort_values(by='Average', ascending=False, na_position='last').head(10)
                 best_career_avg_df.insert(0, 'Rank', range(1, 1 + len(best_career_avg_df)))
                 best_career_avg_df = best_career_avg_df[['Rank', 'Name', 'Match_Format', 'Average', 'Runs', 'Out', 'Batted']]
-                # Rename column for clarity
                 best_career_avg_df = best_career_avg_df.rename(columns={'Batted': 'Inns'})
-                
+
                 st.dataframe(best_career_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
             col11, col12 = st.columns(2)
 
             with col11:
-                # --- Top 10 Best SR (Career by Format, min 500 balls) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3124,23 +3412,20 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best SR (Min 500 Balls)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_sr_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Balls=('Balls', 'sum')
                 ).reset_index()
-                # Apply min balls filter AFTER aggregation
                 career_sr_df = career_sr_df[career_sr_df['Balls'] >= 500]
                 career_sr_df['SR'] = ((career_sr_df['Runs'] / career_sr_df['Balls'].replace(0, np.nan)) * 100).round(2)
                 best_career_sr_df = career_sr_df.sort_values(by='SR', ascending=False, na_position='last').head(10)
                 best_career_sr_df.insert(0, 'Rank', range(1, 1 + len(best_career_sr_df)))
                 best_career_sr_df = best_career_sr_df[['Rank', 'Name', 'Match_Format', 'SR', 'Runs', 'Balls']]
-                
+
                 st.dataframe(best_career_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col12:
-                # --- Top 10 Best BPO (Career by Format, min 10 inns) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3149,27 +3434,24 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Best BPO (Min 10 Inns)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_bpo_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Balls=('Balls', 'sum'),
                     Out=('Out', 'sum'),
                     Inns=('Batted', 'sum')
                 ).reset_index()
-                # Apply min innings filter AFTER aggregation
                 career_bpo_df = career_bpo_df[career_bpo_df['Inns'] >= 10]
                 career_bpo_df['BPO'] = (career_bpo_df['Balls'] / career_bpo_df['Out'].replace(0, np.nan)).round(2)
                 best_career_bpo_df = career_bpo_df.sort_values(by='BPO', ascending=False, na_position='last').head(10)
                 best_career_bpo_df.insert(0, 'Rank', range(1, 1 + len(best_career_bpo_df)))
                 best_career_bpo_df = best_career_bpo_df[['Rank', 'Name', 'Match_Format', 'BPO', 'Balls', 'Out', 'Inns']]
-                
+
                 st.dataframe(best_career_bpo_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
             col13, col14 = st.columns(2)
 
             with col13:
-                # --- Top 10 Highest Runs Per Match (Career by Format, min 10 matches) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3178,23 +3460,20 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💰 Top 10 Runs Per Match (Min 10 Matches)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_rpm_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Matches=('File Name', 'nunique')
                 ).reset_index()
-                # Apply min matches filter AFTER aggregation
                 career_rpm_df = career_rpm_df[career_rpm_df['Matches'] >= 10]
                 career_rpm_df['Runs Per Match'] = (career_rpm_df['Runs'] / career_rpm_df['Matches'].replace(0, np.nan)).round(2)
                 best_career_rpm_df = career_rpm_df.sort_values(by='Runs Per Match', ascending=False, na_position='last').head(10)
                 best_career_rpm_df.insert(0, 'Rank', range(1, 1 + len(best_career_rpm_df)))
                 best_career_rpm_df = best_career_rpm_df[['Rank', 'Name', 'Match_Format', 'Runs Per Match', 'Runs', 'Matches']]
-                
+
                 st.dataframe(best_career_rpm_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col14:
-                # --- Top 10 Most 50s (Career by Format) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3203,22 +3482,20 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🥇 Top 10 Most 50s</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_50s_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Fifties=('50s', 'sum')
                 ).reset_index()
                 best_career_50s_df = career_50s_df.sort_values(by='Fifties', ascending=False).head(10)
                 best_career_50s_df.insert(0, 'Rank', range(1, 1 + len(best_career_50s_df)))
                 best_career_50s_df = best_career_50s_df[['Rank', 'Name', 'Match_Format', 'Fifties']]
-                
+
                 st.dataframe(best_career_50s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
             col15, col16 = st.columns(2)
 
             with col15:
-                # --- Top 10 Most 100s (Career by Format) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3227,19 +3504,17 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💯 Top 10 Most 100s</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_100s_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Hundreds=('100s', 'sum')
                 ).reset_index()
                 best_career_100s_df = career_100s_df.sort_values(by='Hundreds', ascending=False).head(10)
                 best_career_100s_df.insert(0, 'Rank', range(1, 1 + len(best_career_100s_df)))
                 best_career_100s_df = best_career_100s_df[['Rank', 'Name', 'Match_Format', 'Hundreds']]
-                
+
                 st.dataframe(best_career_100s_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             with col16:
-                # --- Top 10 Most POM (Career by Format) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3248,22 +3523,23 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most POM</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Filter for POM awards first
-                pom_df_career = filtered_bat_df[filtered_bat_df['Player_of_the_Match'] == filtered_bat_df['Name']]
-                # Group by Name and Match_Format only for career total
+
+                pom_mask_career = (
+                    filtered_bat_df['Player_of_the_Match'].astype(str).str.strip()
+                    == filtered_bat_df['Name'].astype(str).str.strip()
+                )
+                pom_df_career = filtered_bat_df[pom_mask_career]
                 career_pom_df = pom_df_career.groupby(['Name', 'Match_Format'])['File Name'].nunique().reset_index(name='POM')
                 best_career_pom_df = career_pom_df.sort_values(by='POM', ascending=False).head(10)
                 best_career_pom_df.insert(0, 'Rank', range(1, 1 + len(best_career_pom_df)))
                 best_career_pom_df = best_career_pom_df[['Rank', 'Name', 'Match_Format', 'POM']]
-                
+
                 st.dataframe(best_career_pom_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
             col17, col18 = st.columns(2)
 
             with col17:
-                # --- Top 10 Highest Boundary % (Career by Format, min 500 runs) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3272,24 +3548,21 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Boundary % (Min 500 Runs)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 career_boundary_df = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Fours=('4s', 'sum'),
                     Sixes=('6s', 'sum')
                 ).reset_index()
-                # Apply min runs filter AFTER aggregation
                 career_boundary_df = career_boundary_df[career_boundary_df['Runs'] >= 500]
                 career_boundary_df['Boundary Runs'] = (career_boundary_df['Fours'] * 4) + (career_boundary_df['Sixes'] * 6)
                 career_boundary_df['Boundary %'] = ((career_boundary_df['Boundary Runs'] / career_boundary_df['Runs'].replace(0, np.nan)) * 100).round(2)
                 best_career_boundary_pct_df = career_boundary_df.sort_values(by='Boundary %', ascending=False, na_position='last').head(10)
                 best_career_boundary_pct_df.insert(0, 'Rank', range(1, 1 + len(best_career_boundary_pct_df)))
                 best_career_boundary_pct_df = best_career_boundary_pct_df[['Rank', 'Name', 'Match_Format', 'Boundary %', 'Boundary Runs', 'Runs']]
-                
+
                 st.dataframe(best_career_boundary_pct_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-            # Calculate Overall Match Averages and SR per Format for career Match+ metrics
             file_stats_overall = filtered_bat_df.groupby(['File Name', 'Match_Format']).agg({
                 'Total_Runs': 'first',
                 'Team Balls': 'first',
@@ -3297,7 +3570,6 @@ with tabs[5]:
             }).reset_index()
             file_stats_overall['Match_Avg'] = file_stats_overall['Total_Runs'] / file_stats_overall['Wickets'].replace(0, np.nan)
             file_stats_overall['Match_SR'] = (file_stats_overall['Total_Runs'] / file_stats_overall['Team Balls'].replace(0, np.nan)) * 100
-            # Group by format to get the average match avg/sr across all matches of that format
             overall_match_metrics = file_stats_overall.groupby(['Match_Format']).agg(
                 Overall_Avg_Match_Avg=('Match_Avg', 'mean'),
                 Overall_Avg_Match_SR=('Match_SR', 'mean')
@@ -3306,7 +3578,6 @@ with tabs[5]:
             overall_match_metrics['Overall_Avg_Match_SR'] = overall_match_metrics['Overall_Avg_Match_SR'].round(2)
 
             with col18:
-                # --- Top 10 Best Match+ Avg (Career by Format, min 10 inns) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3315,30 +3586,26 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📊 Top 10 Best Match+ Avg (Min 10 Inns)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 player_career_stats_avg = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Out=('Out', 'sum'),
                     Inns=('Batted', 'sum')
                 ).reset_index()
-                # Apply min innings filter AFTER aggregation
                 player_career_stats_avg = player_career_stats_avg[player_career_stats_avg['Inns'] >= 10]
                 player_career_stats_avg['Player_Avg'] = (player_career_stats_avg['Runs'] / player_career_stats_avg['Out'].replace(0, np.nan)).round(2)
-                # Merge with overall format metrics
                 merged_career_avg = pd.merge(player_career_stats_avg, overall_match_metrics, on='Match_Format', how='left')
                 merged_career_avg['Match+ Avg'] = ((merged_career_avg['Player_Avg'] / merged_career_avg['Overall_Avg_Match_Avg'].replace(0, np.nan)) * 100).round(2)
                 best_career_match_plus_avg_df = merged_career_avg.sort_values(by='Match+ Avg', ascending=False, na_position='last').head(10)
                 best_career_match_plus_avg_df.insert(0, 'Rank', range(1, 1 + len(best_career_match_plus_avg_df)))
                 best_career_match_plus_avg_df = best_career_match_plus_avg_df[['Rank', 'Name', 'Match_Format', 'Match+ Avg', 'Player_Avg', 'Overall_Avg_Match_Avg', 'Inns']]
-                
+
                 st.dataframe(best_career_match_plus_avg_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
             st.divider()
-            col19, col20 = st.columns(2) # Use two columns, leave one empty
+            col19, col20 = st.columns(2)
 
             with col19:
-                # --- Top 10 Best Match+ SR (Career by Format, min 500 balls) ---
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
                             padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
@@ -3347,27 +3614,737 @@ with tabs[5]:
                     <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Match+ SR (Min 500 Balls)</h3>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # Group by Name and Match_Format only for career total
+
                 player_career_stats_sr = filtered_bat_df.groupby(['Name', 'Match_Format']).agg(
                     Runs=('Runs', 'sum'),
                     Balls=('Balls', 'sum')
                 ).reset_index()
-                # Apply min balls filter AFTER aggregation
                 player_career_stats_sr = player_career_stats_sr[player_career_stats_sr['Balls'] >= 500]
                 player_career_stats_sr['Player_SR'] = ((player_career_stats_sr['Runs'] / player_career_stats_sr['Balls'].replace(0, np.nan)) * 100).round(2)
-                # Merge with overall format metrics
                 merged_career_sr = pd.merge(player_career_stats_sr, overall_match_metrics, on='Match_Format', how='left')
                 merged_career_sr['Match+ SR'] = ((merged_career_sr['Player_SR'] / merged_career_sr['Overall_Avg_Match_SR'].replace(0, np.nan)) * 100).round(2)
                 best_career_match_plus_sr_df = merged_career_sr.sort_values(by='Match+ SR', ascending=False, na_position='last').head(10)
                 best_career_match_plus_sr_df.insert(0, 'Rank', range(1, 1 + len(best_career_match_plus_sr_df)))
                 best_career_match_plus_sr_df = best_career_match_plus_sr_df[['Rank', 'Name', 'Match_Format', 'Match+ SR', 'Player_SR', 'Overall_Avg_Match_SR', 'Balls']]
-                
-                st.dataframe(best_career_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
 
-            # col20 is empty
+                st.dataframe(best_career_match_plus_sr_df, use_container_width=True, hide_index=True, column_config={"Name": st.column_config.Column("Name", pinned=True)})
         else:
             st.warning("No batting data available for records analysis")
+
+    with best_tabs[1]:
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                        padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+                <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎳 Bowling Bests</h3>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if filtered_bowl_df is not None and not filtered_bowl_df.empty:
+            working_bowl = filtered_bowl_df.copy()
+
+            def _ensure_numeric(df: pd.DataFrame, column: str) -> None:
+                if column in df.columns:
+                    df[column] = pd.to_numeric(df[column], errors='coerce')
+
+            for numeric_col in ['Bowler_Wkts', 'Bowler_Runs', 'Bowler_Balls', 'Balls', 'Bowler_Overs', 'Overs']:
+                _ensure_numeric(working_bowl, numeric_col)
+
+            match_count_col = 'File Name' if 'File Name' in working_bowl.columns else None
+            runs_available = 'Bowler_Runs' in working_bowl.columns
+            wickets_available = 'Bowler_Wkts' in working_bowl.columns
+
+            def _overs_to_balls(value) -> float:
+                if pd.isna(value):
+                    return np.nan
+                try:
+                    s = str(value).strip()
+                    if not s:
+                        return np.nan
+                    if ':' in s:
+                        over_str, ball_str = s.split(':', 1)
+                    elif '.' in s:
+                        over_str, ball_str = s.split('.', 1)
+                    else:
+                        over_str, ball_str = s, '0'
+                    overs_val = int(float(over_str))
+                    ball_digits = ''.join(ch for ch in ball_str if ch.isdigit())
+                    balls_val = int(ball_digits) if ball_digits else 0
+                    if balls_val >= 6:
+                        overs_val += balls_val // 6
+                        balls_val = balls_val % 6
+                    return float(overs_val * 6 + balls_val)
+                except Exception:
+                    return np.nan
+
+            balls_available = False
+            balls_source = next((col for col in ['Bowler_Balls', 'Balls'] if col in working_bowl.columns), None)
+            if balls_source:
+                working_bowl['Balls_Used'] = pd.to_numeric(working_bowl[balls_source], errors='coerce')
+                balls_available = working_bowl['Balls_Used'].notna().any()
+            else:
+                overs_source = next((col for col in ['Bowler_Overs', 'Overs'] if col in working_bowl.columns), None)
+                if overs_source:
+                    working_bowl['Balls_Used'] = working_bowl[overs_source].apply(_overs_to_balls)
+                    balls_available = working_bowl['Balls_Used'].notna().any()
+                else:
+                    working_bowl['Balls_Used'] = np.nan
+
+            if balls_available:
+                working_bowl['Balls_Used'] = working_bowl['Balls_Used'].astype(float)
+                working_bowl['Overs_Used'] = working_bowl['Balls_Used'] / 6
+            else:
+                working_bowl['Overs_Used'] = np.nan
+
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🎯 Single Innings Bests</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+            best_single_df = process_best_bowling(filtered_bowl_df)
+            if not best_single_df.empty:
+                top_single_df = best_single_df.head(10).reset_index(drop=True)
+                st.dataframe(
+                    top_single_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                )
+            else:
+                st.info("No bowling innings satisfy the criteria for single-innings bests with the current filters.")
+
+            col_si1, col_si2 = st.columns(2)
+
+            with col_si1:
+                st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💨 Best Economy (Min 20 Overs)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                if runs_available and working_bowl['Overs_Used'].notna().any():
+                    economy_candidates = working_bowl[
+                        working_bowl['Overs_Used'].notna()
+                        & (working_bowl['Overs_Used'] >= 20)
+                        & working_bowl['Bowler_Runs'].notna()
+                    ].copy()
+
+                    if not economy_candidates.empty:
+                        economy_candidates['Economy'] = (
+                            economy_candidates['Bowler_Runs'] / economy_candidates['Overs_Used']
+                        ).round(2)
+                        economy_candidates['Overs'] = economy_candidates['Overs_Used'].round(1)
+                        economy_candidates['Runs'] = economy_candidates['Bowler_Runs'].round(0).astype('Int64')
+                        economy_candidates['Wickets'] = economy_candidates['Bowler_Wkts'].astype('Int64')
+                        if 'Date' in economy_candidates.columns:
+                            economy_candidates = format_date_column(economy_candidates, 'Date')
+
+                        economy_best = economy_candidates.sort_values(
+                            by=['Economy', 'Wickets', 'Runs'], ascending=[True, False, True]
+                        ).head(10)
+                        economy_best.insert(0, 'Rank', range(1, 1 + len(economy_best)))
+
+                        econ_display = ['Rank', 'Name']
+                        if 'Match_Format' in economy_best.columns:
+                            econ_display.append('Match_Format')
+                        econ_display.extend(['Economy', 'Overs', 'Runs', 'Wickets'])
+                        if 'Date' in economy_best.columns:
+                            econ_display.append('Date')
+                        if 'Bat_Team' in economy_best.columns:
+                            econ_display.append('Bat_Team')
+
+                        st.dataframe(
+                            economy_best[econ_display],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+                    else:
+                        st.info("No innings meet the 20-over minimum for economy analysis.")
+                else:
+                    st.info("Economy analysis requires overs and run data.")
+
+            with col_si2:
+                st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Best Strike Rate (Min 5 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                if balls_available and working_bowl['Balls_Used'].notna().any():
+                    strike_candidates = working_bowl[
+                        working_bowl['Balls_Used'].notna()
+                        & (working_bowl['Balls_Used'] > 0)
+                        & (working_bowl['Bowler_Wkts'] >= 5)
+                    ].copy()
+
+                    if not strike_candidates.empty:
+                        strike_candidates['Strike Rate'] = (
+                            strike_candidates['Balls_Used'] / strike_candidates['Bowler_Wkts']
+                        ).round(2)
+                        strike_candidates['Balls'] = strike_candidates['Balls_Used'].round(0).astype('Int64')
+                        strike_candidates['Wickets'] = strike_candidates['Bowler_Wkts'].astype('Int64')
+                        if 'Date' in strike_candidates.columns:
+                            strike_candidates = format_date_column(strike_candidates, 'Date')
+
+                        strike_best = strike_candidates.sort_values(
+                            by=['Strike Rate', 'Wickets', 'Balls'], ascending=[True, False, True]
+                        ).head(10)
+                        strike_best.insert(0, 'Rank', range(1, 1 + len(strike_best)))
+
+                        sr_display = ['Rank', 'Name']
+                        if 'Match_Format' in strike_best.columns:
+                            sr_display.append('Match_Format')
+                        sr_display.extend(['Strike Rate', 'Balls', 'Wickets'])
+                        if 'Date' in strike_best.columns:
+                            sr_display.append('Date')
+                        if 'Bat_Team' in strike_best.columns:
+                            sr_display.append('Bat_Team')
+
+                        st.dataframe(
+                            strike_best[sr_display],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+                    else:
+                        st.info("No innings meet the 5-wicket minimum for strike rate analysis.")
+                else:
+                    st.info("Strike rate analysis requires balls bowled and wicket data.")
+
+            st.divider()
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">📊 Seasonal Bests (by Format)</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+            if wickets_available and 'Year' in working_bowl.columns and 'Match_Format' in working_bowl.columns:
+                season_agg: dict[str, tuple[str, str]] = {
+                    'Wickets': ('Bowler_Wkts', 'sum')
+                }
+                if runs_available:
+                    season_agg['Runs'] = ('Bowler_Runs', 'sum')
+                if balls_available:
+                    season_agg['Balls'] = ('Balls_Used', 'sum')
+                    season_agg['Overs'] = ('Overs_Used', 'sum')
+                if match_count_col:
+                    season_agg['Matches'] = (match_count_col, 'nunique')
+                else:
+                    season_agg['Matches'] = ('Bowler_Wkts', 'count')
+
+                season_group = (
+                    working_bowl
+                    .groupby(['Name', 'Year', 'Match_Format'], observed=True)
+                    .agg(**season_agg)
+                    .reset_index()
+                )
+                season_group = season_group[season_group['Wickets'] > 0]
+
+                if 'Runs' in season_group.columns:
+                    season_group['Average'] = np.where(
+                        season_group['Wickets'] > 0,
+                        (season_group['Runs'] / season_group['Wickets']).round(2),
+                        np.nan
+                    )
+                else:
+                    season_group['Average'] = np.nan
+
+                if 'Balls' in season_group.columns and 'Runs' in season_group.columns:
+                    season_group['Strike Rate'] = np.where(
+                        (season_group['Wickets'] > 0) & (season_group['Balls'] > 0),
+                        (season_group['Balls'] / season_group['Wickets']).round(2),
+                        np.nan
+                    )
+                    season_group['Economy'] = np.where(
+                        (season_group['Balls'] > 0),
+                        (season_group['Runs'] / (season_group['Balls'] / 6)).round(2),
+                        np.nan
+                    )
+                else:
+                    season_group['Strike Rate'] = np.nan
+                    season_group['Economy'] = np.nan
+
+                col_s1, col_s2 = st.columns(2)
+
+                with col_s1:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Most Wickets (Season)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    top_season_wkts = season_group.sort_values(by='Wickets', ascending=False).head(10).copy()
+                    if top_season_wkts.empty:
+                        st.info("No seasonal wicket data available for the current filters.")
+                    else:
+                        top_season_wkts.insert(0, 'Rank', range(1, 1 + len(top_season_wkts)))
+                        display_cols = ['Rank', 'Name', 'Year', 'Match_Format', 'Wickets']
+                        if 'Matches' in top_season_wkts.columns:
+                            display_cols.append('Matches')
+                        st.dataframe(
+                            top_season_wkts[display_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                with col_s2:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Bowling Avg (Season, Min 10 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Average' in season_group.columns:
+                        season_avg = season_group[(season_group['Wickets'] >= 10) & season_group['Average'].notna()].sort_values(by='Average', ascending=True).head(10).copy()
+                    else:
+                        season_avg = pd.DataFrame()
+
+                    if season_avg.empty:
+                        st.info("Not enough data to compute seasonal bowling averages (requires runs and at least 10 wickets).")
+                    else:
+                        season_avg = season_avg.copy()
+                        if 'Overs' in season_avg.columns:
+                            season_avg['Overs'] = season_avg['Overs'].round(1)
+                        season_avg.insert(0, 'Rank', range(1, 1 + len(season_avg)))
+                        display_cols = ['Rank', 'Name', 'Year', 'Match_Format', 'Average', 'Wickets']
+                        if 'Overs' in season_avg.columns:
+                            display_cols.append('Overs')
+                        st.dataframe(
+                            season_avg[display_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                col_s3, col_s4 = st.columns(2)
+
+                with col_s3:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Strike Rate (Season, Min 10 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Strike Rate' in season_group.columns:
+                        season_sr = season_group[(season_group['Wickets'] >= 10) & season_group['Strike Rate'].notna()].sort_values(by='Strike Rate', ascending=True).head(10).copy()
+                    else:
+                        season_sr = pd.DataFrame()
+
+                    if season_sr.empty:
+                        st.info("Not enough ball data to compute seasonal strike rates (requires balls and at least 10 wickets).")
+                    else:
+                        season_sr.insert(0, 'Rank', range(1, 1 + len(season_sr)))
+                        sr_cols = ['Rank', 'Name', 'Year', 'Match_Format', 'Strike Rate', 'Wickets']
+                        if 'Balls' in season_sr.columns:
+                            season_sr['Balls'] = season_sr['Balls'].round(0).astype(int)
+                            sr_cols.append('Balls')
+                        st.dataframe(
+                            season_sr[sr_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                with col_s4:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💨 Top 10 Best Economy (Season, Min 10 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Economy' in season_group.columns:
+                        season_econ = season_group[(season_group['Wickets'] >= 10) & season_group['Economy'].notna()].sort_values(by='Economy', ascending=True).head(10).copy()
+                    else:
+                        season_econ = pd.DataFrame()
+
+                    if season_econ.empty:
+                        st.info("Not enough data to compute seasonal economy rates (requires runs/balls and at least 10 wickets).")
+                    else:
+                        season_econ.insert(0, 'Rank', range(1, 1 + len(season_econ)))
+                        econ_cols = ['Rank', 'Name', 'Year', 'Match_Format', 'Economy', 'Wickets']
+                        if 'Overs' in season_econ.columns:
+                            season_econ['Overs'] = (season_econ['Overs'].round(2))
+                            econ_cols.append('Overs')
+                        st.dataframe(
+                            season_econ[econ_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+            else:
+                st.info("Seasonal bowling metrics require Year, Match_Format, and wicket data.")
+
+            st.divider()
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                            padding: 1rem; margin: 1rem 0; border-radius: 15px; 
+                            box-shadow: 0 8px 32px rgba(250, 112, 154, 0.3);
+                            border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.3rem; text-align: center;">🏆 Career Bests (by Format)</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+            if wickets_available and 'Match_Format' in working_bowl.columns:
+                career_agg: dict[str, tuple[str, str]] = {
+                    'Wickets': ('Bowler_Wkts', 'sum')
+                }
+                if runs_available:
+                    career_agg['Runs'] = ('Bowler_Runs', 'sum')
+                if balls_available:
+                    career_agg['Balls'] = ('Balls_Used', 'sum')
+                    career_agg['Overs'] = ('Overs_Used', 'sum')
+                if match_count_col:
+                    career_agg['Matches'] = (match_count_col, 'nunique')
+                else:
+                    career_agg['Matches'] = ('Bowler_Wkts', 'count')
+
+                career_group = (
+                    working_bowl
+                    .groupby(['Name', 'Match_Format'], observed=True)
+                    .agg(**career_agg)
+                    .reset_index()
+                )
+                career_group = career_group[career_group['Wickets'] > 0]
+
+                if 'Runs' in career_group.columns:
+                    career_group['Average'] = np.where(
+                        career_group['Wickets'] > 0,
+                        (career_group['Runs'] / career_group['Wickets']).round(2),
+                        np.nan
+                    )
+                else:
+                    career_group['Average'] = np.nan
+
+                if 'Balls' in career_group.columns and 'Runs' in career_group.columns:
+                    career_group['Strike Rate'] = np.where(
+                        (career_group['Wickets'] > 0) & (career_group['Balls'] > 0),
+                        (career_group['Balls'] / career_group['Wickets']).round(2),
+                        np.nan
+                    )
+                    career_group['Economy'] = np.where(
+                        (career_group['Balls'] > 0),
+                        (career_group['Runs'] / (career_group['Balls'] / 6)).round(2),
+                        np.nan
+                    )
+                else:
+                    career_group['Strike Rate'] = np.nan
+                    career_group['Economy'] = np.nan
+
+                col_c1, col_c2 = st.columns(2)
+
+                with col_c1:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎯 Top 10 Most Wickets (Career)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    top_career_wkts = career_group.sort_values(by='Wickets', ascending=False).head(10).copy()
+                    if top_career_wkts.empty:
+                        st.info("No career wicket data available for the current filters.")
+                    else:
+                        top_career_wkts.insert(0, 'Rank', range(1, 1 + len(top_career_wkts)))
+                        display_cols = ['Rank', 'Name', 'Match_Format', 'Wickets']
+                        if 'Matches' in top_career_wkts.columns:
+                            display_cols.append('Matches')
+                        st.dataframe(
+                            top_career_wkts[display_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                with col_c2:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">📈 Top 10 Best Bowling Avg (Career, Min 50 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Average' in career_group.columns:
+                        career_avg = career_group[(career_group['Wickets'] >= 50) & career_group['Average'].notna()].sort_values(by='Average', ascending=True).head(10).copy()
+                    else:
+                        career_avg = pd.DataFrame()
+
+                    if career_avg.empty:
+                        st.info("Not enough data to compute career bowling averages (requires runs and at least 50 wickets).")
+                    else:
+                        career_avg.insert(0, 'Rank', range(1, 1 + len(career_avg)))
+                        st.dataframe(
+                            career_avg[['Rank', 'Name', 'Match_Format', 'Average', 'Wickets', 'Runs']],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                col_c3, col_c4 = st.columns(2)
+
+                with col_c3:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">⚡ Top 10 Best Strike Rate (Career, Min 50 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Strike Rate' in career_group.columns:
+                        career_sr = career_group[(career_group['Wickets'] >= 50) & career_group['Strike Rate'].notna()].sort_values(by='Strike Rate', ascending=True).head(10).copy()
+                    else:
+                        career_sr = pd.DataFrame()
+
+                    if career_sr.empty:
+                        st.info("Not enough ball data to compute career strike rates (requires balls and at least 50 wickets).")
+                    else:
+                        career_sr.insert(0, 'Rank', range(1, 1 + len(career_sr)))
+                        sr_cols = ['Rank', 'Name', 'Match_Format', 'Strike Rate', 'Wickets']
+                        if 'Balls' in career_sr.columns:
+                            career_sr['Balls'] = career_sr['Balls'].round(0).astype(int)
+                            sr_cols.append('Balls')
+                        st.dataframe(
+                            career_sr[sr_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                with col_c4:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💨 Top 10 Best Economy (Career, Min 50 Wkts)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'Economy' in career_group.columns:
+                        career_econ = career_group[(career_group['Wickets'] >= 50) & career_group['Economy'].notna()].sort_values(by='Economy', ascending=True).head(10).copy()
+                    else:
+                        career_econ = pd.DataFrame()
+
+                    if career_econ.empty:
+                        st.info("Not enough data to compute career economy rates (requires runs/balls and at least 50 wickets).")
+                    else:
+                        career_econ.insert(0, 'Rank', range(1, 1 + len(career_econ)))
+                        econ_cols = ['Rank', 'Name', 'Match_Format', 'Economy', 'Wickets']
+                        if 'Overs' in career_econ.columns:
+                            career_econ['Overs'] = career_econ['Overs'].round(2)
+                            econ_cols.append('Overs')
+                        st.dataframe(
+                            career_econ[econ_cols],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                        )
+
+                col_c5, col_c6 = st.columns(2)
+
+                with col_c5:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🎳 Top 10 Most 5W Hauls (Career)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if wickets_available:
+                        fivew_source = filtered_bowl_df[filtered_bowl_df.get('Bowler_Wkts', 0) >= 5]
+                        if not fivew_source.empty:
+                            if match_count_col:
+                                career_fivew = fivew_source.groupby(['Name', 'Match_Format'])[match_count_col].nunique().reset_index(name='5W Hauls')
+                            else:
+                                career_fivew = fivew_source.groupby(['Name', 'Match_Format']).size().reset_index(name='5W Hauls')
+                            career_fivew = career_fivew.sort_values(by='5W Hauls', ascending=False).head(10)
+                            career_fivew.insert(0, 'Rank', range(1, 1 + len(career_fivew)))
+                            st.dataframe(
+                                career_fivew[['Rank', 'Name', 'Match_Format', '5W Hauls']],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                            )
+                        else:
+                            st.info("No five-wicket hauls found for career analysis.")
+                    else:
+                        st.info("Wicket data is required to compute five-wicket hauls.")
+
+                with col_c6:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">💥 Top 10 Most 10W Hauls (Match)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if wickets_available and 'Match_Format' in filtered_bowl_df.columns:
+                        match_keys = ['Name', 'Match_Format']
+                        match_identifier = None
+
+                        if match_count_col:
+                            match_keys.append(match_count_col)
+                            match_identifier = match_count_col
+                        elif 'Date' in filtered_bowl_df.columns:
+                            match_keys.append('Date')
+                            match_identifier = 'Date'
+
+                        if match_identifier is None:
+                            st.info("Match identifiers (e.g. File Name or Date) are required to calculate 10-wicket hauls.")
+                        else:
+                            match_totals = (
+                                filtered_bowl_df
+                                .groupby(match_keys, observed=True)['Bowler_Wkts']
+                                .sum()
+                                .reset_index(name='Match Wickets')
+                            )
+                            match_totals['Match Wickets'] = pd.to_numeric(match_totals['Match Wickets'], errors='coerce')
+                            match_totals = match_totals.dropna(subset=['Match Wickets'])
+
+                            tenw_matches = match_totals[match_totals['Match Wickets'] >= 10].copy()
+
+                            if tenw_matches.empty:
+                                st.info("No ten-wicket match hauls found for career analysis.")
+                            else:
+                                tenw_summary = (
+                                    tenw_matches
+                                    .groupby(['Name', 'Match_Format'], observed=True)['Match Wickets']
+                                    .agg(['count', 'max'])
+                                    .reset_index()
+                                    .rename(columns={'count': '10W Hauls', 'max': 'Best Match Wickets'})
+                                )
+
+                                if match_identifier in tenw_matches.columns:
+                                    if isinstance(tenw_matches[match_identifier].dtype, CategoricalDtype):
+                                        tenw_matches = tenw_matches.copy()
+                                        tenw_matches[match_identifier] = tenw_matches[match_identifier].astype(str)
+                                    elif match_identifier != 'Date' and tenw_matches[match_identifier].dtype == object:
+                                        tenw_matches[match_identifier] = tenw_matches[match_identifier].astype(str)
+                                    recent_match = (
+                                        tenw_matches
+                                        .groupby(['Name', 'Match_Format'], observed=True)[match_identifier]
+                                        .max()
+                                        .reset_index(name='Most Recent Match')
+                                    )
+                                    tenw_summary = tenw_summary.merge(recent_match, on=['Name', 'Match_Format'], how='left')
+                                    if match_identifier == 'Date':
+                                        tenw_summary['Most Recent Match'] = pd.to_datetime(
+                                            tenw_summary['Most Recent Match'], errors='coerce'
+                                        ).dt.strftime('%d/%m/%Y')
+
+                                tenw_summary = tenw_summary.sort_values(
+                                    by=['10W Hauls', 'Best Match Wickets'], ascending=[False, False]
+                                ).head(10)
+                                tenw_summary['Best Match Wickets'] = (
+                                    pd.to_numeric(tenw_summary['Best Match Wickets'], errors='coerce')
+                                    .round(0)
+                                    .astype('Int64')
+                                )
+                                tenw_summary.insert(0, 'Rank', range(1, 1 + len(tenw_summary)))
+
+                                display_cols = ['Rank', 'Name', 'Match_Format', '10W Hauls', 'Best Match Wickets']
+                                if 'Most Recent Match' in tenw_summary.columns:
+                                    display_cols.append('Most Recent Match')
+
+                                st.dataframe(
+                                    tenw_summary[display_cols],
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                                )
+                    else:
+                        st.info("Wicket data and match formats are required to compute ten-wicket hauls.")
+
+                col_c7, _ = st.columns(2)
+
+                with col_c7:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+                                padding: 0.8rem; margin: 1rem 0; border-radius: 12px; 
+                                box-shadow: 0 6px 24px rgba(250, 112, 154, 0.3);
+                                border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h3 style="color: white !important; margin: 0 !important; font-weight: bold; font-size: 1.2rem; text-align: center;">🏆 Top 10 Most POM (Career)</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if {'Player_of_the_Match', 'Name', 'Match_Format'}.issubset(filtered_bowl_df.columns):
+                        pom_mask_bowl = (
+                            filtered_bowl_df['Player_of_the_Match'].astype(str).str.strip()
+                            == filtered_bowl_df['Name'].astype(str).str.strip()
+                        )
+                        pom_df_bowl_career = filtered_bowl_df[pom_mask_bowl]
+
+                        if not pom_df_bowl_career.empty and match_count_col:
+                            career_bowl_pom_df = (
+                                pom_df_bowl_career
+                                .groupby(['Name', 'Match_Format'])[match_count_col]
+                                .nunique()
+                                .reset_index(name='POM')
+                            )
+                        elif not pom_df_bowl_career.empty:
+                            career_bowl_pom_df = (
+                                pom_df_bowl_career
+                                .groupby(['Name', 'Match_Format'])
+                                .size()
+                                .reset_index(name='POM')
+                            )
+                        else:
+                            career_bowl_pom_df = pd.DataFrame()
+
+                        if career_bowl_pom_df.empty:
+                            st.info("No Player of the Match awards found for the current bowling filters.")
+                        else:
+                            best_career_bowl_pom_df = career_bowl_pom_df.sort_values(by='POM', ascending=False).head(10)
+                            best_career_bowl_pom_df.insert(0, 'Rank', range(1, 1 + len(best_career_bowl_pom_df)))
+                            st.dataframe(
+                                best_career_bowl_pom_df[['Rank', 'Name', 'Match_Format', 'POM']],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={"Name": st.column_config.Column("Name", pinned=True)}
+                            )
+                    else:
+                        st.info("Insufficient bowling data to calculate Player of the Match totals.")
+            else:
+                st.info("Career bowling metrics require Match_Format and wicket data.")
+        else:
+            st.warning("No bowling data available for best-of analysis")
 
 # Win/Loss record Tab
 with tabs[6]:
